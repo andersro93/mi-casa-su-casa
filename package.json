@@ -9,17 +9,14 @@
       "APP_NAME": {
         "description": "Display name shown in the app UI."
       },
-      "APP_ORIGIN": {
-        "description": "Full origin URL of the deployment (e.g. `https://mi-casa-su-casa.example.com`). Used for CORS and link generation."
-      },
-      "BETTER_AUTH_URL": {
-        "description": "Better Auth base URL — should match `APP_ORIGIN` (e.g. `https://mi-casa-su-casa.example.com`)."
+      "APP_URL": {
+        "description": "Full URL of the deployment (e.g. `https://mi-casa-su-casa.example.com`). Used for auth callbacks, CORS, and link generation."
       },
       "OWNER_EMAIL": {
         "description": "Email address for the initial owner account. Used during first-run `/setup` to create the admin user."
       },
-      "BETTER_AUTH_SECRET": {
-        "description": "Random secret used by Better Auth to sign sessions and tokens. Generate with `openssl rand -hex 32`."
+      "AUTH_SECRET": {
+        "description": "Random secret for signing sessions and tokens. Generate one with: openssl rand -hex 32"
       },
       "SETUP_SECRET": {
         "description": "One-time secret required to complete the `/setup` first-run flow. Pick any strong passphrase — it is only used once."

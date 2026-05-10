@@ -142,10 +142,9 @@ function createEnv(db: D1Database, overrides?: Partial<Env>): Env {
 
   return {
     APP_NAME: "Mi Casa Su Casa",
-    APP_ORIGIN: "http://localhost:8787",
+    APP_URL: "http://localhost:8787",
     ASSETS: assets,
-    BETTER_AUTH_SECRET: "test-secret",
-    BETTER_AUTH_URL: "http://localhost:8787",
+    AUTH_SECRET: "test-secret",
     DB: db,
     EMAIL: email,
     ENVIRONMENT: "test",

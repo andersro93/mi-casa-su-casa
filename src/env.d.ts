@@ -4,10 +4,9 @@ type SendEmail = {
 
 interface Env {
   APP_NAME: string;
-  APP_ORIGIN: string;
+  APP_URL: string;
   ASSETS: Fetcher;
-  BETTER_AUTH_SECRET: string;
-  BETTER_AUTH_URL: string;
+  AUTH_SECRET: string;
   DB: D1Database;
   EMAIL: SendEmail;
   ENVIRONMENT: string;
