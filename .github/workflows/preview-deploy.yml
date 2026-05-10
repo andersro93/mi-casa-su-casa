@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   deploy-preview:
-    if: github.event.pull_request.head.repo.full_name == github.repository && secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != ''
+    if: github.event.pull_request.head.repo.full_name == github.repository && secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.D1_DATABASE_ID_PREVIEW != ''
     runs-on: ubuntu-latest
 
     steps:
@@ -34,6 +34,11 @@ jobs:
       - name: Validate pull request
         run: npm run ci
 
+      - name: Inject preview D1 database ID into Wrangler config
+        env:
+          D1_DATABASE_ID_PREVIEW: ${{ secrets.D1_DATABASE_ID_PREVIEW }}
+        run: sed -i 's/PLACEHOLDER_PREVIEW_D1_DATABASE_ID/'"$D1_DATABASE_ID_PREVIEW"'/' wrangler.jsonc
+
       - name: Apply preview D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -44,7 +49,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run deploy:preview
+        run: >-
+          npx wrangler deploy --env preview
+          --var APP_URL:${{ vars.CLOUDFLARE_PREVIEW_URL }}
+          --var OWNER_EMAIL:${{ vars.OWNER_EMAIL }}
 
       - name: Comment preview status on pull request
         uses: actions/github-script@v9
@@ -85,7 +93,7 @@ jobs:
             }
 
   preview-unavailable-for-forks:
-    if: github.event.pull_request.head.repo.full_name != github.repository || secrets.CLOUDFLARE_API_TOKEN == '' || secrets.CLOUDFLARE_ACCOUNT_ID == ''
+    if: github.event.pull_request.head.repo.full_name != github.repository || secrets.CLOUDFLARE_API_TOKEN == '' || secrets.CLOUDFLARE_ACCOUNT_ID == '' || secrets.D1_DATABASE_ID_PREVIEW == ''
     runs-on: ubuntu-latest
 
     steps:
@@ -97,7 +105,7 @@ jobs:
             const fromFork = context.payload.pull_request.head.repo.full_name !== context.repo.owner + '/' + context.repo.repo;
             const body = fromFork
               ? `${marker}\n⚠️ Preview deployment was skipped for this pull request because GitHub does not expose Cloudflare deployment secrets to workflows triggered from forks.`
-              : `${marker}\n⚠️ Preview deployment was skipped because the repository is missing \`CLOUDFLARE_API_TOKEN\` and/or \`CLOUDFLARE_ACCOUNT_ID\` secrets required for Wrangler deploys.`;
+              : `${marker}\n⚠️ Preview deployment was skipped because the repository is missing one or more required secrets (\`CLOUDFLARE_API_TOKEN\`, \`CLOUDFLARE_ACCOUNT_ID\`, \`D1_DATABASE_ID_PREVIEW\`).`;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,

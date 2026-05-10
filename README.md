@@ -81,7 +81,7 @@ Fill in:
 - `AUTH_SECRET`
 - `SETUP_SECRET`
 
-Update `wrangler.jsonc` with your real D1 `database_id` and set `OWNER_EMAIL` to your email address.
+Set `OWNER_EMAIL` in the top-level `vars` section of `wrangler.jsonc` to your email address for local development. For CI/CD deployments, all environment-specific values (D1 database IDs, URLs, owner email) are injected automatically from GitHub secrets and variables — see [`docs/ci-cd-architecture.md`](./docs/ci-cd-architecture.md).
 
 ### Apply local migrations
 
@@ -194,17 +194,103 @@ The repository now includes a Cloudflare-focused CI/CD baseline for issue #8:
 
 See [`docs/ci-cd-architecture.md`](./docs/ci-cd-architecture.md) for the required GitHub secrets, Cloudflare setup, repository variables, environment protection rules, and the production migration workflow.
 
-## Deploy to Cloudflare onboarding
+## Deploy your own instance
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/andersro93/mi-casa-su-casa)
+Fork this repository and follow the steps below. No source edits are needed — every environment-specific value is injected through GitHub secrets, GitHub variables, and the Cloudflare dashboard.
 
-The deploy button can provision the Worker and D1 resources defined in this repository, but you still need to finish the first-run and email onboarding steps yourself:
+### 1. Create Cloudflare resources
 
-1. complete the Cloudflare deploy flow and provide the requested secrets/variables
-2. visit `/setup` on the new deployment and create the initial owner account using `OWNER_EMAIL` and `SETUP_SECRET`
-3. onboard your email-routing domain in Cloudflare and configure the inbound rules for the shared inbox address
+```bash
+# Install Wrangler and authenticate
+npm i -g wrangler && wrangler login
 
-The first-run `/setup` flow closes permanently after the initial owner account is created.
+# Create preview and production D1 databases
+wrangler d1 create mi-casa-su-casa-preview
+wrangler d1 create mi-casa-su-casa
+```
+
+Save the database UUIDs from the output — you will need them in the next step.
+
+### 2. Create a Cloudflare API token
+
+You need an API token so GitHub Actions can deploy on your behalf. A single token is used for preview deploys, production deploys, and production migrations.
+
+**Account-owned tokens** (recommended — survives team changes, requires Super Administrator):
+
+1. Open the [Cloudflare dashboard](https://dash.cloudflare.com) → select your account → **Manage Account → Account API Tokens → Create Token**
+
+**User-owned tokens** (fallback for non-Super-Admins):
+
+1. Open [**API Tokens** in your profile](https://dash.cloudflare.com/profile/api-tokens) → **Create Token**
+
+Then for either type:
+
+2. Choose the **Edit Cloudflare Workers** template and click **Use template**
+3. Add one more permission: **Account → D1 → Edit** (required for database migrations)
+4. Under **Account Resources**, select your account
+5. Under **Zone Resources**, select **All zones** (or the specific zone for your domain)
+6. Click **Continue to summary** → **Create Token**
+7. Copy the token — it is only shown once
+
+> **Where to find your Account ID**: open the [Cloudflare dashboard](https://dash.cloudflare.com), go to **Workers & Pages** — your Account ID is shown in the right sidebar.
+
+### 3. Add GitHub secrets
+
+Go to your fork → **Settings → Secrets and variables → Actions → Secrets** and add:
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID (see above) |
+| `CLOUDFLARE_API_TOKEN` | API token from step 2 |
+| `D1_DATABASE_ID_PREVIEW` | UUID from `wrangler d1 create mi-casa-su-casa-preview` |
+| `D1_DATABASE_ID_PRODUCTION` | UUID from `wrangler d1 create mi-casa-su-casa` |
+
+### 4. Add GitHub variables
+
+Go to **Settings → Secrets and variables → Actions → Variables** and add:
+
+| Variable | Value |
+| --- | --- |
+| `CLOUDFLARE_PREVIEW_URL` | URL of your preview Worker (e.g. `https://mi-casa-su-casa-preview.<your-subdomain>.workers.dev`) |
+| `CLOUDFLARE_PRODUCTION_URL` | URL of your production deployment (e.g. `https://mi-casa-su-casa.<your-domain>.com`) |
+| `OWNER_EMAIL` | Email address for the initial owner account |
+
+### 5. Set Cloudflare dashboard secrets
+
+In the Cloudflare dashboard, go to **Workers & Pages → mi-casa-su-casa → Settings → Variables and Secrets** and add as encrypted secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `AUTH_SECRET` | Random string used by Better Auth to sign sessions (generate with `openssl rand -base64 32`) |
+| `SETUP_SECRET` | One-time setup passphrase you choose for the initial owner account creation |
+
+Repeat for the preview Worker (`mi-casa-su-casa-preview`) if you want setup to work in preview environments.
+
+### 6. Configure repository protection
+
+- Enable branch protection on `main` requiring the `CI` workflow to pass
+- Create a `production-migrations` environment under **Settings → Environments** with required reviewers so production schema changes need explicit approval
+
+### 7. Set up email routing
+
+In the Cloudflare dashboard:
+
+1. Go to your domain → **Email → Email Routing**
+2. Create a routing rule that forwards your shared inbox address (e.g. `codes@yourdomain.com`) to the Worker
+
+### 8. Deploy and run first-time setup
+
+Push to `main` or open a pull request — the GitHub Actions workflows will handle deployment automatically.
+
+After the first successful deploy:
+
+1. Visit `https://<your-production-url>/setup`
+2. Enter the `OWNER_EMAIL` and `SETUP_SECRET` you configured
+3. The initial owner account is created and the `/setup` route locks permanently
+
+You're done. Invite family members through the app.
+
+For full CI/CD details, see [`docs/ci-cd-architecture.md`](./docs/ci-cd-architecture.md).
 
 ## Testing strategy
 

@@ -30,8 +30,16 @@ jobs:
       - name: Validate main before deploy
         run: npm run ci
 
+      - name: Inject production D1 database ID into Wrangler config
+        env:
+          D1_DATABASE_ID_PRODUCTION: ${{ secrets.D1_DATABASE_ID_PRODUCTION }}
+        run: sed -i 's/PLACEHOLDER_PRODUCTION_D1_DATABASE_ID/'"$D1_DATABASE_ID_PRODUCTION"'/' wrangler.jsonc
+
       - name: Deploy Worker to production
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_PROD }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run deploy:production
+        run: >-
+          npx wrangler deploy --env production
+          --var APP_URL:${{ vars.CLOUDFLARE_PRODUCTION_URL }}
+          --var OWNER_EMAIL:${{ vars.OWNER_EMAIL }}
