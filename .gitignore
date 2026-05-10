@@ -6,3 +6,4 @@ coverage/
 .dev.vars
 npm-debug.log*
 .omc/
+.idea

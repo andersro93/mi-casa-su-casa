@@ -1,5 +1,7 @@
 # Mi Casa Su Casa
 
+![Mi Casa Su Casa logo](./assets/mi-casa-su-casa-logo.png)
+
 Cloudflare-native shared verification inbox for families.
 
 Mi Casa Su Casa gives invited family members a calm, mobile-friendly place to find verification emails and one-time codes for shared household accounts. Incoming email is processed directly on Cloudflare Workers, normalized into D1, grouped by sender/service, and quarantined when it cannot be classified safely.
