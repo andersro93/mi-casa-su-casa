@@ -15,7 +15,8 @@
       "binding": "DB",
       "database_name": "mi-casa-su-casa",
       "database_id": "00000000-0000-0000-0000-000000000000",
-      "preview_database_id": "DB"
+      "preview_database_id": "DB",
+      "migrations_dir": "migrations"
     }
   ],
   "send_email": [
@@ -36,7 +37,8 @@
         {
           "binding": "DB",
           "database_name": "mi-casa-su-casa-preview",
-          "database_id": "11111111-1111-1111-1111-111111111111"
+          "database_id": "11111111-1111-1111-1111-111111111111",
+          "migrations_dir": "migrations"
         }
       ],
       "send_email": [
@@ -57,7 +59,8 @@
         {
           "binding": "DB",
           "database_name": "mi-casa-su-casa",
-          "database_id": "22222222-2222-2222-2222-222222222222"
+          "database_id": "22222222-2222-2222-2222-222222222222",
+          "migrations_dir": "migrations"
         }
       ],
       "send_email": [

@@ -2,6 +2,8 @@
 
 Mi Casa Su Casa uses GitHub Actions plus Wrangler to validate pull requests, publish preview deployments, deploy application code from `main`, and keep production D1 migrations behind an explicit approval gate.
 
+Drizzle now owns schema definitions and migration generation. Wrangler continues to apply the checked-in SQL migrations to Cloudflare D1 in local, preview, and production environments.
+
 ## Workflow layout
 
 ### 1. `CI`
@@ -144,6 +146,7 @@ Useful commands after this issue:
 npm run ci
 npm run deploy:preview
 npm run deploy:production
+npm run db:generate
 npm run db:apply:local
 npm run db:apply:preview
 npm run db:apply:production

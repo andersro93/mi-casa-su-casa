@@ -90,6 +90,22 @@ Update `wrangler.jsonc` with your real D1 `database_id`.
 npm run db:apply:local
 ```
 
+### Generate Drizzle migrations
+
+Better Auth tables and app tables are now represented in Drizzle schema definitions while Cloudflare D1 remains the runtime database.
+
+Generate new migration SQL with:
+
+```bash
+npm run db:generate
+```
+
+Apply the generated SQL through the existing Wrangler migration flow:
+
+```bash
+npm run db:apply:local
+```
+
 ### Start development
 
 ```bash
