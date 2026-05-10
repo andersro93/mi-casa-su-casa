@@ -4,12 +4,13 @@ import { purgeExpiredMessages } from "../src/server/jobs/retention";
 
 describe("purgeExpiredMessages", () => {
   it("purges expired inbox and quarantine messages", async () => {
-    const batch = vi.fn(async () => []);
-    const prepare = vi.fn(() => ({ bind: vi.fn(() => ({})) }));
+    const run = vi.fn(async () => ({ results: [] }));
+    const prepare = vi.fn(() => ({
+      bind: vi.fn(() => ({ run })),
+    }));
 
     const env = {
       DB: {
-        batch,
         prepare,
       },
     } as unknown as Env;
@@ -28,7 +29,7 @@ describe("purgeExpiredMessages", () => {
       Date.parse("2026-05-10T12:00:00Z"),
     );
 
-    expect(batch).toHaveBeenCalledTimes(1);
     expect(prepare).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenCalledTimes(2);
   });
 });

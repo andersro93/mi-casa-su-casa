@@ -32,8 +32,9 @@ function createMessage(
 function createDb(match: { providerId: string; providerKey: string } | null) {
   const run = vi.fn(async () => ({ results: [] }));
   const first = vi.fn(async () => match);
-  const bind = vi.fn(() => ({ first, run }));
-  const prepare = vi.fn(() => ({ bind, first, run }));
+  const all = vi.fn(async () => ({ results: match ? [match] : [] }));
+  const bind = vi.fn(() => ({ all, first, run }));
+  const prepare = vi.fn(() => ({ bind, all, first, run }));
 
   return {
     db: {
@@ -42,6 +43,7 @@ function createDb(match: { providerId: string; providerKey: string } | null) {
     } as unknown as D1Database,
     prepare,
     bind,
+    all,
     first,
     run,
   };
@@ -117,8 +119,11 @@ describe("handleIncomingEmail", () => {
       providerId: "provider-1",
       providerKey: "netflix",
     }));
-    const bind = vi.fn(() => ({ first, run }));
-    const prepare = vi.fn(() => ({ bind, first, run }));
+    const all = vi.fn(async () => ({
+      results: [{ providerId: "provider-1", providerKey: "netflix" }],
+    }));
+    const bind = vi.fn(() => ({ all, first, run }));
+    const prepare = vi.fn(() => ({ bind, all, first, run }));
 
     const db = {
       prepare,

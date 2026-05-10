@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm";
+
+import { dbForDatabase } from "../client";
 import type { InstallationStateRow } from "../types";
 
 const INSTALLATION_SEED_SQL = `
@@ -7,7 +10,7 @@ const INSTALLATION_SEED_SQL = `
 `;
 
 export async function ensureInstallationState(db: D1Database) {
-  await db.prepare(INSTALLATION_SEED_SQL).run();
+  await dbForDatabase(db).run(sql.raw(INSTALLATION_SEED_SQL));
 }
 
 export async function getInstallationState(
@@ -15,14 +18,12 @@ export async function getInstallationState(
 ): Promise<InstallationStateRow> {
   await ensureInstallationState(db);
 
-  const row = await db
-    .prepare(
-      `SELECT id, status, owner_user_id, owner_email, completed_at, created_at, updated_at
-       FROM app_installation
-       WHERE id = 1
-       LIMIT 1`,
-    )
-    .first<InstallationStateRow>();
+  const row = await dbForDatabase(db).get<InstallationStateRow>(sql`
+    SELECT id, status, owner_user_id, owner_email, completed_at, created_at, updated_at
+    FROM app_installation
+    WHERE id = 1
+    LIMIT 1
+  `);
 
   if (!row) {
     throw new Error("Installation state is unavailable");
@@ -34,14 +35,12 @@ export async function getInstallationState(
 export async function beginInstallationSetup(db: D1Database) {
   await ensureInstallationState(db);
 
-  const result = await db
-    .prepare(
-      `UPDATE app_installation
-       SET status = 'in_progress',
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = 1 AND status = 'pending'`,
-    )
-    .run();
+  const result = await dbForDatabase(db).run(sql`
+    UPDATE app_installation
+    SET status = 'in_progress',
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = 1 AND status = 'pending'
+  `);
 
   return Number(result.meta.changes ?? 0) > 0;
 }
@@ -51,27 +50,22 @@ export async function completeInstallationSetup(
   ownerUserId: string,
   ownerEmail: string,
 ) {
-  await db
-    .prepare(
-      `UPDATE app_installation
-       SET status = 'complete',
-           owner_user_id = ?,
-           owner_email = ?,
-           completed_at = CURRENT_TIMESTAMP,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = 1`,
-    )
-    .bind(ownerUserId, ownerEmail.toLowerCase())
-    .run();
+  await dbForDatabase(db).run(sql`
+    UPDATE app_installation
+    SET status = 'complete',
+        owner_user_id = ${ownerUserId},
+        owner_email = ${ownerEmail.toLowerCase()},
+        completed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = 1
+  `);
 }
 
 export async function resetInstallationSetup(db: D1Database) {
-  await db
-    .prepare(
-      `UPDATE app_installation
-       SET status = 'pending',
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = 1 AND status = 'in_progress' AND owner_user_id IS NULL`,
-    )
-    .run();
+  await dbForDatabase(db).run(sql`
+    UPDATE app_installation
+    SET status = 'pending',
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = 1 AND status = 'in_progress' AND owner_user_id IS NULL
+  `);
 }

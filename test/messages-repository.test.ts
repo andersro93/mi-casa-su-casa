@@ -24,8 +24,9 @@ function createParsedEmail(
 
 function createDb(runImpl: () => Promise<unknown>) {
   const run = vi.fn(runImpl);
-  const bind = vi.fn(() => ({ run }));
-  const prepare = vi.fn(() => ({ bind }));
+  const all = vi.fn(async () => ({ results: [] }));
+  const bind = vi.fn(() => ({ all, run }));
+  const prepare = vi.fn(() => ({ all, bind, run }));
 
   return {
     db: {
@@ -33,6 +34,7 @@ function createDb(runImpl: () => Promise<unknown>) {
       batch: vi.fn(async () => []),
     } as unknown as D1Database,
     prepare,
+    all,
     bind,
     run,
   };
