@@ -424,6 +424,36 @@ pre {
   gap: 0.35rem;
 }
 
+.owner-admin-panel,
+.admin-form-panel,
+.owner-members-panel {
+  align-content: start;
+}
+
+.owner-admin-grid,
+.access-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.access-grid {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+.access-pill {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(248, 250, 252, 0.88);
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  color: #334155;
+}
+
+.access-pill--active {
+  background: rgba(154, 111, 69, 0.14);
+  border-color: rgba(154, 111, 69, 0.36);
+  color: #7c5430;
+}
+
 .empty-state {
   border-radius: 1.1rem;
   border: 1px dashed rgba(148, 163, 184, 0.35);
@@ -455,6 +485,10 @@ pre {
 
   .two-column-panel {
     grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr);
+  }
+
+  .owner-admin-grid {
+    grid-template-columns: minmax(20rem, 25rem) minmax(0, 1fr);
   }
 }
 

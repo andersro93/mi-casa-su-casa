@@ -18,7 +18,7 @@ export function authForEnv(env: Env) {
         role: {
           type: "string",
           required: false,
-          defaultValue: "member",
+          defaultValue: "user",
           input: false,
         },
       },
@@ -31,7 +31,7 @@ export function authForEnv(env: Env) {
     plugins: [
       admin({
         adminRoles: ["admin"],
-        defaultRole: "member",
+        defaultRole: "user",
       }),
     ],
   });

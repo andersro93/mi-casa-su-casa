@@ -64,3 +64,21 @@ export type ProviderRow = {
 };
 
 export type MessageStatus = InboxMessageRow["status"];
+
+export type MemberRecord = {
+  id: string;
+  email: string;
+  name: string;
+  role: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MemberAccessRow = {
+  id: string;
+  email: string;
+  name: string;
+  role: string | null;
+  provider_key: string | null;
+  provider_display_name: string | null;
+};

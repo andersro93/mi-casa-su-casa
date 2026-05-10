@@ -5,6 +5,7 @@ import { authForEnv } from "./server/auth/auth";
 import { loadAuthSession } from "./server/auth/middleware";
 import { handleIncomingEmail } from "./server/email/handler";
 import { purgeExpiredMessages } from "./server/jobs/retention";
+import { adminRoutes } from "./server/routes/admin";
 import { healthRoutes } from "./server/routes/health";
 import { inboxRoutes } from "./server/routes/inbox";
 import { createAppContext } from "./server/runtime/context";
@@ -22,12 +23,14 @@ app.use(
 );
 
 app.use("/api/inbox/*", loadAuthSession);
+app.use("/api/admin/*", loadAuthSession);
 
 app.on(["GET", "POST"], "/api/auth/*", (c) =>
   authForEnv(c.env).handler(c.req.raw),
 );
 app.route("/api/health", healthRoutes);
 app.route("/api/inbox", inboxRoutes);
+app.route("/api/admin", adminRoutes);
 
 app.get("*", async (c) => {
   return c.env.ASSETS.fetch(c.req.raw);
