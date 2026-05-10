@@ -22,8 +22,14 @@ const sessionState = vi.hoisted(() => ({
 
 const authApiState = vi.hoisted(() => ({
   createUserCalls: [] as unknown[],
+  listUsersCalls: [] as unknown[],
+  signInEmailCalls: [] as unknown[],
   setRoleCalls: [] as unknown[],
   setPasswordCalls: [] as unknown[],
+  listUsersResponse: {
+    users: [] as Array<{ id: string; email: string; role: string }>,
+    total: 0,
+  },
 }));
 
 vi.mock("../src/server/auth/auth", () => ({
@@ -46,6 +52,25 @@ vi.mock("../src/server/auth/auth", () => ({
       setRole: async (input: unknown) => {
         authApiState.setRoleCalls.push(input);
         return { ok: true };
+      },
+      listUsers: async (input: unknown) => {
+        authApiState.listUsersCalls.push(input);
+        return authApiState.listUsersResponse;
+      },
+      signInEmail: async (input: unknown) => {
+        authApiState.signInEmailCalls.push(input);
+        return {
+          response: {
+            session: {
+              id: "setup-session-1",
+              userId: "created-user-1",
+            },
+          },
+          headers: new Headers({
+            "set-cookie":
+              "better-auth.session_token=test-token; Path=/; HttpOnly",
+          }),
+        };
       },
       setUserPassword: async (input: unknown) => {
         authApiState.setPasswordCalls.push(input);
@@ -140,8 +165,14 @@ describe("worker routes", () => {
   beforeEach(() => {
     sessionState.current = null;
     authApiState.createUserCalls = [];
+    authApiState.listUsersCalls = [];
+    authApiState.signInEmailCalls = [];
     authApiState.setRoleCalls = [];
     authApiState.setPasswordCalls = [];
+    authApiState.listUsersResponse = {
+      users: [],
+      total: 0,
+    };
   });
 
   it("returns liveness health", async () => {
@@ -625,5 +656,254 @@ describe("worker routes", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+  });
+
+  it("reports that first-run setup is still needed", async () => {
+    const db = createDbStub((sql) => {
+      if (sql.startsWith("INSERT INTO app_installation")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      if (sql.includes("FROM app_installation")) {
+        return {
+          first: async () => ({
+            id: 1,
+            status: "pending",
+            owner_user_id: null,
+            owner_email: null,
+            completed_at: null,
+            created_at: "2026-05-10T12:00:00.000Z",
+            updated_at: "2026-05-10T12:00:00.000Z",
+          }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker("/api/setup/status", undefined, db, {
+      OWNER_EMAIL: "owner@example.com",
+      SETUP_SECRET: "setup-secret",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      needsSetup: true,
+      setupLocked: false,
+      isConfigured: true,
+      status: "pending",
+      ownerEmail: null,
+    });
+  });
+
+  it("creates the initial owner through the one-time setup flow", async () => {
+    const db = createDbStub((sql) => {
+      if (sql.startsWith("INSERT INTO app_installation")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      if (
+        sql.startsWith("UPDATE app_installation") &&
+        sql.includes("status = 'in_progress'")
+      ) {
+        return {
+          run: async () => ({
+            results: [],
+            meta: { changes: 1 },
+          }),
+        };
+      }
+
+      if (
+        sql.startsWith("UPDATE app_installation") &&
+        sql.includes("status = 'complete'")
+      ) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      if (sql.includes("FROM app_installation")) {
+        return {
+          first: async () => ({
+            id: 1,
+            status: "pending",
+            owner_user_id: null,
+            owner_email: null,
+            completed_at: null,
+            created_at: "2026-05-10T12:00:00.000Z",
+            updated_at: "2026-05-10T12:00:00.000Z",
+          }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker(
+      "/api/setup/complete",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email: "owner@example.com",
+          name: "Owner Person",
+          password: "super-secure-password",
+          setupSecret: "setup-secret",
+        }),
+      },
+      db,
+      {
+        OWNER_EMAIL: "owner@example.com",
+        SETUP_SECRET: "setup-secret",
+      },
+    );
+
+    expect(response.status).toBe(201);
+    expect(authApiState.createUserCalls).toHaveLength(1);
+    expect(authApiState.createUserCalls[0]).toMatchObject({
+      body: {
+        email: "owner@example.com",
+        name: "Owner Person",
+        password: "super-secure-password",
+        role: "admin",
+      },
+    });
+    expect(authApiState.signInEmailCalls).toHaveLength(1);
+    expect(authApiState.signInEmailCalls[0]).toMatchObject({
+      body: {
+        email: "owner@example.com",
+        password: "super-secure-password",
+      },
+    });
+
+    const payload = (await response.json()) as {
+      member: { email: string; role: string };
+      session: { session: { userId: string } };
+    };
+
+    expect(payload.member).toEqual({
+      id: "created-user-1",
+      email: "new@example.com",
+      name: "New Person",
+      role: "admin",
+    });
+    expect(payload.session.session.userId).toBe("created-user-1");
+    expect(response.headers.get("set-cookie")).toContain(
+      "better-auth.session_token",
+    );
+  });
+
+  it("rejects setup when the secret is wrong", async () => {
+    const db = createDbStub((sql) => {
+      if (sql.startsWith("INSERT INTO app_installation")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      if (sql.includes("FROM app_installation")) {
+        return {
+          first: async () => ({
+            id: 1,
+            status: "pending",
+            owner_user_id: null,
+            owner_email: null,
+            completed_at: null,
+            created_at: "2026-05-10T12:00:00.000Z",
+            updated_at: "2026-05-10T12:00:00.000Z",
+          }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker(
+      "/api/setup/complete",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email: "owner@example.com",
+          name: "Owner Person",
+          password: "super-secure-password",
+          setupSecret: "wrong-secret",
+        }),
+      },
+      db,
+      {
+        OWNER_EMAIL: "owner@example.com",
+        SETUP_SECRET: "setup-secret",
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid setup secret",
+    });
+  });
+
+  it("keeps setup closed after completion", async () => {
+    const db = createDbStub((sql) => {
+      if (sql.startsWith("INSERT INTO app_installation")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      if (sql.includes("FROM app_installation")) {
+        return {
+          first: async () => ({
+            id: 1,
+            status: "complete",
+            owner_user_id: "owner-1",
+            owner_email: "owner@example.com",
+            completed_at: "2026-05-10T12:30:00.000Z",
+            created_at: "2026-05-10T12:00:00.000Z",
+            updated_at: "2026-05-10T12:30:00.000Z",
+          }),
+        };
+      }
+
+      if (
+        sql.startsWith("UPDATE app_installation") &&
+        sql.includes("status = 'in_progress'")
+      ) {
+        return {
+          run: async () => ({
+            results: [],
+            meta: { changes: 0 },
+          }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker(
+      "/api/setup/complete",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email: "owner@example.com",
+          name: "Owner Person",
+          password: "super-secure-password",
+          setupSecret: "setup-secret",
+        }),
+      },
+      db,
+      {
+        OWNER_EMAIL: "owner@example.com",
+        SETUP_SECRET: "setup-secret",
+      },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Setup has already been completed",
+    });
   });
 });

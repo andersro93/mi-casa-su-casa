@@ -80,6 +80,7 @@ Fill in:
 
 - `BETTER_AUTH_SECRET`
 - `OWNER_EMAIL`
+- `SETUP_SECRET`
 
 Update `wrangler.jsonc` with your real D1 `database_id`.
 
@@ -177,6 +178,18 @@ The repository now includes a Cloudflare-focused CI/CD baseline for issue #8:
 - `Production D1 Migrate` is a separate, manually approved workflow for production schema changes
 
 See [`docs/ci-cd-architecture.md`](./docs/ci-cd-architecture.md) for the required GitHub secrets, Cloudflare setup, repository variables, environment protection rules, and the production migration workflow.
+
+## Deploy to Cloudflare onboarding
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/andersro93/mi-casa-su-casa)
+
+The deploy button can provision the Worker and D1 resources defined in this repository, but you still need to finish the first-run and email onboarding steps yourself:
+
+1. complete the Cloudflare deploy flow and provide the requested secrets/variables
+2. visit `/setup` on the new deployment and create the initial owner account using `OWNER_EMAIL` and `SETUP_SECRET`
+3. onboard your email-routing domain in Cloudflare and configure the inbound rules for the shared inbox address
+
+The first-run `/setup` flow closes permanently after the initial owner account is created.
 
 ## Testing strategy
 

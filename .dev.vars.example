@@ -1,3 +1,4 @@
 BETTER_AUTH_SECRET=replace-with-a-long-random-secret
 OWNER_EMAIL=owner@example.com
+SETUP_SECRET=replace-with-a-long-random-setup-secret
 BETTER_AUTH_URL=http://localhost:8787

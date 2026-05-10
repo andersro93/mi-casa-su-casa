@@ -159,6 +159,34 @@ This issue adds the repository-side CI/CD wiring, but operators still need to:
 4. enable branch protection on `main` so `CI` stays required
 5. configure required reviewers for the `production-migrations` environment
 
+## Deploy to Cloudflare onboarding for issue #9
+
+Use this repository button for the Cloudflare-native deploy entry point:
+
+```markdown
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/andersro93/mi-casa-su-casa)
+```
+
+What the Deploy to Cloudflare flow handles well:
+
+- creating the Worker deployment
+- provisioning D1 resources defined in Wrangler
+- prompting for environment variables and secrets needed at deploy time
+
+What still remains manual after deployment:
+
+- visit `/setup` to create the first owner account
+- provide the configured `OWNER_EMAIL` and `SETUP_SECRET`
+- onboard the email-routing domain in Cloudflare and create the inbound rules for the shared inbox address
+
+Recommended first-run secrets for onboarding:
+
+- `BETTER_AUTH_SECRET`
+- `OWNER_EMAIL`
+- `SETUP_SECRET`
+
+The app-level setup route is intentionally one-time only. After the owner account is created, `/setup` is locked server-side and normal invite-only sign-in remains the only public auth path.
+
 ## References
 
 - Cloudflare Workers GitHub Actions: https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/

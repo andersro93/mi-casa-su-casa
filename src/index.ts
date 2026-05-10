@@ -8,6 +8,7 @@ import { purgeExpiredMessages } from "./server/jobs/retention";
 import { adminRoutes } from "./server/routes/admin";
 import { healthRoutes } from "./server/routes/health";
 import { inboxRoutes } from "./server/routes/inbox";
+import { setupRoutes } from "./server/routes/setup";
 import { createAppContext } from "./server/runtime/context";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -31,6 +32,7 @@ app.on(["GET", "POST"], "/api/auth/*", (c) =>
 app.route("/api/health", healthRoutes);
 app.route("/api/inbox", inboxRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/setup", setupRoutes);
 
 app.get("*", async (c) => {
   return c.env.ASSETS.fetch(c.req.raw);

@@ -83,9 +83,30 @@ type LoginState = {
   password: string;
 };
 
+type SetupStatus = {
+  needsSetup: boolean;
+  setupLocked: boolean;
+  isConfigured: boolean;
+  status: "pending" | "in_progress" | "complete";
+};
+
+type SetupFormState = {
+  email: string;
+  name: string;
+  password: string;
+  setupSecret: string;
+};
+
 const INITIAL_LOGIN_STATE: LoginState = {
   email: "",
   password: "",
+};
+
+const INITIAL_SETUP_FORM_STATE: SetupFormState = {
+  email: "",
+  name: "",
+  password: "",
+  setupSecret: "",
 };
 
 const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
@@ -165,6 +186,18 @@ export function App() {
     isPending: isSessionPending,
     refetch,
   } = authClient.useSession();
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
+  const [setupFormState, setSetupFormState] = useState<SetupFormState>(
+    INITIAL_SETUP_FORM_STATE,
+  );
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [isCompletingSetup, setIsCompletingSetup] = useState(false);
+  const [isCheckingSetup, setIsCheckingSetup] = useState(
+    typeof window !== "undefined",
+  );
+  const [isSetupPath, setIsSetupPath] = useState(
+    typeof window !== "undefined" && window.location.pathname === "/setup",
+  );
   const [loginState, setLoginState] = useState<LoginState>(INITIAL_LOGIN_STATE);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -200,6 +233,80 @@ export function App() {
 
   const isAuthenticated = Boolean(session?.user?.email);
   const isOwner = session?.user?.role === "admin";
+
+  async function refreshSetupStatus() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const status = await fetchJson<SetupStatus>("/api/setup/status");
+    setSetupStatus(status);
+
+    if (status.needsSetup && window.location.pathname !== "/setup") {
+      window.history.replaceState({}, "", "/setup");
+      setIsSetupPath(true);
+      return;
+    }
+
+    if (!status.needsSetup && window.location.pathname === "/setup") {
+      window.history.replaceState({}, "", "/");
+      setIsSetupPath(false);
+      return;
+    }
+
+    setIsSetupPath(window.location.pathname === "/setup");
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSetupStatus = async () => {
+      try {
+        const status = await fetchJson<SetupStatus>("/api/setup/status");
+
+        if (cancelled) {
+          return;
+        }
+
+        setSetupStatus(status);
+
+        if (status.needsSetup && window.location.pathname !== "/setup") {
+          window.history.replaceState({}, "", "/setup");
+          setIsSetupPath(true);
+        } else if (
+          !status.needsSetup &&
+          window.location.pathname === "/setup"
+        ) {
+          window.history.replaceState({}, "", "/");
+          setIsSetupPath(false);
+        } else {
+          setIsSetupPath(window.location.pathname === "/setup");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSetupError(
+            error instanceof Error
+              ? error.message
+              : "Unable to check setup status",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingSetup(false);
+        }
+      }
+    };
+
+    void loadSetupStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -557,6 +664,30 @@ export function App() {
     await refetch();
   }
 
+  async function handleSetupComplete(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsCompletingSetup(true);
+    setSetupError(null);
+    setStatusMessage(null);
+
+    try {
+      await fetchJson<{ member: { email: string } }>("/api/setup/complete", {
+        method: "POST",
+        body: JSON.stringify(setupFormState),
+      });
+
+      setSetupFormState(INITIAL_SETUP_FORM_STATE);
+      setStatusMessage("Owner account created. You are now signed in.");
+      await Promise.all([refetch(), refreshSetupStatus()]);
+    } catch (error) {
+      setSetupError(
+        error instanceof Error ? error.message : "Unable to complete setup",
+      );
+    } finally {
+      setIsCompletingSetup(false);
+    }
+  }
+
   async function handleStatusChange(nextStatus: InboxMessage["status"]) {
     if (!selectedMessage) {
       return;
@@ -711,7 +842,7 @@ export function App() {
     }
   }
 
-  if (isSessionPending) {
+  if (isSessionPending || isCheckingSetup) {
     return (
       <main className="app-shell">
         <section className="hero-card hero-card--centered">
@@ -720,6 +851,117 @@ export function App() {
           <p className="lede">
             Checking the current session and preparing the latest messages.
           </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!isAuthenticated && setupStatus?.needsSetup && isSetupPath) {
+    return (
+      <main className="app-shell">
+        <section className="hero-card auth-card">
+          <div>
+            <p className="eyebrow">First-run setup</p>
+            <h1>Finish setting up your household inbox.</h1>
+            <p className="lede">
+              Create the initial owner account after your Cloudflare deployment
+              completes. This screen closes automatically after the first
+              successful setup.
+            </p>
+          </div>
+
+          <div className="status-card">
+            <p className="status-label">What you need</p>
+            <ul>
+              <li>
+                The owner email configured as <code>OWNER_EMAIL</code>
+              </li>
+              <li>
+                Your one-time <code>SETUP_SECRET</code>
+              </li>
+              <li>A strong password for the initial owner account</li>
+            </ul>
+          </div>
+
+          <form className="auth-form" onSubmit={handleSetupComplete}>
+            <label className="field-group">
+              <span>Owner email</span>
+              <input
+                autoComplete="email"
+                name="setup-email"
+                type="email"
+                value={setupFormState.email}
+                onChange={(event) =>
+                  setSetupFormState((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+
+            <label className="field-group">
+              <span>Owner display name</span>
+              <input
+                autoComplete="name"
+                name="setup-name"
+                value={setupFormState.name}
+                onChange={(event) =>
+                  setSetupFormState((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+
+            <label className="field-group">
+              <span>Password</span>
+              <input
+                autoComplete="new-password"
+                minLength={12}
+                name="setup-password"
+                type="password"
+                value={setupFormState.password}
+                onChange={(event) =>
+                  setSetupFormState((current) => ({
+                    ...current,
+                    password: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+
+            <label className="field-group">
+              <span>Setup secret</span>
+              <input
+                autoComplete="off"
+                name="setup-secret"
+                type="password"
+                value={setupFormState.setupSecret}
+                onChange={(event) =>
+                  setSetupFormState((current) => ({
+                    ...current,
+                    setupSecret: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+
+            {setupError ? <p className="inline-error">{setupError}</p> : null}
+
+            <button
+              className="primary-button"
+              disabled={isCompletingSetup}
+              type="submit"
+            >
+              {isCompletingSetup ? "Creating owner…" : "Complete setup"}
+            </button>
+          </form>
         </section>
       </main>
     );
@@ -778,6 +1020,10 @@ export function App() {
               <p className="inline-error">
                 {loginError ?? sessionError?.message}
               </p>
+            ) : null}
+
+            {setupError && !setupStatus?.isConfigured ? (
+              <p className="inline-error">{setupError}</p>
             ) : null}
 
             <button
