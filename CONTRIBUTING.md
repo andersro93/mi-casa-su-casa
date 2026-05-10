@@ -36,6 +36,15 @@ A feature is only done when all of the following are true:
 - no direct pushes
 - required CI checks before merge
 
+Repository settings should enforce this with branch protection on `main`.
+
+Recommended protection rules:
+
+- require a pull request before merging
+- require the CI workflow to pass before merging
+- dismiss or re-run checks when the PR head changes
+- prevent direct pushes to `main`
+
 ## Local development
 
 ```bash
@@ -64,6 +73,15 @@ That means:
 - unit tests for isolated logic
 - integration tests for API + DB + auth boundaries
 - end-to-end coverage for critical flows when relevant
+
+At minimum, every PR is expected to keep the following commands green:
+
+```bash
+npm run check
+npm run typecheck
+npm run test
+npm run build
+```
 
 ## Pull requests
 

@@ -156,6 +156,17 @@ Required checks are expected to include:
 - end-to-end tests for critical flows
 - build verification
 
+The baseline PR validation commands are:
+
+```bash
+npm run check
+npm run typecheck
+npm run test
+npm run build
+```
+
+`main` should be protected so pull requests cannot merge unless the CI workflow is green.
+
 ## Testing strategy
 
 The default test pyramid for Mi Casa Su Casa is:
