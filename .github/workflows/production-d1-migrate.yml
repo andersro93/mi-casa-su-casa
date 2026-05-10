@@ -1,0 +1,56 @@
+name: Production D1 Migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to migrate
+        required: false
+        default: main
+      reason:
+        description: Why this production migration is needed
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-d1-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate-production:
+    runs-on: ubuntu-latest
+    environment:
+      name: production-migrations
+      url: ${{ vars.CLOUDFLARE_PRODUCTION_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Record migration request
+        run: |
+          echo "Running production migrations for ref: ${{ inputs.ref }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Reason: ${{ inputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply production D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_PROD }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run db:apply:production
+
+      - name: List production D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_PROD }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations list mi-casa-su-casa --remote --env production

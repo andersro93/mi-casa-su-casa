@@ -167,6 +167,17 @@ npm run build
 
 `main` should be protected so pull requests cannot merge unless the CI workflow is green.
 
+## Deployment model
+
+The repository now includes a Cloudflare-focused CI/CD baseline for issue #8:
+
+- `CI` validates pull requests and pushes to `main`
+- `Preview Deploy` deploys pull requests to a preview Worker and preview D1 database
+- `Production Deploy` automatically deploys Worker code from `main`
+- `Production D1 Migrate` is a separate, manually approved workflow for production schema changes
+
+See [`docs/ci-cd-architecture.md`](./docs/ci-cd-architecture.md) for the required GitHub secrets, Cloudflare setup, repository variables, environment protection rules, and the production migration workflow.
+
 ## Testing strategy
 
 The default test pyramid for Mi Casa Su Casa is:
