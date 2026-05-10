@@ -83,8 +83,8 @@ Replace the placeholder values before using these workflows:
 
 - preview D1 database id: `11111111-1111-1111-1111-111111111111`
 - production D1 database id: `22222222-2222-2222-2222-222222222222`
-- preview URL placeholders in `APP_ORIGIN` and `BETTER_AUTH_URL`
-- production URL placeholders in `APP_ORIGIN` and `BETTER_AUTH_URL`
+- preview URL placeholder in `APP_URL`
+- production URL placeholder in `APP_URL`
 
 ## Required GitHub secrets
 
@@ -184,7 +184,7 @@ What still remains manual after deployment:
 
 Recommended first-run secrets for onboarding:
 
-- `BETTER_AUTH_SECRET`
+- `AUTH_SECRET`
 - `OWNER_EMAIL`
 - `SETUP_SECRET`
 

@@ -8,8 +8,8 @@ import * as schema from "../db/schema";
 export function authForEnv(env: Env) {
   return betterAuth({
     appName: "Mi Casa Su Casa",
-    baseURL: env.BETTER_AUTH_URL,
-    secret: env.BETTER_AUTH_SECRET,
+    baseURL: env.APP_URL,
+    secret: env.AUTH_SECRET,
     database: drizzleAdapter(dbForEnv(env), {
       provider: "sqlite",
       schema,

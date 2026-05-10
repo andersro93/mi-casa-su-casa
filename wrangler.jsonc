@@ -26,9 +26,9 @@
   ],
   "vars": {
     "APP_NAME": "Mi Casa Su Casa",
-    "APP_ORIGIN": "http://localhost:8787",
-    "BETTER_AUTH_URL": "http://localhost:8787",
-    "ENVIRONMENT": "development"
+    "APP_URL": "http://localhost:8787",
+    "ENVIRONMENT": "development",
+    "OWNER_EMAIL": "owner@example.com"
   },
   "env": {
     "preview": {
@@ -48,9 +48,9 @@
       ],
       "vars": {
         "APP_NAME": "Mi Casa Su Casa (Preview)",
-        "APP_ORIGIN": "https://REPLACE_WITH_PREVIEW_URL",
-        "BETTER_AUTH_URL": "https://REPLACE_WITH_PREVIEW_URL",
-        "ENVIRONMENT": "preview"
+        "APP_URL": "https://REPLACE_WITH_PREVIEW_URL",
+        "ENVIRONMENT": "preview",
+        "OWNER_EMAIL": "owner@example.com"
       }
     },
     "production": {
@@ -70,9 +70,9 @@
       ],
       "vars": {
         "APP_NAME": "Mi Casa Su Casa",
-        "APP_ORIGIN": "https://REPLACE_WITH_PRODUCTION_URL",
-        "BETTER_AUTH_URL": "https://REPLACE_WITH_PRODUCTION_URL",
-        "ENVIRONMENT": "production"
+        "APP_URL": "https://REPLACE_WITH_PRODUCTION_URL",
+        "ENVIRONMENT": "production",
+        "OWNER_EMAIL": "owner@example.com"
       }
     }
   },

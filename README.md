@@ -78,11 +78,10 @@ cp .dev.vars.example .dev.vars
 
 Fill in:
 
-- `BETTER_AUTH_SECRET`
-- `OWNER_EMAIL`
+- `AUTH_SECRET`
 - `SETUP_SECRET`
 
-Update `wrangler.jsonc` with your real D1 `database_id`.
+Update `wrangler.jsonc` with your real D1 `database_id` and set `OWNER_EMAIL` to your email address.
 
 ### Apply local migrations
 
