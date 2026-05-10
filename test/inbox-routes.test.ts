@@ -20,11 +20,37 @@ const sessionState = vi.hoisted(() => ({
   } | null,
 }));
 
+const authApiState = vi.hoisted(() => ({
+  createUserCalls: [] as unknown[],
+  setRoleCalls: [] as unknown[],
+  setPasswordCalls: [] as unknown[],
+}));
+
 vi.mock("../src/server/auth/auth", () => ({
   authForEnv: () => ({
     handler: () => new Response("auth"),
     api: {
       getSession: async () => sessionState.current,
+      createUser: async (input: unknown) => {
+        authApiState.createUserCalls.push(input);
+
+        return {
+          user: {
+            id: "created-user-1",
+            email: "new@example.com",
+            name: "New Person",
+            role: "member",
+          },
+        };
+      },
+      setRole: async (input: unknown) => {
+        authApiState.setRoleCalls.push(input);
+        return { ok: true };
+      },
+      setUserPassword: async (input: unknown) => {
+        authApiState.setPasswordCalls.push(input);
+        return { ok: true };
+      },
     },
   }),
 }));
@@ -53,7 +79,7 @@ function createDbStub(resolve: DbResolver): D1Database {
   } as unknown as D1Database;
 }
 
-function createEnv(db: D1Database): Env {
+function createEnv(db: D1Database, overrides?: Partial<Env>): Env {
   const assets = {
     fetch: async () => new Response("spa"),
   } as unknown as Fetcher;
@@ -71,6 +97,7 @@ function createEnv(db: D1Database): Env {
     DB: db,
     EMAIL: email,
     ENVIRONMENT: "test",
+    ...overrides,
   };
 }
 
@@ -94,6 +121,7 @@ async function invokeWorker(
   path: string,
   options: RequestInit | undefined,
   db: D1Database,
+  envOverrides?: Partial<Env>,
 ) {
   const fetchHandler = getWorkerFetch();
   const request = new Request(
@@ -101,12 +129,19 @@ async function invokeWorker(
     options,
   ) as Parameters<WorkerFetch>[0];
 
-  return fetchHandler(request, createEnv(db), createExecutionContext());
+  return fetchHandler(
+    request,
+    createEnv(db, envOverrides),
+    createExecutionContext(),
+  );
 }
 
 describe("worker routes", () => {
   beforeEach(() => {
     sessionState.current = null;
+    authApiState.createUserCalls = [];
+    authApiState.setRoleCalls = [];
+    authApiState.setPasswordCalls = [];
   });
 
   it("returns liveness health", async () => {
@@ -379,6 +414,214 @@ describe("worker routes", () => {
     const db = createDbStub(() => ({}));
 
     const response = await invokeWorker("/api/inbox/quarantine", undefined, db);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+  });
+
+  it("bootstraps OWNER_EMAIL to admin on session load", async () => {
+    sessionState.current = {
+      user: { id: "user-1", email: "owner@example.com", role: "member" },
+      session: { id: "session-1", userId: "user-1" },
+    };
+
+    const db = createDbStub((sql) => {
+      if (sql.includes("GROUP BY providers.id")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker("/api/inbox/providers", undefined, db, {
+      OWNER_EMAIL: "owner@example.com",
+    });
+
+    expect(response.status).toBe(200);
+    expect(authApiState.setRoleCalls).toHaveLength(1);
+    expect(authApiState.setRoleCalls[0]).toMatchObject({
+      body: {
+        userId: "user-1",
+        role: "admin",
+      },
+    });
+  });
+
+  it("lists members and provider access for owners", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub((sql) => {
+      if (sql.includes("FROM user\n       ORDER BY createdAt ASC")) {
+        return {
+          run: async () => ({
+            results: [
+              {
+                id: "member-1",
+                email: "member@example.com",
+                name: "Family Member",
+                role: "member",
+                createdAt: "2026-05-10T12:00:00.000Z",
+                updatedAt: "2026-05-10T12:00:00.000Z",
+              },
+            ],
+          }),
+        };
+      }
+
+      if (sql.includes("LEFT JOIN user_provider_access")) {
+        return {
+          run: async () => ({
+            results: [
+              {
+                id: "member-1",
+                email: "member@example.com",
+                name: "Family Member",
+                role: "member",
+                provider_key: "netflix",
+                provider_display_name: "Netflix",
+              },
+            ],
+          }),
+        };
+      }
+
+      if (sql.includes("FROM providers\n       ORDER BY display_name ASC")) {
+        return {
+          run: async () => ({
+            results: [
+              {
+                id: "provider-1",
+                provider_key: "netflix",
+                display_name: "Netflix",
+              },
+            ],
+          }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker("/api/admin/members", undefined, db);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      members: [
+        {
+          id: "member-1",
+          email: "member@example.com",
+          name: "Family Member",
+          role: "member",
+          createdAt: "2026-05-10T12:00:00.000Z",
+          updatedAt: "2026-05-10T12:00:00.000Z",
+          providerAccess: [
+            {
+              providerKey: "netflix",
+              displayName: "Netflix",
+            },
+          ],
+        },
+      ],
+      providers: [
+        {
+          id: "provider-1",
+          provider_key: "netflix",
+          display_name: "Netflix",
+        },
+      ],
+    });
+  });
+
+  it("creates a household member from the admin route", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+
+    const response = await invokeWorker(
+      "/api/admin/members",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email: "new@example.com",
+          name: "New Person",
+          password: "temporary-password-123",
+          role: "member",
+        }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(201);
+    expect(authApiState.createUserCalls).toHaveLength(1);
+    expect(authApiState.createUserCalls[0]).toMatchObject({
+      body: {
+        email: "new@example.com",
+        name: "New Person",
+        password: "temporary-password-123",
+        role: "user",
+      },
+    });
+  });
+
+  it("grants provider access from the admin route", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub((sql) => {
+      if (
+        sql.includes("FROM providers") &&
+        sql.includes("WHERE provider_key = ?")
+      ) {
+        return {
+          first: async () => ({
+            id: "provider-1",
+            provider_key: "netflix",
+            display_name: "Netflix",
+          }),
+        };
+      }
+
+      if (sql.startsWith("INSERT OR IGNORE INTO user_provider_access")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker(
+      "/api/admin/members/member-1/provider-access",
+      {
+        method: "POST",
+        body: JSON.stringify({ providerKey: "netflix" }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it("keeps admin routes owner-only", async () => {
+    sessionState.current = {
+      user: { id: "user-1", email: "member@example.com", role: "member" },
+      session: { id: "session-1", userId: "user-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+
+    const response = await invokeWorker("/api/admin/members", undefined, db);
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
