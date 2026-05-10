@@ -8,12 +8,30 @@ export const loadAuthSession: MiddlewareHandler<{
   Bindings: Env;
   Variables: AppVariables;
 }> = async (c, next) => {
-  const result = await authForEnv(c.env).api.getSession({
+  const auth = authForEnv(c.env);
+  const result = await auth.api.getSession({
     headers: c.req.raw.headers,
   });
 
-  const role =
-    typeof result?.user?.role === "string" ? result.user.role : "member";
+  const storedRole =
+    typeof result?.user?.role === "string" ? result.user.role : "user";
+  let role = storedRole === "admin" ? "admin" : "member";
+
+  if (
+    result?.user &&
+    c.env.OWNER_EMAIL &&
+    result.user.email.toLowerCase() === c.env.OWNER_EMAIL.toLowerCase() &&
+    storedRole !== "admin"
+  ) {
+    await auth.api.setRole({
+      body: {
+        userId: result.user.id,
+        role: "admin",
+      },
+      headers: c.req.raw.headers,
+    });
+    role = "admin";
+  }
 
   c.set(
     "user",
