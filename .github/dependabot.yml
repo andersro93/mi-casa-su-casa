@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "13:00"
+      timezone: "Europe/Oslo"
+    groups:
+      all-npm-updates:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "13:00"
+      timezone: "Europe/Oslo"
+    groups:
+      all-action-updates:
+        patterns:
+          - "*"
