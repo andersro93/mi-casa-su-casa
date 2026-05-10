@@ -93,25 +93,24 @@ Add these repository secrets under **Settings → Secrets and variables → Acti
 | Secret | Purpose |
 | --- | --- |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account used by Wrangler (found on the Workers & Pages overview sidebar) |
-| `CLOUDFLARE_API_TOKEN` | Preview deploy token — see [Creating an API token](#creating-an-api-token) below |
-| `CLOUDFLARE_API_TOKEN_PROD` | Production deploy and migration token — see [Creating an API token](#creating-an-api-token) below |
+| `CLOUDFLARE_API_TOKEN` | API token for all deployments and migrations — see [Creating an API token](#creating-an-api-token) below |
 | `D1_DATABASE_ID_PREVIEW` | UUID of the preview D1 database (from `wrangler d1 create`) |
 | `D1_DATABASE_ID_PRODUCTION` | UUID of the production D1 database (from `wrangler d1 create`) |
 
-Cloudflare recommends scoping API tokens to the single account they need to manage.
+A single token is used for preview deploys, production deploys, and production migrations. Cloudflare recommends scoping API tokens to the single account they need to manage.
 
 ### Creating an API token
 
-1. Open [**API Tokens** in the Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens)
-2. Select **Create Token**
+Create an **account-owned** token so CI/CD survives team changes (requires Super Administrator). If you are not a Super Administrator, create a user-owned token instead — both work the same way, but user tokens are revoked if the creating user loses access.
+
+1. For an **account-owned token**: open the [Cloudflare dashboard](https://dash.cloudflare.com) → select your account → **Manage Account → Account API Tokens → Create Token**
+2. For a **user-owned token**: open [**API Tokens** in your profile](https://dash.cloudflare.com/profile/api-tokens) → **Create Token**
 3. Choose the **Edit Cloudflare Workers** template and click **Use template**
 4. Add one more permission: **Account → D1 → Edit** (required for `wrangler d1 migrations apply`)
 5. Under **Account Resources**, select only the account that owns your Workers
 6. Under **Zone Resources**, select **All zones** (or the specific zone for your domain)
 7. Click **Continue to summary** → **Create Token**
 8. Copy the token — it is only shown once
-
-You can create two separate tokens (one for preview, one for production) for tighter scoping, or reuse a single token for both.
 
 ## Required GitHub variables
 

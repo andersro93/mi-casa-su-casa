@@ -211,20 +211,26 @@ wrangler d1 create mi-casa-su-casa
 
 Save the database UUIDs from the output — you will need them in the next step.
 
-### 2. Create Cloudflare API tokens
+### 2. Create a Cloudflare API token
 
-You need API tokens so GitHub Actions can deploy on your behalf. Create one token for preview and one for production (or reuse a single token if you prefer).
+You need an API token so GitHub Actions can deploy on your behalf. A single token is used for preview deploys, production deploys, and production migrations.
 
-1. Open [**API Tokens** in the Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens)
-2. Select **Create Token**
-3. Choose the **Edit Cloudflare Workers** template and click **Use template**
-4. Add one more permission: **Account → D1 → Edit** (required for database migrations)
-5. Under **Account Resources**, select your account
-6. Under **Zone Resources**, select **All zones** (or the specific zone for your domain)
-7. Click **Continue to summary** → **Create Token**
-8. Copy the token — it is only shown once
+**Account-owned tokens** (recommended — survives team changes, requires Super Administrator):
 
-Repeat this process if you want separate tokens for preview and production environments.
+1. Open the [Cloudflare dashboard](https://dash.cloudflare.com) → select your account → **Manage Account → Account API Tokens → Create Token**
+
+**User-owned tokens** (fallback for non-Super-Admins):
+
+1. Open [**API Tokens** in your profile](https://dash.cloudflare.com/profile/api-tokens) → **Create Token**
+
+Then for either type:
+
+2. Choose the **Edit Cloudflare Workers** template and click **Use template**
+3. Add one more permission: **Account → D1 → Edit** (required for database migrations)
+4. Under **Account Resources**, select your account
+5. Under **Zone Resources**, select **All zones** (or the specific zone for your domain)
+6. Click **Continue to summary** → **Create Token**
+7. Copy the token — it is only shown once
 
 > **Where to find your Account ID**: open the [Cloudflare dashboard](https://dash.cloudflare.com), go to **Workers & Pages** — your Account ID is shown in the right sidebar.
 
@@ -235,8 +241,7 @@ Go to your fork → **Settings → Secrets and variables → Actions → Secrets
 | Secret | Value |
 | --- | --- |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID (see above) |
-| `CLOUDFLARE_API_TOKEN` | API token for preview deploys (from step 2) |
-| `CLOUDFLARE_API_TOKEN_PROD` | API token for production deploys and migrations (from step 2) |
+| `CLOUDFLARE_API_TOKEN` | API token from step 2 |
 | `D1_DATABASE_ID_PREVIEW` | UUID from `wrangler d1 create mi-casa-su-casa-preview` |
 | `D1_DATABASE_ID_PRODUCTION` | UUID from `wrangler d1 create mi-casa-su-casa` |
 
