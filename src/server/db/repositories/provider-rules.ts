@@ -1,3 +1,5 @@
+import type { ProviderRow } from "../types";
+
 export type SenderRuleMatch = {
   providerId: string;
   providerKey: string;
@@ -56,4 +58,19 @@ export async function userHasProviderAccess(
     .first<{ allowed: number }>();
 
   return Boolean(row?.allowed);
+}
+
+export async function getProviderByKey(
+  db: D1Database,
+  providerKey: string,
+): Promise<ProviderRow | null> {
+  return db
+    .prepare(
+      `SELECT id, provider_key, display_name
+       FROM providers
+       WHERE provider_key = ?
+       LIMIT 1`,
+    )
+    .bind(providerKey)
+    .first<ProviderRow>();
 }

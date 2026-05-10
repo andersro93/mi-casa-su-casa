@@ -1,7 +1,10 @@
 import type {
   ClassificationResult,
   InboxMessageRow,
+  MessageStatus,
   ParsedIncomingEmail,
+  ProviderSummaryRow,
+  QuarantineMessageRow,
 } from "../types";
 
 const RETENTION_DAYS = 30;
@@ -126,12 +129,13 @@ export async function listMessagesForProvider(
 ): Promise<InboxMessageRow[]> {
   const result = await db
     .prepare(
-      `SELECT messages.id, providers.provider_key, messages.subject, messages.text_body,
+      `SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
+              messages.subject, messages.from_header, messages.text_body,
               messages.extracted_code, messages.status, messages.received_at
        FROM messages
        INNER JOIN providers ON providers.id = messages.provider_id
        WHERE providers.provider_key = ?
-       ORDER BY messages.received_at DESC`,
+        ORDER BY messages.received_at DESC`,
     )
     .bind(providerKey)
     .run<InboxMessageRow>();
@@ -139,20 +143,204 @@ export async function listMessagesForProvider(
   return result.results ?? [];
 }
 
-export async function listQuarantineMessages(
+export async function listProviderSummariesForUser(
   db: D1Database,
-): Promise<InboxMessageRow[]> {
+  userId: string,
+  role: string,
+): Promise<ProviderSummaryRow[]> {
   const result = await db
     .prepare(
-      `SELECT id, 'quarantine' AS provider_key, subject, text_body, extracted_code,
-              'new' AS status, received_at
-       FROM quarantine_messages
-       WHERE reviewed_at IS NULL
-       ORDER BY received_at DESC`,
+      `SELECT providers.provider_key,
+              providers.display_name,
+              CAST(COUNT(messages.id) AS INTEGER) AS message_count,
+              CAST(COALESCE(SUM(CASE WHEN messages.status = 'new' THEN 1 ELSE 0 END), 0) AS INTEGER) AS new_count,
+              MAX(messages.received_at) AS latest_received_at
+       FROM providers
+       LEFT JOIN user_provider_access
+         ON user_provider_access.provider_id = providers.id AND user_provider_access.user_id = ?
+       LEFT JOIN messages ON messages.provider_id = providers.id
+       WHERE ? = 'admin' OR user_provider_access.user_id IS NOT NULL
+       GROUP BY providers.id, providers.provider_key, providers.display_name, providers.created_at
+       ORDER BY COALESCE(MAX(messages.received_at), providers.created_at) DESC, providers.display_name ASC`,
     )
-    .run<InboxMessageRow>();
+    .bind(userId, role)
+    .run<ProviderSummaryRow>();
 
   return result.results ?? [];
+}
+
+export async function listQuarantineMessages(
+  db: D1Database,
+): Promise<QuarantineMessageRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT id,
+              'quarantine' AS provider_key,
+              'Quarantine' AS provider_display_name,
+              subject,
+              from_header,
+              envelope_from,
+              text_body,
+              extracted_code,
+              'new' AS status,
+              quarantine_reason,
+              received_at
+       FROM quarantine_messages
+       WHERE reviewed_at IS NULL
+        ORDER BY received_at DESC`,
+    )
+    .run<QuarantineMessageRow>();
+
+  return result.results ?? [];
+}
+
+export async function updateMessageStatus(
+  db: D1Database,
+  messageId: string,
+  status: MessageStatus,
+): Promise<InboxMessageRow | null> {
+  await db
+    .prepare("UPDATE messages SET status = ? WHERE id = ?")
+    .bind(status, messageId)
+    .run();
+
+  return db
+    .prepare(
+      `SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
+              messages.subject, messages.from_header, messages.text_body,
+              messages.extracted_code, messages.status, messages.received_at
+       FROM messages
+       INNER JOIN providers ON providers.id = messages.provider_id
+       WHERE messages.id = ?
+       LIMIT 1`,
+    )
+    .bind(messageId)
+    .first<InboxMessageRow>();
+}
+
+export async function findMessageById(
+  db: D1Database,
+  messageId: string,
+): Promise<InboxMessageRow | null> {
+  return db
+    .prepare(
+      `SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
+              messages.subject, messages.from_header, messages.text_body,
+              messages.extracted_code, messages.status, messages.received_at
+       FROM messages
+       INNER JOIN providers ON providers.id = messages.provider_id
+       WHERE messages.id = ?
+       LIMIT 1`,
+    )
+    .bind(messageId)
+    .first<InboxMessageRow>();
+}
+
+type QuarantineMessageRecord = {
+  id: string;
+  message_id: string;
+  envelope_from: string;
+  envelope_to: string;
+  from_header: string | null;
+  subject: string | null;
+  text_body: string;
+  extracted_code: string | null;
+  quarantine_reason: string;
+  raw_size: number;
+  received_at: string;
+  delete_after: string;
+  reviewed_at: string | null;
+};
+
+async function findQuarantineMessageRecord(
+  db: D1Database,
+  messageId: string,
+): Promise<QuarantineMessageRecord | null> {
+  return db
+    .prepare(
+      `SELECT id, message_id, envelope_from, envelope_to, from_header, subject,
+              text_body, extracted_code, quarantine_reason, raw_size,
+              received_at, delete_after, reviewed_at
+       FROM quarantine_messages
+       WHERE id = ?
+       LIMIT 1`,
+    )
+    .bind(messageId)
+    .first<QuarantineMessageRecord>();
+}
+
+export async function reviewQuarantineMessage(
+  db: D1Database,
+  messageId: string,
+  review: { action: "dismiss" | "release"; providerId?: string },
+): Promise<{
+  reviewedAt: string;
+  releasedMessage: InboxMessageRow | null;
+} | null> {
+  const record = await findQuarantineMessageRecord(db, messageId);
+
+  if (!record || record.reviewed_at) {
+    return null;
+  }
+
+  const reviewedAt = new Date().toISOString();
+  let releasedMessage: InboxMessageRow | null = null;
+
+  if (review.action === "release") {
+    if (!review.providerId) {
+      throw new Error(
+        "Provider id is required to release a quarantined message.",
+      );
+    }
+
+    await db
+      .prepare(
+        `INSERT INTO messages (
+          id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
+          text_body, extracted_code, status, classification_reason, raw_size, received_at, delete_after
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        record.message_id,
+        review.providerId,
+        record.envelope_from,
+        record.envelope_to,
+        record.from_header,
+        record.subject,
+        record.text_body,
+        record.extracted_code,
+        "new",
+        `Released from quarantine by owner review. Original reason: ${record.quarantine_reason}`,
+        record.raw_size,
+        record.received_at,
+        record.delete_after,
+      )
+      .run();
+
+    const result = await db
+      .prepare(
+        `SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
+                messages.subject, messages.from_header, messages.text_body,
+                messages.extracted_code, messages.status, messages.received_at
+         FROM messages
+         INNER JOIN providers ON providers.id = messages.provider_id
+         WHERE messages.message_id = ?
+         ORDER BY messages.created_at DESC
+         LIMIT 1`,
+      )
+      .bind(record.message_id)
+      .first<InboxMessageRow>();
+
+    releasedMessage = result ?? null;
+  }
+
+  await db
+    .prepare("UPDATE quarantine_messages SET reviewed_at = ? WHERE id = ?")
+    .bind(reviewedAt, messageId)
+    .run();
+
+  return { reviewedAt, releasedMessage };
 }
 
 export async function purgeExpired(db: D1Database, nowIso: string) {
