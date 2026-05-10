@@ -40,6 +40,7 @@ describe("classifyEmail", () => {
 
     expect(result).toEqual({
       kind: "matched",
+      providerId: "provider-1",
       providerKey: "netflix",
       code: "123456",
       reason:

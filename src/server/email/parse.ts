@@ -2,6 +2,13 @@ import PostalMime from "postal-mime";
 
 import type { ParsedIncomingEmail } from "../db/types";
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function parseIncomingEmail(
   message: ForwardableEmailMessage,
 ): Promise<ParsedIncomingEmail> {
@@ -9,6 +16,10 @@ export async function parseIncomingEmail(
   const parsed = await parser.parse(
     await new Response(message.raw).arrayBuffer(),
   );
+  const textBody =
+    parsed.text?.trim() ||
+    (parsed.html ? stripHtml(parsed.html) : "") ||
+    "[empty email body]";
 
   return {
     envelopeFrom: message.from,
@@ -23,8 +34,7 @@ export async function parseIncomingEmail(
     dateHeader:
       parsed.headers.find((header) => header.key.toLowerCase() === "date")
         ?.value ?? null,
-    textBody:
-      parsed.text?.trim() || parsed.html?.replace(/<[^>]+>/g, " ").trim() || "",
+    textBody,
     rawSize: message.rawSize,
   };
 }

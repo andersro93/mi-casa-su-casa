@@ -19,6 +19,7 @@ export async function classifyEmail(
 
   return {
     kind: "matched",
+    providerId: providerMatch.providerId,
     providerKey: providerMatch.providerKey,
     code,
     reason: code

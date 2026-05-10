@@ -1,6 +1,7 @@
 export type ClassificationResult =
   | {
       kind: "matched";
+      providerId: string;
       providerKey: string;
       code: string | null;
       reason: string;
