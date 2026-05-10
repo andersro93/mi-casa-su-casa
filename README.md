@@ -41,12 +41,15 @@ This repository is in the bootstrap phase.
 
 The initial tracked work lives in GitHub issues:
 
-- #1 Bootstrap repository foundations
-- #2 Establish CI, branch policy, and testing gates
+- #1 Establish CI, branch policy, and testing gates
+- #2 Create inbox, quarantine, and message-status UX
 - #3 Initialize Cloudflare-native app stack
-- #4 Implement invite-only auth and access control
-- #5 Build email ingestion, normalization, and quarantine pipeline
-- #6 Create inbox, quarantine, and message-status UX
+- #4 Build email ingestion, normalization, and quarantine pipeline
+- #5 Bootstrap repository foundations
+- #6 Implement invite-only auth and owner-managed access control
+- #7 Add local `.http` request files for manual dev triggers and health checks
+- #8 Implement full CI/CD for PR validation, preview deploys, and protected production release
+- #9 Add Deploy to Cloudflare onboarding flow with first-run setup for initial admin creation
 
 ## Getting started
 

@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mi-casa-su-casa",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mi-casa-su-casa",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "preview_database_id": "DB"
+    }
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
+  "vars": {
+    "APP_NAME": "Mi Casa Su Casa",
+    "APP_ORIGIN": "http://localhost:8787",
+    "BETTER_AUTH_URL": "http://localhost:8787",
+    "ENVIRONMENT": "development"
+  },
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  }
+}

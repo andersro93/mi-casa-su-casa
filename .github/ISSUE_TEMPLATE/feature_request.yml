@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a new capability before implementation starts.
+title: "[Feature]: "
+labels:
+  - feature-request
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea.
+
+        Mi Casa Su Casa follows an issue-first workflow for features.
+        Please describe the problem and the expected behavior clearly before implementation begins.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve?
+      placeholder: When..., I need...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should the app do?
+      placeholder: The app should...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What should be true when this is done?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: testing
+    attributes:
+      label: Test considerations
+      description: What should be tested to trust this in production?
+      placeholder: Unit / integration / e2e expectations...
+    validations:
+      required: true
