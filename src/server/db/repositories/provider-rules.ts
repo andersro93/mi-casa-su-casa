@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm";
+
+import { dbForDatabase } from "../client";
 import type { ProviderRow } from "../types";
 
 export type SenderRuleMatch = {
@@ -9,16 +12,14 @@ export async function findProviderMatch(
   db: D1Database,
   fromAddress: string,
 ): Promise<SenderRuleMatch | null> {
-  const exact = await db
-    .prepare(
-      `SELECT providers.id AS providerId, providers.provider_key AS providerKey
-       FROM sender_rules
-       INNER JOIN providers ON providers.id = sender_rules.provider_id
-       WHERE sender_rules.match_type = 'exact' AND lower(sender_rules.match_value) = lower(?)
-       LIMIT 1`,
-    )
-    .bind(fromAddress)
-    .first<SenderRuleMatch>();
+  const database = dbForDatabase(db);
+  const exact = await database.get<SenderRuleMatch>(sql`
+    SELECT providers.id AS providerId, providers.provider_key AS providerKey
+    FROM sender_rules
+    INNER JOIN providers ON providers.id = sender_rules.provider_id
+    WHERE sender_rules.match_type = 'exact' AND lower(sender_rules.match_value) = lower(${fromAddress})
+    LIMIT 1
+  `);
 
   if (exact) {
     return exact;
@@ -29,16 +30,13 @@ export async function findProviderMatch(
     return null;
   }
 
-  return db
-    .prepare(
-      `SELECT providers.id AS providerId, providers.provider_key AS providerKey
-       FROM sender_rules
-       INNER JOIN providers ON providers.id = sender_rules.provider_id
-       WHERE sender_rules.match_type = 'domain' AND lower(sender_rules.match_value) = lower(?)
-       LIMIT 1`,
-    )
-    .bind(domain)
-    .first<SenderRuleMatch>();
+  return database.get<SenderRuleMatch>(sql`
+    SELECT providers.id AS providerId, providers.provider_key AS providerKey
+    FROM sender_rules
+    INNER JOIN providers ON providers.id = sender_rules.provider_id
+    WHERE sender_rules.match_type = 'domain' AND lower(sender_rules.match_value) = lower(${domain})
+    LIMIT 1
+  `);
 }
 
 export async function userHasProviderAccess(
@@ -46,16 +44,13 @@ export async function userHasProviderAccess(
   userId: string,
   providerKey: string,
 ): Promise<boolean> {
-  const row = await db
-    .prepare(
-      `SELECT 1 AS allowed
-       FROM user_provider_access
-       INNER JOIN providers ON providers.id = user_provider_access.provider_id
-       WHERE user_provider_access.user_id = ? AND providers.provider_key = ?
-       LIMIT 1`,
-    )
-    .bind(userId, providerKey)
-    .first<{ allowed: number }>();
+  const row = await dbForDatabase(db).get<{ allowed: number }>(sql`
+    SELECT 1 AS allowed
+    FROM user_provider_access
+    INNER JOIN providers ON providers.id = user_provider_access.provider_id
+    WHERE user_provider_access.user_id = ${userId} AND providers.provider_key = ${providerKey}
+    LIMIT 1
+  `);
 
   return Boolean(row?.allowed);
 }
@@ -64,13 +59,10 @@ export async function getProviderByKey(
   db: D1Database,
   providerKey: string,
 ): Promise<ProviderRow | null> {
-  return db
-    .prepare(
-      `SELECT id, provider_key, display_name
-       FROM providers
-       WHERE provider_key = ?
-       LIMIT 1`,
-    )
-    .bind(providerKey)
-    .first<ProviderRow>();
+  return dbForDatabase(db).get<ProviderRow>(sql`
+    SELECT id, provider_key, display_name
+    FROM providers
+    WHERE provider_key = ${providerKey}
+    LIMIT 1
+  `);
 }
