@@ -79,12 +79,11 @@ This is the explicit production schema step required by issue #8.
 - `env.production` deploys `mi-casa-su-casa`
 - preview and production use different D1 bindings
 
-D1 `database_id` values and runtime variables (`APP_URL`, `OWNER_EMAIL`) are **not hardcoded** in `wrangler.jsonc`. They are injected at deploy time by the GitHub Actions workflows:
+D1 `database_id` values are **not hardcoded** in `wrangler.jsonc`. They are injected at deploy time by the GitHub Actions workflows via `sed` from GitHub secrets before Wrangler runs.
 
-- D1 database IDs are replaced via `sed` from GitHub secrets before Wrangler runs
-- `APP_URL` and `OWNER_EMAIL` are passed to Wrangler with `--var KEY:VALUE` at deploy time
+Runtime variables (`APP_URL`, `OWNER_EMAIL`) and secrets (`AUTH_SECRET`, `SETUP_SECRET`) are configured directly in the Cloudflare dashboard for each Worker. They persist across deploys and do not depend on GitHub Actions.
 
-This design means forkers never need to edit `wrangler.jsonc` — just add the required secrets and variables to their GitHub repository.
+This design means forkers never need to edit `wrangler.jsonc` — just add the required secrets and variables to their GitHub repository and Cloudflare dashboard.
 
 ## Required GitHub secrets
 
@@ -118,13 +117,29 @@ Add these repository variables under **Settings → Secrets and variables → Ac
 
 | Variable | Purpose |
 | --- | --- |
-| `CLOUDFLARE_PREVIEW_URL` | Full URL of the preview deployment (e.g. `https://mi-casa-su-casa-preview.example.workers.dev`) |
-| `CLOUDFLARE_PRODUCTION_URL` | Full URL of the production deployment (e.g. `https://mi-casa-su-casa.example.com`) |
-| `OWNER_EMAIL` | Email address for the initial owner account |
-
-`CLOUDFLARE_PREVIEW_URL` and `CLOUDFLARE_PRODUCTION_URL` are injected as the `APP_URL` binding in the respective environments. `OWNER_EMAIL` is injected as the `OWNER_EMAIL` binding.
+| `CLOUDFLARE_PREVIEW_URL` | Full URL of the preview deployment — used for PR comment links (e.g. `https://mi-casa-su-casa-preview.example.workers.dev`) |
 
 The preview workflow still deploys without `CLOUDFLARE_PREVIEW_URL`, but the pull request comment will only report status instead of a direct link.
+
+## Required Cloudflare dashboard variables and secrets
+
+In the Cloudflare dashboard, go to **Workers & Pages → your Worker → Settings → Variables and Secrets**.
+
+Add as **plaintext variables**:
+
+| Variable | Purpose |
+| --- | --- |
+| `APP_URL` | Full URL of this deployment (e.g. `https://mi-casa-su-casa.example.com`) |
+| `OWNER_EMAIL` | Email address for the initial owner account |
+
+Add as **encrypted secrets**:
+
+| Secret | Purpose |
+| --- | --- |
+| `AUTH_SECRET` | Random string used by Better Auth to sign sessions (generate with `openssl rand -base64 32`) |
+| `SETUP_SECRET` | One-time setup passphrase for initial owner account creation |
+
+Repeat for both production (`mi-casa-su-casa`) and preview (`mi-casa-su-casa-preview`) Workers. Use the appropriate URL for `APP_URL` in each.
 
 ## Required GitHub environments
 
@@ -176,7 +191,7 @@ This issue adds the repository-side CI/CD wiring, but operators still need to:
 1. create the preview and production D1 databases in Cloudflare (`wrangler d1 create mi-casa-su-casa-preview` and `wrangler d1 create mi-casa-su-casa`)
 2. add the GitHub secrets listed above (including the D1 database UUIDs from step 1)
 3. add the GitHub variables listed above
-4. set `AUTH_SECRET` and `SETUP_SECRET` as encrypted secrets in the Cloudflare dashboard for the Worker
+4. set `APP_URL`, `OWNER_EMAIL`, `AUTH_SECRET`, and `SETUP_SECRET` in the Cloudflare dashboard for each Worker (see table above)
 5. enable branch protection on `main` so `CI` stays required
 6. configure required reviewers for the `production-migrations` environment
 
