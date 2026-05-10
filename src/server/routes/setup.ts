@@ -146,6 +146,8 @@ setupRoutes.post("/complete", async (c) => {
 
     return response;
   } catch (error) {
+    console.error("Setup completion failed:", error);
+
     await resetInstallationSetup(c.env.DB);
 
     if (isAPIError(error)) {
