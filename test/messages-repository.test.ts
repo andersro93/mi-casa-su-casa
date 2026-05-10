@@ -1,0 +1,107 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  insertMessage,
+  insertQuarantineMessage,
+} from "../src/server/db/repositories/messages";
+import type { ParsedIncomingEmail } from "../src/server/db/types";
+
+function createParsedEmail(
+  overrides?: Partial<ParsedIncomingEmail>,
+): ParsedIncomingEmail {
+  return {
+    envelopeFrom: "login@service.example",
+    envelopeTo: "codes@example.com",
+    fromHeader: "Service <login@service.example>",
+    subject: "Your verification code",
+    messageId: "<message-1@test>",
+    dateHeader: "2026-05-10T12:00:00Z",
+    textBody: "Your verification code is 123456",
+    rawSize: 256,
+    ...overrides,
+  };
+}
+
+function createDb(runImpl: () => Promise<unknown>) {
+  const run = vi.fn(runImpl);
+  const bind = vi.fn(() => ({ run }));
+  const prepare = vi.fn(() => ({ bind }));
+
+  return {
+    db: {
+      prepare,
+      batch: vi.fn(async () => []),
+    } as unknown as D1Database,
+    prepare,
+    bind,
+    run,
+  };
+}
+
+describe("messages repository inserts", () => {
+  it("ignores duplicate inbox message ids", async () => {
+    const db = createDb(async () => {
+      throw new Error("UNIQUE constraint failed: messages.message_id");
+    });
+
+    await expect(
+      insertMessage(db.db, createParsedEmail(), "provider-1", {
+        kind: "matched",
+        providerId: "provider-1",
+        providerKey: "netflix",
+        code: "123456",
+        reason:
+          "Sender matched a configured rule and a likely verification code was found.",
+      }),
+    ).resolves.toMatchObject({
+      receivedAt: "2026-05-10T12:00:00.000Z",
+      deleteAfter: "2026-06-09T12:00:00.000Z",
+    });
+
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO messages"),
+    );
+    expect(db.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores duplicate quarantine message ids", async () => {
+    const db = createDb(async () => {
+      throw new Error(
+        "UNIQUE constraint failed: quarantine_messages.message_id",
+      );
+    });
+
+    await expect(
+      insertQuarantineMessage(db.db, createParsedEmail(), {
+        kind: "quarantine",
+        reason: "No sender rule matched the inbound email.",
+        code: "123456",
+      }),
+    ).resolves.toMatchObject({
+      receivedAt: "2026-05-10T12:00:00.000Z",
+      deleteAfter: "2026-06-09T12:00:00.000Z",
+    });
+
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO quarantine_messages"),
+    );
+    expect(db.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows non-unique database failures", async () => {
+    const db = createDb(async () => {
+      throw new Error("database unavailable");
+    });
+
+    await expect(
+      insertMessage(db.db, createParsedEmail(), "provider-1", {
+        kind: "matched",
+        providerId: "provider-1",
+        providerKey: "netflix",
+        code: "123456",
+        reason:
+          "Sender matched a configured rule and a likely verification code was found.",
+      }),
+    ).rejects.toThrow("database unavailable");
+  });
+});

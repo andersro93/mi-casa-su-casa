@@ -12,6 +12,30 @@ function addRetentionWindow(isoDate: string): string {
   return next.toISOString();
 }
 
+function resolveReceivedAt(dateHeader: string | null): string {
+  if (!dateHeader) {
+    return new Date().toISOString();
+  }
+
+  const receivedAt = new Date(dateHeader);
+
+  if (Number.isNaN(receivedAt.getTime())) {
+    return new Date().toISOString();
+  }
+
+  return receivedAt.toISOString();
+}
+
+function isDuplicateMessageError(
+  error: unknown,
+  tableName: "messages" | "quarantine_messages",
+): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes(`UNIQUE constraint failed: ${tableName}.message_id`)
+  );
+}
+
 export async function insertMessage(
   db: D1Database,
   parsed: ParsedIncomingEmail,
@@ -19,34 +43,38 @@ export async function insertMessage(
   result: Extract<ClassificationResult, { kind: "matched" }>,
 ) {
   const id = crypto.randomUUID();
-  const receivedAt = parsed.dateHeader
-    ? new Date(parsed.dateHeader).toISOString()
-    : new Date().toISOString();
+  const receivedAt = resolveReceivedAt(parsed.dateHeader);
   const deleteAfter = addRetentionWindow(receivedAt);
 
-  await db
-    .prepare(
-      `INSERT INTO messages (
-        id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
-        text_body, extracted_code, classification_reason, raw_size, received_at, delete_after
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      parsed.messageId ?? id,
-      providerId,
-      parsed.envelopeFrom,
-      parsed.envelopeTo,
-      parsed.fromHeader,
-      parsed.subject,
-      parsed.textBody,
-      result.code,
-      result.reason,
-      parsed.rawSize,
-      receivedAt,
-      deleteAfter,
-    )
-    .run();
+  try {
+    await db
+      .prepare(
+        `INSERT INTO messages (
+          id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
+          text_body, extracted_code, classification_reason, raw_size, received_at, delete_after
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        id,
+        parsed.messageId ?? id,
+        providerId,
+        parsed.envelopeFrom,
+        parsed.envelopeTo,
+        parsed.fromHeader,
+        parsed.subject,
+        parsed.textBody,
+        result.code,
+        result.reason,
+        parsed.rawSize,
+        receivedAt,
+        deleteAfter,
+      )
+      .run();
+  } catch (error) {
+    if (!isDuplicateMessageError(error, "messages")) {
+      throw error;
+    }
+  }
 
   return { id, receivedAt, deleteAfter };
 }
@@ -57,33 +85,37 @@ export async function insertQuarantineMessage(
   result: Extract<ClassificationResult, { kind: "quarantine" }>,
 ) {
   const id = crypto.randomUUID();
-  const receivedAt = parsed.dateHeader
-    ? new Date(parsed.dateHeader).toISOString()
-    : new Date().toISOString();
+  const receivedAt = resolveReceivedAt(parsed.dateHeader);
   const deleteAfter = addRetentionWindow(receivedAt);
 
-  await db
-    .prepare(
-      `INSERT INTO quarantine_messages (
-        id, message_id, envelope_from, envelope_to, from_header, subject,
-        text_body, extracted_code, quarantine_reason, raw_size, received_at, delete_after
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      parsed.messageId ?? id,
-      parsed.envelopeFrom,
-      parsed.envelopeTo,
-      parsed.fromHeader,
-      parsed.subject,
-      parsed.textBody,
-      result.code,
-      result.reason,
-      parsed.rawSize,
-      receivedAt,
-      deleteAfter,
-    )
-    .run();
+  try {
+    await db
+      .prepare(
+        `INSERT INTO quarantine_messages (
+          id, message_id, envelope_from, envelope_to, from_header, subject,
+          text_body, extracted_code, quarantine_reason, raw_size, received_at, delete_after
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        id,
+        parsed.messageId ?? id,
+        parsed.envelopeFrom,
+        parsed.envelopeTo,
+        parsed.fromHeader,
+        parsed.subject,
+        parsed.textBody,
+        result.code,
+        result.reason,
+        parsed.rawSize,
+        receivedAt,
+        deleteAfter,
+      )
+      .run();
+  } catch (error) {
+    if (!isDuplicateMessageError(error, "quarantine_messages")) {
+      throw error;
+    }
+  }
 
   return { id, receivedAt, deleteAfter };
 }
