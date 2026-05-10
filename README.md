@@ -211,19 +211,36 @@ wrangler d1 create mi-casa-su-casa
 
 Save the database UUIDs from the output — you will need them in the next step.
 
-### 2. Add GitHub secrets
+### 2. Create Cloudflare API tokens
+
+You need API tokens so GitHub Actions can deploy on your behalf. Create one token for preview and one for production (or reuse a single token if you prefer).
+
+1. Open [**API Tokens** in the Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens)
+2. Select **Create Token**
+3. Choose the **Edit Cloudflare Workers** template and click **Use template**
+4. Add one more permission: **Account → D1 → Edit** (required for database migrations)
+5. Under **Account Resources**, select your account
+6. Under **Zone Resources**, select **All zones** (or the specific zone for your domain)
+7. Click **Continue to summary** → **Create Token**
+8. Copy the token — it is only shown once
+
+Repeat this process if you want separate tokens for preview and production environments.
+
+> **Where to find your Account ID**: open the [Cloudflare dashboard](https://dash.cloudflare.com), go to **Workers & Pages** — your Account ID is shown in the right sidebar.
+
+### 3. Add GitHub secrets
 
 Go to your fork → **Settings → Secrets and variables → Actions → Secrets** and add:
 
 | Secret | Value |
 | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
-| `CLOUDFLARE_API_TOKEN` | API token for preview deploys (Workers + D1 scope) |
-| `CLOUDFLARE_API_TOKEN_PROD` | API token for production deploys and migrations (Workers + D1 scope) |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID (see above) |
+| `CLOUDFLARE_API_TOKEN` | API token for preview deploys (from step 2) |
+| `CLOUDFLARE_API_TOKEN_PROD` | API token for production deploys and migrations (from step 2) |
 | `D1_DATABASE_ID_PREVIEW` | UUID from `wrangler d1 create mi-casa-su-casa-preview` |
 | `D1_DATABASE_ID_PRODUCTION` | UUID from `wrangler d1 create mi-casa-su-casa` |
 
-### 3. Add GitHub variables
+### 4. Add GitHub variables
 
 Go to **Settings → Secrets and variables → Actions → Variables** and add:
 
@@ -233,7 +250,7 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add:
 | `CLOUDFLARE_PRODUCTION_URL` | URL of your production deployment (e.g. `https://mi-casa-su-casa.<your-domain>.com`) |
 | `OWNER_EMAIL` | Email address for the initial owner account |
 
-### 4. Set Cloudflare dashboard secrets
+### 5. Set Cloudflare dashboard secrets
 
 In the Cloudflare dashboard, go to **Workers & Pages → mi-casa-su-casa → Settings → Variables and Secrets** and add as encrypted secrets:
 
@@ -244,19 +261,19 @@ In the Cloudflare dashboard, go to **Workers & Pages → mi-casa-su-casa → Set
 
 Repeat for the preview Worker (`mi-casa-su-casa-preview`) if you want setup to work in preview environments.
 
-### 5. Configure repository protection
+### 6. Configure repository protection
 
 - Enable branch protection on `main` requiring the `CI` workflow to pass
 - Create a `production-migrations` environment under **Settings → Environments** with required reviewers so production schema changes need explicit approval
 
-### 6. Set up email routing
+### 7. Set up email routing
 
 In the Cloudflare dashboard:
 
 1. Go to your domain → **Email → Email Routing**
 2. Create a routing rule that forwards your shared inbox address (e.g. `codes@yourdomain.com`) to the Worker
 
-### 7. Deploy and run first-time setup
+### 8. Deploy and run first-time setup
 
 Push to `main` or open a pull request — the GitHub Actions workflows will handle deployment automatically.
 

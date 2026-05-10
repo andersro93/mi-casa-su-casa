@@ -92,13 +92,26 @@ Add these repository secrets under **Settings → Secrets and variables → Acti
 
 | Secret | Purpose |
 | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account used by Wrangler |
-| `CLOUDFLARE_API_TOKEN` | Preview deploy token scoped to Workers + D1 |
-| `CLOUDFLARE_API_TOKEN_PROD` | Production deploy and migration token scoped to Workers + D1 |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account used by Wrangler (found on the Workers & Pages overview sidebar) |
+| `CLOUDFLARE_API_TOKEN` | Preview deploy token — see [Creating an API token](#creating-an-api-token) below |
+| `CLOUDFLARE_API_TOKEN_PROD` | Production deploy and migration token — see [Creating an API token](#creating-an-api-token) below |
 | `D1_DATABASE_ID_PREVIEW` | UUID of the preview D1 database (from `wrangler d1 create`) |
 | `D1_DATABASE_ID_PRODUCTION` | UUID of the production D1 database (from `wrangler d1 create`) |
 
 Cloudflare recommends scoping API tokens to the single account they need to manage.
+
+### Creating an API token
+
+1. Open [**API Tokens** in the Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens)
+2. Select **Create Token**
+3. Choose the **Edit Cloudflare Workers** template and click **Use template**
+4. Add one more permission: **Account → D1 → Edit** (required for `wrangler d1 migrations apply`)
+5. Under **Account Resources**, select only the account that owns your Workers
+6. Under **Zone Resources**, select **All zones** (or the specific zone for your domain)
+7. Click **Continue to summary** → **Create Token**
+8. Copy the token — it is only shown once
+
+You can create two separate tokens (one for preview, one for production) for tighter scoping, or reuse a single token for both.
 
 ## Required GitHub variables
 
