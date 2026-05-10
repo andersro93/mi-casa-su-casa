@@ -19,7 +19,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint and format check
         run: npm run check
