@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm";
+
+import { dbForDatabase } from "../client";
 import type {
   ClassificationResult,
   InboxMessageRow,
@@ -33,10 +36,28 @@ function isDuplicateMessageError(
   error: unknown,
   tableName: "messages" | "quarantine_messages",
 ): boolean {
+  const databaseError = unwrapDatabaseError(error);
+
   return (
-    error instanceof Error &&
-    error.message.includes(`UNIQUE constraint failed: ${tableName}.message_id`)
+    databaseError instanceof Error &&
+    databaseError.message.includes(
+      `UNIQUE constraint failed: ${tableName}.message_id`,
+    )
   );
+}
+
+function unwrapDatabaseError(error: unknown): unknown {
+  if (!(error instanceof Error)) {
+    return error;
+  }
+
+  let current: unknown = error;
+
+  while (current instanceof Error && current.cause instanceof Error) {
+    current = current.cause;
+  }
+
+  return current;
 }
 
 export async function insertMessage(
@@ -45,37 +66,25 @@ export async function insertMessage(
   providerId: string,
   result: Extract<ClassificationResult, { kind: "matched" }>,
 ) {
+  const database = dbForDatabase(db);
   const id = crypto.randomUUID();
   const receivedAt = resolveReceivedAt(parsed.dateHeader);
   const deleteAfter = addRetentionWindow(receivedAt);
 
   try {
-    await db
-      .prepare(
-        `INSERT INTO messages (
-          id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
-          text_body, extracted_code, classification_reason, raw_size, received_at, delete_after
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    await database.run(sql`
+      INSERT INTO messages (
+        id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
+        text_body, extracted_code, classification_reason, raw_size, received_at, delete_after
+      ) VALUES (
+        ${id}, ${parsed.messageId ?? id}, ${providerId}, ${parsed.envelopeFrom}, ${parsed.envelopeTo},
+        ${parsed.fromHeader}, ${parsed.subject}, ${parsed.textBody}, ${result.code}, ${result.reason},
+        ${parsed.rawSize}, ${receivedAt}, ${deleteAfter}
       )
-      .bind(
-        id,
-        parsed.messageId ?? id,
-        providerId,
-        parsed.envelopeFrom,
-        parsed.envelopeTo,
-        parsed.fromHeader,
-        parsed.subject,
-        parsed.textBody,
-        result.code,
-        result.reason,
-        parsed.rawSize,
-        receivedAt,
-        deleteAfter,
-      )
-      .run();
+    `);
   } catch (error) {
     if (!isDuplicateMessageError(error, "messages")) {
-      throw error;
+      throw unwrapDatabaseError(error);
     }
   }
 
@@ -87,36 +96,25 @@ export async function insertQuarantineMessage(
   parsed: ParsedIncomingEmail,
   result: Extract<ClassificationResult, { kind: "quarantine" }>,
 ) {
+  const database = dbForDatabase(db);
   const id = crypto.randomUUID();
   const receivedAt = resolveReceivedAt(parsed.dateHeader);
   const deleteAfter = addRetentionWindow(receivedAt);
 
   try {
-    await db
-      .prepare(
-        `INSERT INTO quarantine_messages (
-          id, message_id, envelope_from, envelope_to, from_header, subject,
-          text_body, extracted_code, quarantine_reason, raw_size, received_at, delete_after
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    await database.run(sql`
+      INSERT INTO quarantine_messages (
+        id, message_id, envelope_from, envelope_to, from_header, subject,
+        text_body, extracted_code, quarantine_reason, raw_size, received_at, delete_after
+      ) VALUES (
+        ${id}, ${parsed.messageId ?? id}, ${parsed.envelopeFrom}, ${parsed.envelopeTo},
+        ${parsed.fromHeader}, ${parsed.subject}, ${parsed.textBody}, ${result.code}, ${result.reason},
+        ${parsed.rawSize}, ${receivedAt}, ${deleteAfter}
       )
-      .bind(
-        id,
-        parsed.messageId ?? id,
-        parsed.envelopeFrom,
-        parsed.envelopeTo,
-        parsed.fromHeader,
-        parsed.subject,
-        parsed.textBody,
-        result.code,
-        result.reason,
-        parsed.rawSize,
-        receivedAt,
-        deleteAfter,
-      )
-      .run();
+    `);
   } catch (error) {
     if (!isDuplicateMessageError(error, "quarantine_messages")) {
-      throw error;
+      throw unwrapDatabaseError(error);
     }
   }
 
@@ -127,20 +125,17 @@ export async function listMessagesForProvider(
   db: D1Database,
   providerKey: string,
 ): Promise<InboxMessageRow[]> {
-  const result = await db
-    .prepare(
-      `SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
-              messages.subject, messages.from_header, messages.text_body,
-              messages.extracted_code, messages.status, messages.received_at
-       FROM messages
-       INNER JOIN providers ON providers.id = messages.provider_id
-       WHERE providers.provider_key = ?
-        ORDER BY messages.received_at DESC`,
-    )
-    .bind(providerKey)
-    .run<InboxMessageRow>();
+  const result = await dbForDatabase(db).all<InboxMessageRow>(sql`
+    SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
+            messages.subject, messages.from_header, messages.text_body,
+            messages.extracted_code, messages.status, messages.received_at
+    FROM messages
+    INNER JOIN providers ON providers.id = messages.provider_id
+    WHERE providers.provider_key = ${providerKey}
+    ORDER BY messages.received_at DESC
+  `);
 
-  return result.results ?? [];
+  return result;
 }
 
 export async function listProviderSummariesForUser(
@@ -148,50 +143,45 @@ export async function listProviderSummariesForUser(
   userId: string,
   role: string,
 ): Promise<ProviderSummaryRow[]> {
-  const result = await db
-    .prepare(
-      `SELECT providers.provider_key,
-              providers.display_name,
-              CAST(COUNT(messages.id) AS INTEGER) AS message_count,
-              CAST(COALESCE(SUM(CASE WHEN messages.status = 'new' THEN 1 ELSE 0 END), 0) AS INTEGER) AS new_count,
-              MAX(messages.received_at) AS latest_received_at
-       FROM providers
-       LEFT JOIN user_provider_access
-         ON user_provider_access.provider_id = providers.id AND user_provider_access.user_id = ?
-       LEFT JOIN messages ON messages.provider_id = providers.id
-       WHERE ? = 'admin' OR user_provider_access.user_id IS NOT NULL
-       GROUP BY providers.id, providers.provider_key, providers.display_name, providers.created_at
-       ORDER BY COALESCE(MAX(messages.received_at), providers.created_at) DESC, providers.display_name ASC`,
-    )
-    .bind(userId, role)
-    .run<ProviderSummaryRow>();
+  const result = await dbForDatabase(db).all<ProviderSummaryRow>(sql`
+    SELECT providers.provider_key,
+            providers.display_name,
+            CAST(COUNT(messages.id) AS INTEGER) AS message_count,
+            CAST(COALESCE(SUM(CASE WHEN messages.status = 'new' THEN 1 ELSE 0 END), 0) AS INTEGER) AS new_count,
+            MAX(messages.received_at) AS latest_received_at
+    FROM providers
+    LEFT JOIN user_provider_access
+      ON user_provider_access.provider_id = providers.id AND user_provider_access.user_id = ${userId}
+    LEFT JOIN messages ON messages.provider_id = providers.id
+    WHERE ${role} = 'admin' OR user_provider_access.user_id IS NOT NULL
+    GROUP BY providers.id, providers.provider_key, providers.display_name, providers.created_at
+    ORDER BY COALESCE(MAX(messages.received_at), providers.created_at) DESC, providers.display_name ASC
+  `);
 
-  return result.results ?? [];
+  return result;
 }
 
 export async function listQuarantineMessages(
   db: D1Database,
 ): Promise<QuarantineMessageRow[]> {
-  const result = await db
-    .prepare(
-      `SELECT id,
-              'quarantine' AS provider_key,
-              'Quarantine' AS provider_display_name,
-              subject,
-              from_header,
-              envelope_from,
-              text_body,
-              extracted_code,
-              'new' AS status,
-              quarantine_reason,
-              received_at
-       FROM quarantine_messages
-       WHERE reviewed_at IS NULL
-        ORDER BY received_at DESC`,
-    )
-    .run<QuarantineMessageRow>();
+  const result = await dbForDatabase(db).all<QuarantineMessageRow>(sql`
+    SELECT id,
+            'quarantine' AS provider_key,
+            'Quarantine' AS provider_display_name,
+            subject,
+            from_header,
+            envelope_from,
+            text_body,
+            extracted_code,
+            'new' AS status,
+            quarantine_reason,
+            received_at
+    FROM quarantine_messages
+    WHERE reviewed_at IS NULL
+    ORDER BY received_at DESC
+  `);
 
-  return result.results ?? [];
+  return result;
 }
 
 export async function updateMessageStatus(
@@ -199,41 +189,26 @@ export async function updateMessageStatus(
   messageId: string,
   status: MessageStatus,
 ): Promise<InboxMessageRow | null> {
-  await db
-    .prepare("UPDATE messages SET status = ? WHERE id = ?")
-    .bind(status, messageId)
-    .run();
+  await dbForDatabase(db).run(sql`
+    UPDATE messages SET status = ${status} WHERE id = ${messageId}
+  `);
 
-  return db
-    .prepare(
-      `SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
-              messages.subject, messages.from_header, messages.text_body,
-              messages.extracted_code, messages.status, messages.received_at
-       FROM messages
-       INNER JOIN providers ON providers.id = messages.provider_id
-       WHERE messages.id = ?
-       LIMIT 1`,
-    )
-    .bind(messageId)
-    .first<InboxMessageRow>();
+  return findMessageById(db, messageId);
 }
 
 export async function findMessageById(
   db: D1Database,
   messageId: string,
 ): Promise<InboxMessageRow | null> {
-  return db
-    .prepare(
-      `SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
-              messages.subject, messages.from_header, messages.text_body,
-              messages.extracted_code, messages.status, messages.received_at
-       FROM messages
-       INNER JOIN providers ON providers.id = messages.provider_id
-       WHERE messages.id = ?
-       LIMIT 1`,
-    )
-    .bind(messageId)
-    .first<InboxMessageRow>();
+  return dbForDatabase(db).get<InboxMessageRow>(sql`
+    SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
+            messages.subject, messages.from_header, messages.text_body,
+            messages.extracted_code, messages.status, messages.received_at
+    FROM messages
+    INNER JOIN providers ON providers.id = messages.provider_id
+    WHERE messages.id = ${messageId}
+    LIMIT 1
+  `);
 }
 
 type QuarantineMessageRecord = {
@@ -256,17 +231,14 @@ async function findQuarantineMessageRecord(
   db: D1Database,
   messageId: string,
 ): Promise<QuarantineMessageRecord | null> {
-  return db
-    .prepare(
-      `SELECT id, message_id, envelope_from, envelope_to, from_header, subject,
-              text_body, extracted_code, quarantine_reason, raw_size,
-              received_at, delete_after, reviewed_at
-       FROM quarantine_messages
-       WHERE id = ?
-       LIMIT 1`,
-    )
-    .bind(messageId)
-    .first<QuarantineMessageRecord>();
+  return dbForDatabase(db).get<QuarantineMessageRecord>(sql`
+    SELECT id, message_id, envelope_from, envelope_to, from_header, subject,
+            text_body, extracted_code, quarantine_reason, raw_size,
+            received_at, delete_after, reviewed_at
+    FROM quarantine_messages
+    WHERE id = ${messageId}
+    LIMIT 1
+  `);
 }
 
 export async function reviewQuarantineMessage(
@@ -278,6 +250,7 @@ export async function reviewQuarantineMessage(
   releasedMessage: InboxMessageRow | null;
 } | null> {
   const record = await findQuarantineMessageRecord(db, messageId);
+  const database = dbForDatabase(db);
 
   if (!record || record.reviewed_at) {
     return null;
@@ -293,61 +266,44 @@ export async function reviewQuarantineMessage(
       );
     }
 
-    await db
-      .prepare(
-        `INSERT INTO messages (
-          id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
-          text_body, extracted_code, status, classification_reason, raw_size, received_at, delete_after
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    await database.run(sql`
+      INSERT INTO messages (
+        id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
+        text_body, extracted_code, status, classification_reason, raw_size, received_at, delete_after
+      ) VALUES (
+        ${crypto.randomUUID()}, ${record.message_id}, ${review.providerId}, ${record.envelope_from},
+        ${record.envelope_to}, ${record.from_header}, ${record.subject}, ${record.text_body},
+        ${record.extracted_code}, ${"new"},
+        ${`Released from quarantine by owner review. Original reason: ${record.quarantine_reason}`},
+        ${record.raw_size}, ${record.received_at}, ${record.delete_after}
       )
-      .bind(
-        crypto.randomUUID(),
-        record.message_id,
-        review.providerId,
-        record.envelope_from,
-        record.envelope_to,
-        record.from_header,
-        record.subject,
-        record.text_body,
-        record.extracted_code,
-        "new",
-        `Released from quarantine by owner review. Original reason: ${record.quarantine_reason}`,
-        record.raw_size,
-        record.received_at,
-        record.delete_after,
-      )
-      .run();
+    `);
 
-    const result = await db
-      .prepare(
-        `SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
-                messages.subject, messages.from_header, messages.text_body,
-                messages.extracted_code, messages.status, messages.received_at
-         FROM messages
-         INNER JOIN providers ON providers.id = messages.provider_id
-         WHERE messages.message_id = ?
-         ORDER BY messages.created_at DESC
-         LIMIT 1`,
-      )
-      .bind(record.message_id)
-      .first<InboxMessageRow>();
+    const result = await database.get<InboxMessageRow>(sql`
+      SELECT messages.id, providers.provider_key, providers.display_name AS provider_display_name,
+              messages.subject, messages.from_header, messages.text_body,
+              messages.extracted_code, messages.status, messages.received_at
+      FROM messages
+      INNER JOIN providers ON providers.id = messages.provider_id
+      WHERE messages.message_id = ${record.message_id}
+      ORDER BY messages.created_at DESC
+      LIMIT 1
+    `);
 
     releasedMessage = result ?? null;
   }
 
-  await db
-    .prepare("UPDATE quarantine_messages SET reviewed_at = ? WHERE id = ?")
-    .bind(reviewedAt, messageId)
-    .run();
+  await database.run(sql`
+    UPDATE quarantine_messages SET reviewed_at = ${reviewedAt} WHERE id = ${messageId}
+  `);
 
   return { reviewedAt, releasedMessage };
 }
 
 export async function purgeExpired(db: D1Database, nowIso: string) {
-  await db.batch([
-    db.prepare("DELETE FROM messages WHERE delete_after <= ?").bind(nowIso),
-    db
-      .prepare("DELETE FROM quarantine_messages WHERE delete_after <= ?")
-      .bind(nowIso),
-  ]);
+  const database = dbForDatabase(db);
+  await database.run(sql`DELETE FROM messages WHERE delete_after <= ${nowIso}`);
+  await database.run(
+    sql`DELETE FROM quarantine_messages WHERE delete_after <= ${nowIso}`,
+  );
 }
