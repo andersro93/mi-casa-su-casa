@@ -253,20 +253,27 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add:
 
 | Variable | Value |
 | --- | --- |
-| `CLOUDFLARE_PREVIEW_URL` | URL of your preview Worker (e.g. `https://mi-casa-su-casa-preview.<your-subdomain>.workers.dev`) |
-| `CLOUDFLARE_PRODUCTION_URL` | URL of your production deployment (e.g. `https://mi-casa-su-casa.<your-domain>.com`) |
+| `CLOUDFLARE_PREVIEW_URL` | URL of your preview Worker (e.g. `https://mi-casa-su-casa-preview.<your-subdomain>.workers.dev`) — used for PR comment links |
+
+### 5. Set Cloudflare dashboard variables and secrets
+
+In the Cloudflare dashboard, go to **Workers & Pages → mi-casa-su-casa → Settings → Variables and Secrets**.
+
+Add as **plaintext variables**:
+
+| Variable | Purpose |
+| --- | --- |
+| `APP_URL` | Full URL of this deployment (e.g. `https://mi-casa-su-casa.example.com`) |
 | `OWNER_EMAIL` | Email address for the initial owner account |
 
-### 5. Set Cloudflare dashboard secrets
-
-In the Cloudflare dashboard, go to **Workers & Pages → mi-casa-su-casa → Settings → Variables and Secrets** and add as encrypted secrets:
+Add as **encrypted secrets**:
 
 | Secret | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Random string used by Better Auth to sign sessions (generate with `openssl rand -base64 32`) |
 | `SETUP_SECRET` | One-time setup passphrase you choose for the initial owner account creation |
 
-Repeat for the preview Worker (`mi-casa-su-casa-preview`) if you want setup to work in preview environments.
+Repeat for the preview Worker (`mi-casa-su-casa-preview`) if you want setup to work in preview environments. Use the preview URL for `APP_URL` in that Worker.
 
 ### 6. Configure repository protection
 
