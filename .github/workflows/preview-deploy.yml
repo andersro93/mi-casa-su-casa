@@ -21,9 +21,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -47,7 +47,7 @@ jobs:
         run: npm run deploy:preview
 
       - name: Comment preview status on pull request
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PREVIEW_URL: ${{ vars.CLOUDFLARE_PREVIEW_URL }}
         with:
@@ -90,7 +90,7 @@ jobs:
 
     steps:
       - name: Explain why preview deploy is skipped
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = '<!-- mcsc-preview-deploy -->';
