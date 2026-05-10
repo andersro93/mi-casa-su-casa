@@ -72,40 +72,45 @@ This is the explicit production schema step required by issue #8.
 
 ## Wrangler environment model
 
-`wrangler.jsonc` now separates preview and production bindings:
+`wrangler.jsonc` separates preview and production bindings:
 
-- top-level config is still local-development oriented
+- top-level config is local-development oriented
 - `env.preview` deploys `mi-casa-su-casa-preview`
 - `env.production` deploys `mi-casa-su-casa`
-- preview and production use different D1 bindings and URLs
+- preview and production use different D1 bindings
 
-Replace the placeholder values before using these workflows:
+D1 `database_id` values and runtime variables (`APP_URL`, `OWNER_EMAIL`) are **not hardcoded** in `wrangler.jsonc`. They are injected at deploy time by the GitHub Actions workflows:
 
-- preview D1 database id: `11111111-1111-1111-1111-111111111111`
-- production D1 database id: `22222222-2222-2222-2222-222222222222`
-- preview URL placeholder in `APP_URL`
-- production URL placeholder in `APP_URL`
+- D1 database IDs are replaced via `sed` from GitHub secrets before Wrangler runs
+- `APP_URL` and `OWNER_EMAIL` are passed to Wrangler with `--var KEY:VALUE` at deploy time
+
+This design means forkers never need to edit `wrangler.jsonc` — just add the required secrets and variables to their GitHub repository.
 
 ## Required GitHub secrets
 
-Add these repository secrets under **Settings → Secrets and variables → Actions**:
+Add these repository secrets under **Settings → Secrets and variables → Actions → Secrets**:
 
 | Secret | Purpose |
 | --- | --- |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account used by Wrangler |
-| `CLOUDFLARE_API_TOKEN` | Preview deploy token scoped to Workers + D1 for the preview account |
-| `CLOUDFLARE_API_TOKEN_PROD` | Production deploy and migration token scoped to Workers + D1 for production |
+| `CLOUDFLARE_API_TOKEN` | Preview deploy token scoped to Workers + D1 |
+| `CLOUDFLARE_API_TOKEN_PROD` | Production deploy and migration token scoped to Workers + D1 |
+| `D1_DATABASE_ID_PREVIEW` | UUID of the preview D1 database (from `wrangler d1 create`) |
+| `D1_DATABASE_ID_PRODUCTION` | UUID of the production D1 database (from `wrangler d1 create`) |
 
 Cloudflare recommends scoping API tokens to the single account they need to manage.
 
-## Recommended GitHub variables
+## Required GitHub variables
 
-Add these repository variables if you want richer workflow output:
+Add these repository variables under **Settings → Secrets and variables → Actions → Variables**:
 
 | Variable | Purpose |
 | --- | --- |
-| `CLOUDFLARE_PREVIEW_URL` | URL that the preview workflow comments on pull requests |
-| `CLOUDFLARE_PRODUCTION_URL` | URL shown on the protected migration environment |
+| `CLOUDFLARE_PREVIEW_URL` | Full URL of the preview deployment (e.g. `https://mi-casa-su-casa-preview.example.workers.dev`) |
+| `CLOUDFLARE_PRODUCTION_URL` | Full URL of the production deployment (e.g. `https://mi-casa-su-casa.example.com`) |
+| `OWNER_EMAIL` | Email address for the initial owner account |
+
+`CLOUDFLARE_PREVIEW_URL` and `CLOUDFLARE_PRODUCTION_URL` are injected as the `APP_URL` binding in the respective environments. `OWNER_EMAIL` is injected as the `OWNER_EMAIL` binding.
 
 The preview workflow still deploys without `CLOUDFLARE_PREVIEW_URL`, but the pull request comment will only report status instead of a direct link.
 
@@ -156,39 +161,14 @@ npm run db:apply:production
 
 This issue adds the repository-side CI/CD wiring, but operators still need to:
 
-1. create the preview and production D1 databases in Cloudflare
-2. replace placeholder IDs and URLs in `wrangler.jsonc`
-3. create the GitHub secrets and variables listed above
-4. enable branch protection on `main` so `CI` stays required
-5. configure required reviewers for the `production-migrations` environment
+1. create the preview and production D1 databases in Cloudflare (`wrangler d1 create mi-casa-su-casa-preview` and `wrangler d1 create mi-casa-su-casa`)
+2. add the GitHub secrets listed above (including the D1 database UUIDs from step 1)
+3. add the GitHub variables listed above
+4. set `AUTH_SECRET` and `SETUP_SECRET` as encrypted secrets in the Cloudflare dashboard for the Worker
+5. enable branch protection on `main` so `CI` stays required
+6. configure required reviewers for the `production-migrations` environment
 
-## Deploy to Cloudflare onboarding for issue #9
-
-Use this repository button for the Cloudflare-native deploy entry point:
-
-```markdown
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/andersro93/mi-casa-su-casa)
-```
-
-What the Deploy to Cloudflare flow handles well:
-
-- creating the Worker deployment
-- provisioning D1 resources defined in Wrangler
-- prompting for environment variables and secrets needed at deploy time
-
-What still remains manual after deployment:
-
-- visit `/setup` to create the first owner account
-- provide the configured `OWNER_EMAIL` and `SETUP_SECRET`
-- onboard the email-routing domain in Cloudflare and create the inbound rules for the shared inbox address
-
-Recommended first-run secrets for onboarding:
-
-- `AUTH_SECRET`
-- `OWNER_EMAIL`
-- `SETUP_SECRET`
-
-The app-level setup route is intentionally one-time only. After the owner account is created, `/setup` is locked server-side and normal invite-only sign-in remains the only public auth path.
+No edits to `wrangler.jsonc` are needed — all environment-specific values are injected by the workflows.
 
 ## References
 
