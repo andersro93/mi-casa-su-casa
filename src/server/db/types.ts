@@ -26,9 +26,41 @@ export type ParsedIncomingEmail = {
 export type InboxMessageRow = {
   id: string;
   provider_key: string;
+  provider_display_name: string;
   subject: string | null;
+  from_header: string | null;
   text_body: string;
   extracted_code: string | null;
   status: "new" | "used" | "expired";
   received_at: string;
 };
+
+export type ProviderSummaryRow = {
+  provider_key: string;
+  display_name: string;
+  message_count: number;
+  new_count: number;
+  latest_received_at: string | null;
+};
+
+export type QuarantineMessageRow = {
+  id: string;
+  provider_key: "quarantine";
+  provider_display_name: "Quarantine";
+  subject: string | null;
+  from_header: string | null;
+  envelope_from: string;
+  text_body: string;
+  extracted_code: string | null;
+  status: "new";
+  quarantine_reason: string;
+  received_at: string;
+};
+
+export type ProviderRow = {
+  id: string;
+  provider_key: string;
+  display_name: string;
+};
+
+export type MessageStatus = InboxMessageRow["status"];
