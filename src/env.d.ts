@@ -12,6 +12,7 @@ interface Env {
   EMAIL: SendEmail;
   ENVIRONMENT: string;
   OWNER_EMAIL?: string;
+  SETUP_SECRET?: string;
 }
 
 declare module "*.css" {

@@ -71,6 +71,20 @@ CREATE TABLE IF NOT EXISTS audit_events (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS app_installation (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'complete')),
+  owner_user_id TEXT,
+  owner_email TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO app_installation (id, status)
+VALUES (1, 'pending')
+ON CONFLICT(id) DO NOTHING;
+
 CREATE INDEX IF NOT EXISTS idx_messages_provider_received ON messages(provider_id, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_delete_after ON messages(delete_after);
 CREATE INDEX IF NOT EXISTS idx_quarantine_delete_after ON quarantine_messages(delete_after);

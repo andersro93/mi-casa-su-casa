@@ -82,3 +82,13 @@ export type MemberAccessRow = {
   provider_key: string | null;
   provider_display_name: string | null;
 };
+
+export type InstallationStateRow = {
+  id: number;
+  status: "pending" | "in_progress" | "complete";
+  owner_user_id: string | null;
+  owner_email: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
