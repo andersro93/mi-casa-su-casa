@@ -7,6 +7,7 @@ type SessionUser = {
 };
 
 type DbRunner = {
+  all?: () => Promise<{ results: unknown[] }>;
   first?: () => Promise<unknown>;
   run?: () => Promise<{ results: unknown[] }>;
 };
@@ -89,15 +90,41 @@ function createDbStub(resolve: DbResolver): D1Database {
     prepare(sql: string) {
       return {
         bind(...params: unknown[]) {
-          const runner = resolve(sql, params);
+          const runner = resolve(sql.trim(), params);
 
           return {
+            all: async () => {
+              if (runner.all) {
+                return runner.all();
+              }
+
+              if (runner.run) {
+                return runner.run();
+              }
+
+              const first = await runner.first?.();
+              return { results: first === undefined ? [] : [first] };
+            },
             first: async () => runner.first?.(),
             run: async () => runner.run?.() ?? { results: [] },
           };
         },
-        first: async () => resolve(sql, []).first?.(),
-        run: async () => resolve(sql, []).run?.() ?? { results: [] },
+        all: async () => {
+          const runner = resolve(sql.trim(), []);
+
+          if (runner.all) {
+            return runner.all();
+          }
+
+          if (runner.run) {
+            return runner.run();
+          }
+
+          const first = await runner.first?.();
+          return { results: first === undefined ? [] : [first] };
+        },
+        first: async () => resolve(sql.trim(), []).first?.(),
+        run: async () => resolve(sql.trim(), []).run?.() ?? { results: [] },
       };
     },
     batch: async () => [],
@@ -487,7 +514,11 @@ describe("worker routes", () => {
     };
 
     const db = createDbStub((sql) => {
-      if (sql.includes("FROM user\n       ORDER BY createdAt ASC")) {
+      if (
+        sql.includes("SELECT id, email, name, role, createdAt, updatedAt") &&
+        sql.includes("FROM user") &&
+        sql.includes("ORDER BY createdAt ASC")
+      ) {
         return {
           run: async () => ({
             results: [
@@ -504,7 +535,10 @@ describe("worker routes", () => {
         };
       }
 
-      if (sql.includes("LEFT JOIN user_provider_access")) {
+      if (
+        sql.includes("LEFT JOIN user_provider_access") &&
+        sql.includes("LEFT JOIN providers")
+      ) {
         return {
           run: async () => ({
             results: [
@@ -521,7 +555,11 @@ describe("worker routes", () => {
         };
       }
 
-      if (sql.includes("FROM providers\n       ORDER BY display_name ASC")) {
+      if (
+        sql.includes("SELECT id, provider_key, display_name") &&
+        sql.includes("FROM providers") &&
+        sql.includes("ORDER BY display_name ASC")
+      ) {
         return {
           run: async () => ({
             results: [
