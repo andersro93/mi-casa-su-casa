@@ -9,6 +9,7 @@ function createDbStub(
   return {
     prepare: () => ({
       bind: () => ({
+        all: async () => ({ results: match ? [match] : [] }),
         first: async () => match,
       }),
     }),
