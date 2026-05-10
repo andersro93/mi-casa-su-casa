@@ -1,0 +1,25 @@
+@baseUrl = http://localhost:8787
+
+### Local email ingestion trigger via Cloudflare/Wrangler dev handler
+# `/cdn-cgi/handler/email` is a Cloudflare-reserved dev/testing path that sends
+# this request to the Worker `email()` handler locally. It is not a normal app API route.
+POST {{baseUrl}}/cdn-cgi/handler/email?from=login@service.example&to=codes@example.com
+Content-Type: text/plain
+
+From: Service <login@service.example>
+To: codes@example.com
+Subject: Your verification code
+Message-ID: <provider-match-example@test>
+
+Your verification code is 123456.
+
+### Local email ingestion trigger that should fall into quarantine until sender rules exist
+POST {{baseUrl}}/cdn-cgi/handler/email?from=unknown@example.net&to=codes@example.com
+Content-Type: text/plain
+
+From: Unknown Sender <unknown@example.net>
+To: codes@example.com
+Subject: Sign-in request
+Message-ID: <quarantine-example@test>
+
+Use 654321 to continue signing in.
