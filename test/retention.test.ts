@@ -5,7 +5,7 @@ import { purgeExpiredMessages } from "../src/server/jobs/retention";
 describe("purgeExpiredMessages", () => {
   it("purges expired inbox and quarantine messages", async () => {
     const batch = vi.fn(async () => []);
-    const prepare = vi.fn(() => ({ bind: vi.fn(() => ({ })) }));
+    const prepare = vi.fn(() => ({ bind: vi.fn(() => ({})) }));
 
     const env = {
       DB: {
