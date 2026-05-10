@@ -29,6 +29,50 @@
     "BETTER_AUTH_URL": "http://localhost:8787",
     "ENVIRONMENT": "development"
   },
+  "env": {
+    "preview": {
+      "name": "mi-casa-su-casa-preview",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "mi-casa-su-casa-preview",
+          "database_id": "11111111-1111-1111-1111-111111111111"
+        }
+      ],
+      "send_email": [
+        {
+          "name": "EMAIL"
+        }
+      ],
+      "vars": {
+        "APP_NAME": "Mi Casa Su Casa (Preview)",
+        "APP_ORIGIN": "https://REPLACE_WITH_PREVIEW_URL",
+        "BETTER_AUTH_URL": "https://REPLACE_WITH_PREVIEW_URL",
+        "ENVIRONMENT": "preview"
+      }
+    },
+    "production": {
+      "name": "mi-casa-su-casa",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "mi-casa-su-casa",
+          "database_id": "22222222-2222-2222-2222-222222222222"
+        }
+      ],
+      "send_email": [
+        {
+          "name": "EMAIL"
+        }
+      ],
+      "vars": {
+        "APP_NAME": "Mi Casa Su Casa",
+        "APP_ORIGIN": "https://REPLACE_WITH_PRODUCTION_URL",
+        "BETTER_AUTH_URL": "https://REPLACE_WITH_PRODUCTION_URL",
+        "ENVIRONMENT": "production"
+      }
+    }
+  },
   "triggers": {
     "crons": ["0 3 * * *"]
   }
