@@ -75,6 +75,8 @@ describe("App", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain("Owner tools");
+    expect(html).toContain("Household access");
+    expect(html).toContain("Create a household member");
     expect(html).toContain("Quarantine review");
     expect(html).toContain("Release to provider");
   });

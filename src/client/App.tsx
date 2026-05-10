@@ -44,6 +44,32 @@ type QuarantineMessage = {
   received_at: string;
 };
 
+type MemberSummary = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  createdAt: string;
+  updatedAt: string;
+  providerAccess: Array<{
+    providerKey: string;
+    displayName: string;
+  }>;
+};
+
+type ProviderOption = {
+  id: string;
+  provider_key: string;
+  display_name: string;
+};
+
+type MemberFormState = {
+  email: string;
+  name: string;
+  password: string;
+  role: "member" | "admin";
+};
+
 type ProviderMessagesResponse = {
   provider: {
     providerKey: string;
@@ -60,6 +86,13 @@ type LoginState = {
 const INITIAL_LOGIN_STATE: LoginState = {
   email: "",
   password: "",
+};
+
+const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
+  email: "",
+  name: "",
+  password: "",
+  role: "member",
 };
 
 async function fetchJson<T>(
@@ -153,6 +186,14 @@ export function App() {
   const [isLoadingQuarantine, setIsLoadingQuarantine] = useState(false);
   const [isSavingMessage, setIsSavingMessage] = useState(false);
   const [isReviewingQuarantine, setIsReviewingQuarantine] = useState(false);
+  const [members, setMembers] = useState<MemberSummary[]>([]);
+  const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [memberFormState, setMemberFormState] = useState<MemberFormState>(
+    INITIAL_MEMBER_FORM_STATE,
+  );
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [isSavingMember, setIsSavingMember] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
   const [releaseProviderKey, setReleaseProviderKey] = useState<string>("");
@@ -165,10 +206,14 @@ export function App() {
       setProviders([]);
       setMessages([]);
       setQuarantineMessages([]);
+      setMembers([]);
+      setProviderOptions([]);
       setSelectedProviderKey(null);
       setSelectedMessageId(null);
       setSelectedQuarantineId(null);
+      setSelectedMemberId(null);
       setReleaseProviderKey("");
+      setMemberFormState(INITIAL_MEMBER_FORM_STATE);
       return;
     }
 
@@ -339,6 +384,61 @@ export function App() {
     };
   }, [isAuthenticated, isOwner]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !isOwner) {
+      setMembers([]);
+      setProviderOptions([]);
+      setSelectedMemberId(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadMembers = async () => {
+      setIsLoadingMembers(true);
+
+      try {
+        const response = await fetchJson<{
+          members: MemberSummary[];
+          providers: ProviderOption[];
+        }>("/api/admin/members");
+
+        if (cancelled) {
+          return;
+        }
+
+        setMembers(response.members);
+        setProviderOptions(response.providers);
+        setSelectedMemberId((current) => {
+          if (
+            current &&
+            response.members.some((member) => member.id === current)
+          ) {
+            return current;
+          }
+
+          return response.members[0]?.id ?? null;
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setViewError(
+            error instanceof Error ? error.message : "Unable to load members",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingMembers(false);
+        }
+      }
+    };
+
+    void loadMembers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOwner]);
+
   const selectedProvider = useMemo(
     () =>
       providers.find(
@@ -358,6 +458,11 @@ export function App() {
         (message) => message.id === selectedQuarantineId,
       ) ?? null,
     [quarantineMessages, selectedQuarantineId],
+  );
+
+  const selectedMember = useMemo(
+    () => members.find((member) => member.id === selectedMemberId) ?? null,
+    [members, selectedMemberId],
   );
 
   async function refreshProviders() {
@@ -399,6 +504,27 @@ export function App() {
       }
 
       return response.messages[0]?.id ?? null;
+    });
+  }
+
+  async function refreshMembers() {
+    if (!isAuthenticated || !isOwner) {
+      return;
+    }
+
+    const response = await fetchJson<{
+      members: MemberSummary[];
+      providers: ProviderOption[];
+    }>("/api/admin/members");
+
+    setMembers(response.members);
+    setProviderOptions(response.providers);
+    setSelectedMemberId((current) => {
+      if (current && response.members.some((member) => member.id === current)) {
+        return current;
+      }
+
+      return response.members[0]?.id ?? null;
     });
   }
 
@@ -502,6 +628,86 @@ export function App() {
       );
     } finally {
       setIsReviewingQuarantine(false);
+    }
+  }
+
+  async function handleCreateMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingMember(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<{ member: unknown }>("/api/admin/members", {
+        method: "POST",
+        body: JSON.stringify(memberFormState),
+      });
+
+      setMemberFormState(INITIAL_MEMBER_FORM_STATE);
+      setStatusMessage("Household member created.");
+      await refreshMembers();
+    } catch (error) {
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create household member",
+      );
+    } finally {
+      setIsSavingMember(false);
+    }
+  }
+
+  async function handleMemberRoleChange(
+    userId: string,
+    role: MemberSummary["role"],
+  ) {
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<{ ok: boolean }>(`/api/admin/members/${userId}/role`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      });
+
+      setStatusMessage(`Updated member role to ${role}.`);
+      await refreshMembers();
+      await refetch();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to update member role",
+      );
+    }
+  }
+
+  async function handleProviderAccessToggle(
+    userId: string,
+    providerKey: string,
+    hasAccess: boolean,
+  ) {
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<{ ok: boolean }>(
+        `/api/admin/members/${userId}/provider-access`,
+        {
+          method: hasAccess ? "DELETE" : "POST",
+          body: JSON.stringify({ providerKey }),
+        },
+      );
+
+      setStatusMessage(
+        hasAccess ? "Provider access revoked." : "Provider access granted.",
+      );
+      await refreshMembers();
+      await refreshProviders();
+    } catch (error) {
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update provider access",
+      );
     }
   }
 
@@ -793,6 +999,223 @@ export function App() {
             </article>
           </div>
         </section>
+
+        {isOwner ? (
+          <section className="panel-card owner-admin-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="panel-eyebrow">Owner tools</p>
+                <h2>Household access</h2>
+              </div>
+              <span className="panel-meta">{members.length} members</span>
+            </div>
+
+            <div className="owner-admin-grid">
+              <form
+                className="detail-panel admin-form-panel"
+                onSubmit={handleCreateMember}
+              >
+                <div className="detail-panel__header">
+                  <div>
+                    <p className="panel-eyebrow">Invite-only onboarding</p>
+                    <h3>Create a household member</h3>
+                    <p>
+                      Provision a member directly, then share the generated
+                      login details privately with them.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="field-group">
+                  <span>Name</span>
+                  <input
+                    value={memberFormState.name}
+                    onChange={(event) =>
+                      setMemberFormState((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </label>
+
+                <label className="field-group">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={memberFormState.email}
+                    onChange={(event) =>
+                      setMemberFormState((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </label>
+
+                <label className="field-group">
+                  <span>Temporary password</span>
+                  <input
+                    type="password"
+                    value={memberFormState.password}
+                    onChange={(event) =>
+                      setMemberFormState((current) => ({
+                        ...current,
+                        password: event.target.value,
+                      }))
+                    }
+                    minLength={12}
+                    required
+                  />
+                </label>
+
+                <label className="field-group">
+                  <span>Role</span>
+                  <select
+                    value={memberFormState.role}
+                    onChange={(event) =>
+                      setMemberFormState((current) => ({
+                        ...current,
+                        role:
+                          event.target.value === "admin" ? "admin" : "member",
+                      }))
+                    }
+                  >
+                    <option value="member">Member</option>
+                    <option value="admin">Owner</option>
+                  </select>
+                </label>
+
+                <button
+                  className="primary-button"
+                  disabled={isSavingMember}
+                  type="submit"
+                >
+                  {isSavingMember ? "Creating member…" : "Create member"}
+                </button>
+              </form>
+
+              <div className="two-column-panel owner-members-panel">
+                <div className="message-list">
+                  {members.map((member) => {
+                    const isSelected = member.id === selectedMemberId;
+
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className={
+                          isSelected
+                            ? "message-card message-card--selected"
+                            : "message-card"
+                        }
+                        key={member.id}
+                        onClick={() => setSelectedMemberId(member.id)}
+                        type="button"
+                      >
+                        <div className="message-card__header">
+                          <strong>{member.name}</strong>
+                          <span
+                            className={getStatusTone(
+                              member.role === "admin" ? "used" : "new",
+                            )}
+                          >
+                            {member.role}
+                          </span>
+                        </div>
+                        <p>{member.email}</p>
+                        <span>
+                          {member.providerAccess.length} provider
+                          {member.providerAccess.length === 1 ? "" : "s"}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {!members.length && !isLoadingMembers ? (
+                    <div className="empty-state">
+                      <strong>No members yet</strong>
+                      <p>
+                        Create the first invited household member to get
+                        started.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <article className="detail-panel">
+                  {selectedMember ? (
+                    <>
+                      <div className="detail-panel__header">
+                        <div>
+                          <p className="panel-eyebrow">Member detail</p>
+                          <h3>{selectedMember.name}</h3>
+                          <p>{selectedMember.email}</p>
+                        </div>
+                      </div>
+
+                      <label className="field-group">
+                        <span>Role</span>
+                        <select
+                          value={selectedMember.role}
+                          onChange={(event) =>
+                            void handleMemberRoleChange(
+                              selectedMember.id,
+                              event.target.value,
+                            )
+                          }
+                        >
+                          <option value="member">Member</option>
+                          <option value="admin">Owner</option>
+                        </select>
+                      </label>
+
+                      <section className="message-body-card message-body-card--tight">
+                        <h4>Provider access</h4>
+                        <div className="access-grid">
+                          {providerOptions.map((provider) => {
+                            const hasAccess =
+                              selectedMember.providerAccess.some(
+                                (access) =>
+                                  access.providerKey === provider.provider_key,
+                              );
+
+                            return (
+                              <button
+                                className={
+                                  hasAccess
+                                    ? "access-pill access-pill--active"
+                                    : "access-pill"
+                                }
+                                key={provider.id}
+                                onClick={() =>
+                                  void handleProviderAccessToggle(
+                                    selectedMember.id,
+                                    provider.provider_key,
+                                    hasAccess,
+                                  )
+                                }
+                                type="button"
+                              >
+                                {provider.display_name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    </>
+                  ) : (
+                    <div className="empty-state empty-state--detail">
+                      <strong>Select a household member</strong>
+                      <p>Choose a member to adjust role or provider access.</p>
+                    </div>
+                  )}
+                </article>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {isOwner ? (
           <section className="panel-card quarantine-panel">
