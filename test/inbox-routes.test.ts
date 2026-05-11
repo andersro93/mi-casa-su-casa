@@ -476,13 +476,56 @@ describe("worker routes", () => {
     await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
   });
 
-  it("bootstraps OWNER_EMAIL to admin on session load", async () => {
+  it("bootstraps OWNER_EMAIL to admin via direct D1 update", async () => {
     sessionState.current = {
       user: { id: "user-1", email: "owner@example.com", role: "member" },
       session: { id: "session-1", userId: "user-1" },
     };
 
-    const db = createDbStub((sql) => {
+    const dbCalls: Array<{ sql: string; params: unknown[] }> = [];
+
+    const db = createDbStub((sql, params) => {
+      dbCalls.push({ sql, params });
+
+      if (sql.includes("GROUP BY providers.id")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      if (sql.includes("UPDATE user SET role = 'admin' WHERE id = ?")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker("/api/inbox/providers", undefined, db, {
+      OWNER_EMAIL: "owner@example.com",
+    });
+
+    expect(response.status).toBe(200);
+
+    const roleUpdate = dbCalls.find((c) =>
+      c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
+    );
+    expect(roleUpdate).toBeDefined();
+    expect(roleUpdate!.params).toEqual(["user-1"]);
+  });
+
+  it("does NOT auto-promote when user is not the owner", async () => {
+    sessionState.current = {
+      user: { id: "user-2", email: "member@example.com", role: "member" },
+      session: { id: "session-2", userId: "user-2" },
+    };
+
+    const dbCalls: Array<{ sql: string; params: unknown[] }> = [];
+
+    const db = createDbStub((sql, params) => {
+      dbCalls.push({ sql, params });
+
       if (sql.includes("GROUP BY providers.id")) {
         return {
           run: async () => ({ results: [] }),
@@ -497,13 +540,82 @@ describe("worker routes", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(authApiState.setRoleCalls).toHaveLength(1);
-    expect(authApiState.setRoleCalls[0]).toMatchObject({
-      body: {
-        userId: "user-1",
-        role: "admin",
-      },
+
+    const roleUpdate = dbCalls.find((c) =>
+      c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
+    );
+    expect(roleUpdate).toBeUndefined();
+  });
+
+  it("does NOT auto-promote when owner already has admin role", async () => {
+    sessionState.current = {
+      user: { id: "user-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "user-1" },
+    };
+
+    const dbCalls: Array<{ sql: string; params: unknown[] }> = [];
+
+    const db = createDbStub((sql, params) => {
+      dbCalls.push({ sql, params });
+
+      if (sql.includes("GROUP BY providers.id")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      return {};
     });
+
+    const response = await invokeWorker("/api/inbox/providers", undefined, db, {
+      OWNER_EMAIL: "owner@example.com",
+    });
+
+    expect(response.status).toBe(200);
+
+    const roleUpdate = dbCalls.find((c) =>
+      c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
+    );
+    expect(roleUpdate).toBeUndefined();
+  });
+
+  it("auto-promotes owner case-insensitively", async () => {
+    sessionState.current = {
+      user: { id: "user-1", email: "Owner@Example.COM", role: "member" },
+      session: { id: "session-1", userId: "user-1" },
+    };
+
+    const dbCalls: Array<{ sql: string; params: unknown[] }> = [];
+
+    const db = createDbStub((sql, params) => {
+      dbCalls.push({ sql, params });
+
+      if (sql.includes("GROUP BY providers.id")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      if (sql.includes("UPDATE user SET role = 'admin' WHERE id = ?")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker("/api/inbox/providers", undefined, db, {
+      OWNER_EMAIL: "owner@example.com",
+    });
+
+    expect(response.status).toBe(200);
+
+    const roleUpdate = dbCalls.find((c) =>
+      c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
+    );
+    expect(roleUpdate).toBeDefined();
+    expect(roleUpdate!.params).toEqual(["user-1"]);
   });
 
   it("lists members and provider access for owners", async () => {
