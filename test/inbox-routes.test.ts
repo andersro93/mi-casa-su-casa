@@ -512,7 +512,7 @@ describe("worker routes", () => {
       c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
     );
     expect(roleUpdate).toBeDefined();
-    expect(roleUpdate!.params).toEqual(["user-1"]);
+    expect(roleUpdate?.params).toEqual(["user-1"]);
   });
 
   it("does NOT auto-promote when user is not the owner", async () => {
@@ -615,7 +615,7 @@ describe("worker routes", () => {
       c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
     );
     expect(roleUpdate).toBeDefined();
-    expect(roleUpdate!.params).toEqual(["user-1"]);
+    expect(roleUpdate?.params).toEqual(["user-1"]);
   });
 
   it("lists members and provider access for owners", async () => {
