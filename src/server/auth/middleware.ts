@@ -23,13 +23,12 @@ export const loadAuthSession: MiddlewareHandler<{
     result.user.email.toLowerCase() === c.env.OWNER_EMAIL.toLowerCase() &&
     storedRole !== "admin"
   ) {
-    await auth.api.setRole({
-      body: {
-        userId: result.user.id,
-        role: "admin",
-      },
-      headers: c.req.raw.headers,
-    });
+    // Direct D1 update bypasses Better Auth admin plugin permission check.
+    // The admin plugin's setRole API requires the *caller* to already be admin,
+    // creating a chicken-and-egg problem for owner auto-promotion.
+    await c.env.DB.prepare("UPDATE user SET role = 'admin' WHERE id = ?")
+      .bind(result.user.id)
+      .run();
     role = "admin";
   }
 
