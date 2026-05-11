@@ -1,21 +1,69 @@
 import {
+  CheckCircleOutlined,
+  ContentCopyOutlined,
+  EmailOutlined,
+  HistoryOutlined,
+  InboxOutlined,
+  MailOutlined,
+  MarkEmailReadOutlined,
+  ScheduleOutlined,
+} from "@mui/icons-material";
+import {
+  Avatar,
+  Badge,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
   Divider,
+  IconButton,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
   Paper,
-  Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import React from "react";
+import React, { useState } from "react";
 import type { InboxMessage, ProviderSummary } from "../types";
 import { formatTimestamp } from "../utils";
+
+const avatarColors = [
+  "#6366F1", // Indigo
+  "#8B5CF6", // Violet
+  "#A855F7", // Purple
+  "#EC4899", // Fuchsia
+  "#3B82F6", // Blue
+  "#0EA5E9", // Light Blue
+  "#14B8A6", // Sky
+  "#06B6D4", // Cyan
+];
+
+function stringToColor(string: string) {
+  let hash = 0;
+  for (let i = 0; i < string.length; i += 1) {
+    hash = string.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return avatarColors[Math.abs(hash) % avatarColors.length];
+}
+
+function stringAvatar(name: string) {
+  const safeName = name || "?";
+  const parts = safeName.split(" ");
+  const initials =
+    parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : safeName[0];
+
+  return {
+    sx: {
+      bgcolor: stringToColor(safeName),
+      color: "#fff",
+      fontWeight: "bold",
+    },
+    children: initials.toUpperCase(),
+  };
+}
 
 interface InboxViewProps {
   providers: ProviderSummary[];
@@ -40,10 +88,22 @@ export function InboxView({
   isSavingMessage,
   onStatusChange,
 }: InboxViewProps) {
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+
   const selectedProvider = providers.find(
     (p) => p.provider_key === selectedProviderKey,
   );
   const selectedMessage = messages.find((m) => m.id === selectedMessageId);
+
+  const handleCopyCode = async (code: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCodeId(id);
+      setTimeout(() => setCopiedCodeId(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy text: ", err);
+    }
+  };
 
   const getStatusColor = (status: InboxMessage["status"]) => {
     switch (status) {
@@ -108,25 +168,42 @@ export function InboxView({
                           <Box
                             sx={{
                               display: "flex",
-                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 2,
                               mb: 0.5,
                             }}
                           >
+                            <Badge
+                              color="primary"
+                              badgeContent={provider.new_count}
+                              invisible={provider.new_count === 0}
+                              sx={{
+                                "& .MuiBadge-badge": {
+                                  fontWeight: "bold",
+                                },
+                              }}
+                            >
+                              <Avatar
+                                {...stringAvatar(provider.display_name)}
+                                sx={{
+                                  ...stringAvatar(provider.display_name).sx,
+                                  width: 32,
+                                  height: 32,
+                                  fontSize: "0.875rem",
+                                }}
+                              />
+                            </Badge>
                             <Typography
                               variant="subtitle1"
                               sx={{
                                 fontWeight: isSelected ? "bold" : "medium",
+                                color: isSelected
+                                  ? "primary.main"
+                                  : "text.primary",
                               }}
                             >
                               {provider.display_name}
                             </Typography>
-                            {provider.new_count > 0 && (
-                              <Chip
-                                label={`${provider.new_count} new`}
-                                size="small"
-                                color="primary"
-                              />
-                            )}
                           </Box>
                         }
                         secondary={
@@ -154,6 +231,9 @@ export function InboxView({
 
             {!providers.length && !isLoadingInbox && (
               <Box sx={{ p: 4, textAlign: "center" }}>
+                <InboxOutlined
+                  sx={{ fontSize: 48, color: "text.disabled", mb: 2 }}
+                />
                 <Typography
                   variant="subtitle1"
                   sx={{ fontWeight: "bold" }}
@@ -258,8 +338,14 @@ export function InboxView({
                             <Typography
                               variant="caption"
                               color="text.disabled"
-                              sx={{ mt: 0.5, display: "block" }}
+                              sx={{
+                                mt: 0.5,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.5,
+                              }}
                             >
+                              <ScheduleOutlined sx={{ fontSize: 14 }} />
                               {formatTimestamp(message.received_at)}
                             </Typography>
                           </>
@@ -273,6 +359,9 @@ export function InboxView({
 
             {!messages.length && !isLoadingInbox && (
               <Box sx={{ p: 4, textAlign: "center" }}>
+                <MailOutlined
+                  sx={{ fontSize: 48, color: "text.disabled", mb: 2 }}
+                />
                 <Typography
                   variant="subtitle1"
                   sx={{ fontWeight: "bold" }}
@@ -335,33 +424,82 @@ export function InboxView({
               elevation={0}
               sx={{
                 border: 1,
-                borderColor: "divider",
+                borderColor: "primary.light",
                 borderRadius: 2,
-                bgcolor: "background.default",
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
               }}
             >
-              <CardContent sx={{ p: 4, textAlign: "center" }}>
+              <CardContent
+                sx={{ p: 4, textAlign: "center", position: "relative" }}
+              >
                 <Typography
                   variant="overline"
-                  color="text.secondary"
-                  sx={{ display: "block", mb: 1, fontWeight: "bold" }}
+                  sx={{
+                    display: "block",
+                    mb: 1,
+                    fontWeight: "bold",
+                    opacity: 0.9,
+                  }}
                 >
                   Verification code
                 </Typography>
-                <Typography
-                  variant="h3"
-                  sx={{ fontWeight: "bold", letterSpacing: 2 }}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 2,
+                  }}
                 >
-                  {selectedMessage.extracted_code ?? "No code detected"}
-                </Typography>
+                  <Typography
+                    variant="h3"
+                    sx={{ fontWeight: "bold", letterSpacing: 2 }}
+                  >
+                    {selectedMessage.extracted_code ?? "No code detected"}
+                  </Typography>
+                  {selectedMessage.extracted_code && (
+                    <Tooltip
+                      title={
+                        copiedCodeId === selectedMessage.id
+                          ? "Copied!"
+                          : "Copy code"
+                      }
+                      placement="top"
+                    >
+                      <IconButton
+                        onClick={() => {
+                          if (selectedMessage.extracted_code) {
+                            handleCopyCode(
+                              selectedMessage.extracted_code,
+                              selectedMessage.id,
+                            );
+                          }
+                        }}
+                        sx={{
+                          color: "primary.contrastText",
+                          opacity: 0.9,
+                          "&:hover": { opacity: 1 },
+                        }}
+                      >
+                        {copiedCodeId === selectedMessage.id ? (
+                          <CheckCircleOutlined />
+                        ) : (
+                          <ContentCopyOutlined />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </Box>
               </CardContent>
             </Card>
 
-            <Stack direction="row" spacing={2}>
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
               <Button
                 variant="outlined"
                 disabled={isSavingMessage}
                 onClick={() => onStatusChange("new")}
+                startIcon={<EmailOutlined />}
               >
                 Mark new
               </Button>
@@ -369,6 +507,7 @@ export function InboxView({
                 variant="outlined"
                 disabled={isSavingMessage}
                 onClick={() => onStatusChange("used")}
+                startIcon={<MarkEmailReadOutlined />}
               >
                 Mark used
               </Button>
@@ -376,10 +515,11 @@ export function InboxView({
                 variant="outlined"
                 disabled={isSavingMessage}
                 onClick={() => onStatusChange("expired")}
+                startIcon={<HistoryOutlined />}
               >
                 Mark expired
               </Button>
-            </Stack>
+            </Box>
 
             <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
               <Typography
@@ -412,6 +552,9 @@ export function InboxView({
               borderStyle: "dashed",
             }}
           >
+            <EmailOutlined
+              sx={{ fontSize: 64, color: "text.disabled", mb: 2 }}
+            />
             <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
               Select a message
             </Typography>

@@ -1,5 +1,14 @@
 import {
+  CheckCircleOutlined,
+  ContentCopyOutlined,
+  DeleteOutlined,
+  MoveToInboxOutlined,
+  ShieldOutlined,
+  WarningAmberOutlined,
+} from "@mui/icons-material";
+import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
@@ -7,6 +16,7 @@ import {
   Chip,
   Divider,
   FormControl,
+  IconButton,
   InputLabel,
   List,
   ListItem,
@@ -16,11 +26,47 @@ import {
   Paper,
   Select,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import React from "react";
+import React, { useState } from "react";
 import type { ProviderSummary, QuarantineMessage } from "../types";
 import { formatTimestamp } from "../utils";
+
+const avatarColors = [
+  "#6366F1", // Indigo
+  "#8B5CF6", // Violet
+  "#A855F7", // Purple
+  "#EC4899", // Fuchsia
+  "#3B82F6", // Blue
+  "#0EA5E9", // Light Blue
+  "#14B8A6", // Sky
+  "#06B6D4", // Cyan
+];
+
+function stringToColor(string: string) {
+  let hash = 0;
+  for (let i = 0; i < string.length; i += 1) {
+    hash = string.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return avatarColors[Math.abs(hash) % avatarColors.length];
+}
+
+function stringAvatar(name: string) {
+  const safeName = name || "?";
+  const parts = safeName.split(" ");
+  const initials =
+    parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : safeName[0];
+
+  return {
+    sx: {
+      bgcolor: stringToColor(safeName),
+      color: "#fff",
+      fontWeight: "bold",
+    },
+    children: initials.toUpperCase(),
+  };
+}
 
 interface QuarantineViewProps {
   quarantineMessages: QuarantineMessage[];
@@ -45,9 +91,21 @@ export function QuarantineView({
   isReviewingQuarantine,
   onQuarantineReview,
 }: QuarantineViewProps) {
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+
   const selectedQuarantineMessage = quarantineMessages.find(
     (m) => m.id === selectedQuarantineId,
   );
+
+  const handleCopyCode = async (code: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCodeId(id);
+      setTimeout(() => setCopiedCodeId(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy text: ", err);
+    }
+  };
 
   return (
     <Box
@@ -94,9 +152,11 @@ export function QuarantineView({
                     <ListItemButton
                       selected={isSelected}
                       onClick={() => onSelectMessage(message.id)}
-                      sx={{ py: 2 }}
+                      sx={{ py: 2, gap: 2 }}
                     >
+                      <Avatar {...stringAvatar(message.envelope_from)} />
                       <ListItemText
+                        disableTypography
                         primary={
                           <Box
                             sx={{
@@ -157,12 +217,15 @@ export function QuarantineView({
 
             {!quarantineMessages.length && !isLoadingQuarantine && (
               <Box sx={{ p: 4, textAlign: "center" }}>
+                <ShieldOutlined
+                  sx={{ fontSize: 48, color: "text.disabled", mb: 2 }}
+                />
                 <Typography
                   variant="subtitle1"
                   sx={{ fontWeight: "bold" }}
                   gutterBottom
                 >
-                  Quarantine is empty
+                  All clear
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Messages that need manual classification will appear here for
@@ -208,6 +271,7 @@ export function QuarantineView({
                 </Typography>
               </Box>
               <Chip
+                icon={<WarningAmberOutlined />}
                 label="Needs review"
                 color="warning"
                 sx={{ fontWeight: "bold" }}
@@ -221,6 +285,7 @@ export function QuarantineView({
                 borderColor: "divider",
                 borderRadius: 2,
                 bgcolor: "background.default",
+                position: "relative",
               }}
             >
               <CardContent sx={{ p: 4, textAlign: "center" }}>
@@ -231,17 +296,63 @@ export function QuarantineView({
                 >
                   Detected code
                 </Typography>
-                <Typography
-                  variant="h3"
-                  sx={{ fontWeight: "bold", letterSpacing: 2 }}
+                <Box
+                  sx={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 2,
+                    justifyContent: "center",
+                  }}
                 >
-                  {selectedQuarantineMessage.extracted_code ??
-                    "No code detected"}
-                </Typography>
+                  <Typography
+                    variant="h3"
+                    sx={{ fontWeight: "bold", letterSpacing: 2 }}
+                  >
+                    {selectedQuarantineMessage.extracted_code ??
+                      "No code detected"}
+                  </Typography>
+                  {selectedQuarantineMessage.extracted_code && (
+                    <Tooltip
+                      title={
+                        copiedCodeId === selectedQuarantineMessage.id
+                          ? "Copied!"
+                          : "Copy code"
+                      }
+                      placement="top"
+                    >
+                      <IconButton
+                        onClick={() => {
+                          if (selectedQuarantineMessage.extracted_code) {
+                            handleCopyCode(
+                              selectedQuarantineMessage.extracted_code,
+                              selectedQuarantineMessage.id,
+                            );
+                          }
+                        }}
+                        color={
+                          copiedCodeId === selectedQuarantineMessage.id
+                            ? "success"
+                            : "default"
+                        }
+                        sx={{ ml: 1 }}
+                      >
+                        {copiedCodeId === selectedQuarantineMessage.id ? (
+                          <CheckCircleOutlined />
+                        ) : (
+                          <ContentCopyOutlined />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </Box>
               </CardContent>
             </Card>
 
-            <Alert severity="warning" sx={{ borderRadius: 2 }}>
+            <Alert
+              severity="warning"
+              icon={<WarningAmberOutlined fontSize="inherit" />}
+              sx={{ borderRadius: 2, alignItems: "center" }}
+            >
               <Typography
                 variant="subtitle2"
                 sx={{ fontWeight: "bold", mb: 0.5 }}
@@ -286,6 +397,7 @@ export function QuarantineView({
                 <Button
                   variant="contained"
                   color="primary"
+                  startIcon={<MoveToInboxOutlined />}
                   disabled={isReviewingQuarantine || !releaseProviderKey}
                   onClick={() => onQuarantineReview("release")}
                   sx={{ px: 4, py: 1.5 }}
@@ -294,6 +406,7 @@ export function QuarantineView({
                 </Button>
                 <Button
                   variant="outlined"
+                  startIcon={<DeleteOutlined />}
                   disabled={isReviewingQuarantine}
                   onClick={() => onQuarantineReview("dismiss")}
                   sx={{ px: 4, py: 1.5 }}
@@ -334,6 +447,9 @@ export function QuarantineView({
               borderStyle: "dashed",
             }}
           >
+            <WarningAmberOutlined
+              sx={{ fontSize: 48, color: "text.disabled", mb: 2 }}
+            />
             <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
               Select a quarantined message
             </Typography>
