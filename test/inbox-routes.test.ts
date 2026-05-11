@@ -807,6 +807,103 @@ describe("worker routes", () => {
     await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
   });
 
+  it("changes another member's role to admin", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+
+    const response = await invokeWorker(
+      "/api/admin/members/member-1/role",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role: "admin" }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(authApiState.setRoleCalls).toHaveLength(1);
+    expect(authApiState.setRoleCalls[0]).toMatchObject({
+      body: { userId: "member-1", role: "admin" },
+    });
+  });
+
+  it("changes another member's role to member", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+
+    const response = await invokeWorker(
+      "/api/admin/members/other-admin-2/role",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role: "member" }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(authApiState.setRoleCalls).toHaveLength(1);
+    expect(authApiState.setRoleCalls[0]).toMatchObject({
+      body: { userId: "other-admin-2", role: "user" },
+    });
+  });
+
+  it("prevents admin from changing their own role", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+
+    const response = await invokeWorker(
+      "/api/admin/members/admin-1/role",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role: "member" }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Cannot change your own role. Ask another admin.",
+    });
+    expect(authApiState.setRoleCalls).toHaveLength(0);
+  });
+
+  it("rejects invalid role value", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+
+    const response = await invokeWorker(
+      "/api/admin/members/member-1/role",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role: "superuser" }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "role must be admin or member",
+    });
+  });
+
   it("reports that first-run setup is still needed", async () => {
     const db = createDbStub((sql) => {
       if (sql.startsWith("INSERT INTO app_installation")) {

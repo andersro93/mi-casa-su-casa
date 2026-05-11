@@ -107,6 +107,15 @@ adminRoutes.post("/members", async (c) => {
 
 adminRoutes.patch("/members/:userId/role", async (c) => {
   const userId = c.req.param("userId");
+  const currentUser = c.get("user");
+
+  if (currentUser && currentUser.id === userId) {
+    return c.json(
+      { error: "Cannot change your own role. Ask another admin." },
+      403,
+    );
+  }
+
   let payload: { role?: string };
 
   try {
