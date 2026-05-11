@@ -8,24 +8,35 @@ export function getTheme(mode: "light" | "dark") {
     palette: {
       mode,
       primary: {
-        main: mode === "light" ? "#8D6E63" : "#D7CCC8",
-        light: "#BE9C91",
-        dark: "#5F4339",
+        main: "#6366F1",
+        light: "#818CF8",
+        dark: "#4F46E5",
       },
       secondary: {
-        main: mode === "light" ? "#F4A460" : "#FFCC80",
-        light: "#F8C699",
-        dark: "#C07C36",
+        main: "#A78BFA",
+        light: "#C4B5FD",
+        dark: "#7C3AED",
       },
       background: {
-        default: mode === "light" ? "#FAFAFA" : "#121212",
-        paper: mode === "light" ? "#FFFFFF" : "#1E1E1E",
+        default: mode === "light" ? "#F8FAFC" : "#0F172A",
+        paper: mode === "light" ? "#FFFFFF" : "#1E293B",
       },
+      text: {
+        primary: mode === "light" ? "#0F172A" : "#F1F5F9",
+        secondary: mode === "light" ? "#475569" : "#94A3B8",
+      },
+      divider: mode === "light" ? "#E2E8F0" : "#334155",
       warning: {
-        main: "#FF9800",
+        main: "#F59E0B",
       },
       success: {
-        main: "#4CAF50",
+        main: "#10B981",
+      },
+      error: {
+        main: "#EF4444",
+      },
+      info: {
+        main: "#38BDF8",
       },
     },
     typography: {
@@ -64,8 +75,8 @@ export function getTheme(mode: "light" | "dark") {
           root: {
             boxShadow:
               mode === "light"
-                ? "0px 4px 20px rgba(0, 0, 0, 0.05)"
-                : "0px 4px 20px rgba(0, 0, 0, 0.5)",
+                ? "0px 4px 20px rgba(99, 102, 241, 0.08)"
+                : "0px 4px 20px rgba(0, 0, 0, 0.4)",
           },
         },
       },
