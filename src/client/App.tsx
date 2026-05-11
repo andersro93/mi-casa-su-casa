@@ -1,113 +1,31 @@
+import {
+  Alert,
+  Box,
+  CircularProgress,
+  Snackbar,
+  Typography,
+} from "@mui/material";
 import { authClient } from "@server/auth/client";
-import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
+import { InboxView } from "./components/InboxView";
+import { Layout } from "./components/Layout";
+import { LoginPage } from "./components/LoginPage";
+import { MembersView } from "./components/MembersView";
+import { QuarantineView } from "./components/QuarantineView";
+import { SetupPage } from "./components/SetupPage";
+import type {
+  InboxMessage,
+  MemberFormState,
+  MemberSummary,
+  ProviderMessagesResponse,
+  ProviderOption,
+  ProviderSummary,
+  QuarantineMessage,
+  SetupStatus,
+} from "./types";
+import { fetchJson } from "./utils";
 
-type SessionData = {
-  user?: {
-    email?: string | null;
-    name?: string | null;
-    role?: string | null;
-  };
-};
-
-type ProviderSummary = {
-  provider_key: string;
-  display_name: string;
-  message_count: number;
-  new_count: number;
-  latest_received_at: string | null;
-};
-
-type InboxMessage = {
-  id: string;
-  provider_key: string;
-  provider_display_name: string;
-  subject: string | null;
-  from_header: string | null;
-  text_body: string;
-  extracted_code: string | null;
-  status: "new" | "used" | "expired";
-  received_at: string;
-};
-
-type QuarantineMessage = {
-  id: string;
-  provider_key: "quarantine";
-  provider_display_name: "Quarantine";
-  subject: string | null;
-  from_header: string | null;
-  envelope_from: string;
-  text_body: string;
-  extracted_code: string | null;
-  status: "new";
-  quarantine_reason: string;
-  received_at: string;
-};
-
-type MemberSummary = {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  createdAt: string;
-  updatedAt: string;
-  providerAccess: Array<{
-    providerKey: string;
-    displayName: string;
-  }>;
-};
-
-type ProviderOption = {
-  id: string;
-  provider_key: string;
-  display_name: string;
-};
-
-type MemberFormState = {
-  email: string;
-  name: string;
-  password: string;
-  role: "member" | "admin";
-};
-
-type ProviderMessagesResponse = {
-  provider: {
-    providerKey: string;
-    displayName: string;
-  };
-  messages: InboxMessage[];
-};
-
-type LoginState = {
-  email: string;
-  password: string;
-};
-
-type SetupStatus = {
-  needsSetup: boolean;
-  setupLocked: boolean;
-  isConfigured: boolean;
-  status: "pending" | "in_progress" | "complete";
-};
-
-type SetupFormState = {
-  email: string;
-  name: string;
-  password: string;
-  setupSecret: string;
-};
-
-const INITIAL_LOGIN_STATE: LoginState = {
-  email: "",
-  password: "",
-};
-
-const INITIAL_SETUP_FORM_STATE: SetupFormState = {
-  email: "",
-  name: "",
-  password: "",
-  setupSecret: "",
-};
+type ViewType = "inbox" | "quarantine" | "members";
 
 const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
   email: "",
@@ -116,91 +34,23 @@ const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
   role: "member",
 };
 
-async function fetchJson<T>(
-  input: RequestInfo,
-  init?: RequestInit,
-): Promise<T> {
-  const response = await fetch(input, {
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-
-    throw new Error(
-      payload?.error ?? `Request failed with status ${response.status}`,
-    );
-  }
-
-  return (await response.json()) as T;
-}
-
-function formatTimestamp(value: string | null): string {
-  if (!value) {
-    return "No messages yet";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function getDisplayName(session: SessionData | null | undefined): string {
-  const name = session?.user?.name?.trim();
-  if (name) {
-    return name;
-  }
-
-  return session?.user?.email ?? "family member";
-}
-
-function getStatusTone(status: InboxMessage["status"]): string {
-  switch (status) {
-    case "used":
-      return "status-chip status-chip--used";
-    case "expired":
-      return "status-chip status-chip--expired";
-    default:
-      return "status-chip status-chip--new";
-  }
-}
-
 export function App() {
   const {
     data: session,
-    error: sessionError,
     isPending: isSessionPending,
     refetch,
   } = authClient.useSession();
+
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
-  const [setupFormState, setSetupFormState] = useState<SetupFormState>(
-    INITIAL_SETUP_FORM_STATE,
-  );
   const [setupError, setSetupError] = useState<string | null>(null);
-  const [isCompletingSetup, setIsCompletingSetup] = useState(false);
   const [isCheckingSetup, setIsCheckingSetup] = useState(
     typeof window !== "undefined",
   );
   const [isSetupPath, setIsSetupPath] = useState(
     typeof window !== "undefined" && window.location.pathname === "/setup",
   );
-  const [loginState, setLoginState] = useState<LoginState>(INITIAL_LOGIN_STATE);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const [activeView, setActiveView] = useState<ViewType>("inbox");
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(
     null,
@@ -209,30 +59,39 @@ export function App() {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
     null,
   );
+
   const [quarantineMessages, setQuarantineMessages] = useState<
     QuarantineMessage[]
   >([]);
   const [selectedQuarantineId, setSelectedQuarantineId] = useState<
     string | null
   >(null);
-  const [isLoadingInbox, setIsLoadingInbox] = useState(false);
-  const [isLoadingQuarantine, setIsLoadingQuarantine] = useState(false);
-  const [isSavingMessage, setIsSavingMessage] = useState(false);
-  const [isReviewingQuarantine, setIsReviewingQuarantine] = useState(false);
+  const [releaseProviderKey, setReleaseProviderKey] = useState<string>("");
+
   const [members, setMembers] = useState<MemberSummary[]>([]);
   const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [memberFormState, setMemberFormState] = useState<MemberFormState>(
     INITIAL_MEMBER_FORM_STATE,
   );
+
+  const [isLoadingInbox, setIsLoadingInbox] = useState(false);
+  const [isLoadingQuarantine, setIsLoadingQuarantine] = useState(false);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [isSavingMessage, setIsSavingMessage] = useState(false);
+  const [isReviewingQuarantine, setIsReviewingQuarantine] = useState(false);
   const [isSavingMember, setIsSavingMember] = useState(false);
+
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
-  const [releaseProviderKey, setReleaseProviderKey] = useState<string>("");
 
   const isAuthenticated = Boolean(session?.user?.email);
   const isOwner = session?.user?.role === "admin";
+
+  const handleSnackbarClose = () => {
+    setStatusMessage(null);
+    setViewError(null);
+  };
 
   async function refreshSetupStatus() {
     if (typeof window === "undefined") {
@@ -268,9 +127,7 @@ export function App() {
       try {
         const status = await fetchJson<SetupStatus>("/api/setup/status");
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         setSetupStatus(status);
 
@@ -321,6 +178,7 @@ export function App() {
       setSelectedMemberId(null);
       setReleaseProviderKey("");
       setMemberFormState(INITIAL_MEMBER_FORM_STATE);
+      setActiveView("inbox");
       return;
     }
 
@@ -335,33 +193,25 @@ export function App() {
           "/api/inbox/providers",
         );
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         setProviders(response.providers);
         setReleaseProviderKey((current) => {
           if (
             current &&
-            response.providers.some(
-              (provider) => provider.provider_key === current,
-            )
+            response.providers.some((p) => p.provider_key === current)
           ) {
             return current;
           }
-
           return response.providers[0]?.provider_key ?? "";
         });
         setSelectedProviderKey((current) => {
           if (
             current &&
-            response.providers.some(
-              (provider) => provider.provider_key === current,
-            )
+            response.providers.some((p) => p.provider_key === current)
           ) {
             return current;
           }
-
           return response.providers[0]?.provider_key ?? null;
         });
       } catch (error) {
@@ -402,19 +252,13 @@ export function App() {
           `/api/inbox/providers/${selectedProviderKey}`,
         );
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         setMessages(response.messages);
         setSelectedMessageId((current) => {
-          if (
-            current &&
-            response.messages.some((message) => message.id === current)
-          ) {
+          if (current && response.messages.some((m) => m.id === current)) {
             return current;
           }
-
           return response.messages[0]?.id ?? null;
         });
       } catch (error) {
@@ -438,9 +282,7 @@ export function App() {
   }, [isAuthenticated, selectedProviderKey]);
 
   useEffect(() => {
-    if (!isAuthenticated || !isOwner) {
-      setQuarantineMessages([]);
-      setSelectedQuarantineId(null);
+    if (!isAuthenticated || !isOwner || activeView !== "quarantine") {
       return;
     }
 
@@ -454,19 +296,13 @@ export function App() {
           "/api/inbox/quarantine",
         );
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         setQuarantineMessages(response.messages);
         setSelectedQuarantineId((current) => {
-          if (
-            current &&
-            response.messages.some((message) => message.id === current)
-          ) {
+          if (current && response.messages.some((m) => m.id === current)) {
             return current;
           }
-
           return response.messages[0]?.id ?? null;
         });
       } catch (error) {
@@ -489,13 +325,10 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, isOwner]);
+  }, [isAuthenticated, isOwner, activeView]);
 
   useEffect(() => {
-    if (!isAuthenticated || !isOwner) {
-      setMembers([]);
-      setProviderOptions([]);
-      setSelectedMemberId(null);
+    if (!isAuthenticated || !isOwner || activeView !== "members") {
       return;
     }
 
@@ -510,20 +343,14 @@ export function App() {
           providers: ProviderOption[];
         }>("/api/admin/members");
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         setMembers(response.members);
         setProviderOptions(response.providers);
         setSelectedMemberId((current) => {
-          if (
-            current &&
-            response.members.some((member) => member.id === current)
-          ) {
+          if (current && response.members.some((m) => m.id === current)) {
             return current;
           }
-
           return response.members[0]?.id ?? null;
         });
       } catch (error) {
@@ -544,39 +371,10 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, isOwner]);
-
-  const selectedProvider = useMemo(
-    () =>
-      providers.find(
-        (provider) => provider.provider_key === selectedProviderKey,
-      ) ?? null,
-    [providers, selectedProviderKey],
-  );
-
-  const selectedMessage = useMemo(
-    () => messages.find((message) => message.id === selectedMessageId) ?? null,
-    [messages, selectedMessageId],
-  );
-
-  const selectedQuarantineMessage = useMemo(
-    () =>
-      quarantineMessages.find(
-        (message) => message.id === selectedQuarantineId,
-      ) ?? null,
-    [quarantineMessages, selectedQuarantineId],
-  );
-
-  const selectedMember = useMemo(
-    () => members.find((member) => member.id === selectedMemberId) ?? null,
-    [members, selectedMemberId],
-  );
+  }, [isAuthenticated, isOwner, activeView]);
 
   async function refreshProviders() {
-    if (!isAuthenticated) {
-      return;
-    }
-
+    if (!isAuthenticated) return;
     const response = await fetchJson<{ providers: ProviderSummary[] }>(
       "/api/inbox/providers",
     );
@@ -584,77 +382,42 @@ export function App() {
     setReleaseProviderKey((current) => {
       if (
         current &&
-        response.providers.some((provider) => provider.provider_key === current)
+        response.providers.some((p) => p.provider_key === current)
       ) {
         return current;
       }
-
       return response.providers[0]?.provider_key ?? "";
     });
   }
 
   async function refreshQuarantine() {
-    if (!isAuthenticated || !isOwner) {
-      return;
-    }
-
+    if (!isAuthenticated || !isOwner) return;
     const response = await fetchJson<{ messages: QuarantineMessage[] }>(
       "/api/inbox/quarantine",
     );
     setQuarantineMessages(response.messages);
     setSelectedQuarantineId((current) => {
-      if (
-        current &&
-        response.messages.some((message) => message.id === current)
-      ) {
+      if (current && response.messages.some((m) => m.id === current)) {
         return current;
       }
-
       return response.messages[0]?.id ?? null;
     });
   }
 
   async function refreshMembers() {
-    if (!isAuthenticated || !isOwner) {
-      return;
-    }
-
+    if (!isAuthenticated || !isOwner) return;
     const response = await fetchJson<{
       members: MemberSummary[];
       providers: ProviderOption[];
     }>("/api/admin/members");
-
     setMembers(response.members);
     setProviderOptions(response.providers);
     setSelectedMemberId((current) => {
-      if (current && response.members.some((member) => member.id === current)) {
+      if (current && response.members.some((m) => m.id === current)) {
         return current;
       }
-
       return response.members[0]?.id ?? null;
     });
-  }
-
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoginError(null);
-    setIsLoggingIn(true);
-
-    const { error } = await authClient.signIn.email({
-      email: loginState.email,
-      password: loginState.password,
-      rememberMe: true,
-    });
-
-    setIsLoggingIn(false);
-
-    if (error) {
-      setLoginError(error.message ?? "Unable to sign in with that account.");
-      return;
-    }
-
-    setLoginState(INITIAL_LOGIN_STATE);
-    await refetch();
   }
 
   async function handleLogout() {
@@ -664,34 +427,8 @@ export function App() {
     await refetch();
   }
 
-  async function handleSetupComplete(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsCompletingSetup(true);
-    setSetupError(null);
-    setStatusMessage(null);
-
-    try {
-      await fetchJson<{ member: { email: string } }>("/api/setup/complete", {
-        method: "POST",
-        body: JSON.stringify(setupFormState),
-      });
-
-      setSetupFormState(INITIAL_SETUP_FORM_STATE);
-      setStatusMessage("Owner account created. You are now signed in.");
-      await Promise.all([refetch(), refreshSetupStatus()]);
-    } catch (error) {
-      setSetupError(
-        error instanceof Error ? error.message : "Unable to complete setup",
-      );
-    } finally {
-      setIsCompletingSetup(false);
-    }
-  }
-
   async function handleStatusChange(nextStatus: InboxMessage["status"]) {
-    if (!selectedMessage) {
-      return;
-    }
+    if (!selectedMessageId) return;
 
     setIsSavingMessage(true);
     setStatusMessage(null);
@@ -699,7 +436,7 @@ export function App() {
 
     try {
       const response = await fetchJson<{ message: InboxMessage }>(
-        `/api/inbox/messages/${selectedMessage.id}/status`,
+        `/api/inbox/messages/${selectedMessageId}/status`,
         {
           method: "PATCH",
           body: JSON.stringify({ status: nextStatus }),
@@ -707,8 +444,8 @@ export function App() {
       );
 
       setMessages((current) =>
-        current.map((message) =>
-          message.id === response.message.id ? response.message : message,
+        current.map((m) =>
+          m.id === response.message.id ? response.message : m,
         ),
       );
       setStatusMessage(`Marked message as ${nextStatus}.`);
@@ -725,26 +462,21 @@ export function App() {
   }
 
   async function handleQuarantineReview(action: "dismiss" | "release") {
-    if (!selectedQuarantineMessage) {
-      return;
-    }
+    if (!selectedQuarantineId) return;
 
     setIsReviewingQuarantine(true);
     setStatusMessage(null);
     setViewError(null);
 
     try {
-      await fetchJson(
-        `/api/inbox/quarantine/${selectedQuarantineMessage.id}/review`,
-        {
-          method: "POST",
-          body: JSON.stringify(
-            action === "release"
-              ? { action, providerKey: releaseProviderKey }
-              : { action },
-          ),
-        },
-      );
+      await fetchJson(`/api/inbox/quarantine/${selectedQuarantineId}/review`, {
+        method: "POST",
+        body: JSON.stringify(
+          action === "release"
+            ? { action, providerKey: releaseProviderKey }
+            : { action },
+        ),
+      });
 
       setStatusMessage(
         action === "release"
@@ -803,7 +535,11 @@ export function App() {
 
       setStatusMessage(`Updated member role to ${role}.`);
       await refreshMembers();
-      await refetch();
+      if (
+        session?.user?.email === members.find((m) => m.id === userId)?.email
+      ) {
+        await refetch();
+      }
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to update member role",
@@ -844,764 +580,118 @@ export function App() {
 
   if (isSessionPending || isCheckingSetup) {
     return (
-      <main className="app-shell">
-        <section className="hero-card hero-card--centered">
-          <p className="eyebrow">Mi Casa Su Casa</p>
-          <h1>Loading your shared inbox…</h1>
-          <p className="lede">
-            Checking the current session and preparing the latest messages.
-          </p>
-        </section>
-      </main>
+      <Box
+        sx={{
+          display: "flex",
+          minHeight: "100vh",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+        }}
+      >
+        <CircularProgress size={60} sx={{ mb: 4 }} />
+        <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+          Loading your shared inbox…
+        </Typography>
+        <Typography color="text.secondary">
+          Checking the current session and preparing the latest messages.
+        </Typography>
+      </Box>
     );
   }
 
   if (!isAuthenticated && setupStatus?.needsSetup && isSetupPath) {
     return (
-      <main className="app-shell">
-        <section className="hero-card auth-card">
-          <div>
-            <p className="eyebrow">First-run setup</p>
-            <h1>Finish setting up your household inbox.</h1>
-            <p className="lede">
-              Create the initial owner account after your Cloudflare deployment
-              completes. This screen closes automatically after the first
-              successful setup.
-            </p>
-          </div>
-
-          <div className="status-card">
-            <p className="status-label">What you need</p>
-            <ul>
-              <li>
-                The owner email configured as <code>OWNER_EMAIL</code>
-              </li>
-              <li>
-                Your one-time <code>SETUP_SECRET</code>
-              </li>
-              <li>A strong password for the initial owner account</li>
-            </ul>
-          </div>
-
-          <form className="auth-form" onSubmit={handleSetupComplete}>
-            <label className="field-group">
-              <span>Owner email</span>
-              <input
-                autoComplete="email"
-                name="setup-email"
-                type="email"
-                value={setupFormState.email}
-                onChange={(event) =>
-                  setSetupFormState((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-
-            <label className="field-group">
-              <span>Owner display name</span>
-              <input
-                autoComplete="name"
-                name="setup-name"
-                value={setupFormState.name}
-                onChange={(event) =>
-                  setSetupFormState((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-
-            <label className="field-group">
-              <span>Password</span>
-              <input
-                autoComplete="new-password"
-                minLength={12}
-                name="setup-password"
-                type="password"
-                value={setupFormState.password}
-                onChange={(event) =>
-                  setSetupFormState((current) => ({
-                    ...current,
-                    password: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-
-            <label className="field-group">
-              <span>Setup secret</span>
-              <input
-                autoComplete="off"
-                name="setup-secret"
-                type="password"
-                value={setupFormState.setupSecret}
-                onChange={(event) =>
-                  setSetupFormState((current) => ({
-                    ...current,
-                    setupSecret: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-
-            {setupError ? <p className="inline-error">{setupError}</p> : null}
-
-            <button
-              className="primary-button"
-              disabled={isCompletingSetup}
-              type="submit"
-            >
-              {isCompletingSetup ? "Creating owner…" : "Complete setup"}
-            </button>
-          </form>
-        </section>
-      </main>
+      <SetupPage
+        setupError={setupError}
+        onSetupError={setSetupError}
+        onSetupComplete={async () => {
+          setStatusMessage("Owner account created. You are now signed in.");
+          await Promise.all([refetch(), refreshSetupStatus()]);
+        }}
+      />
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <main className="app-shell">
-        <section className="hero-card auth-card">
-          <div>
-            <p className="eyebrow">Mi Casa Su Casa</p>
-            <h1>Shared verification inbox, without the chaos.</h1>
-            <p className="lede">
-              Sign in with your invited household account to see the provider
-              groups you have access to and quickly find the latest verification
-              code.
-            </p>
-          </div>
-
-          <form className="auth-form" onSubmit={handleLogin}>
-            <label className="field-group">
-              <span>Email</span>
-              <input
-                autoComplete="email"
-                name="email"
-                type="email"
-                value={loginState.email}
-                onChange={(event) =>
-                  setLoginState((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-
-            <label className="field-group">
-              <span>Password</span>
-              <input
-                autoComplete="current-password"
-                name="password"
-                type="password"
-                value={loginState.password}
-                onChange={(event) =>
-                  setLoginState((current) => ({
-                    ...current,
-                    password: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-
-            {loginError || sessionError ? (
-              <p className="inline-error">
-                {loginError ?? sessionError?.message}
-              </p>
-            ) : null}
-
-            {setupError && !setupStatus?.isConfigured ? (
-              <p className="inline-error">{setupError}</p>
-            ) : null}
-
-            <button
-              className="primary-button"
-              disabled={isLoggingIn}
-              type="submit"
-            >
-              {isLoggingIn ? "Signing in…" : "Sign in"}
-            </button>
-          </form>
-        </section>
-      </main>
+      <LoginPage
+        setupStatus={setupStatus}
+        setupError={setupError}
+        onLoginSuccess={() => refetch()}
+      />
     );
   }
 
   return (
-    <main className="dashboard-shell">
-      <section className="topbar-card">
-        <div>
-          <p className="eyebrow">Mi Casa Su Casa</p>
-          <h1>Welcome back, {getDisplayName(session)}.</h1>
-          <p className="lede">
-            Scan the latest provider messages, open the code you need, and keep
-            the inbox tidy for the next person.
-          </p>
-        </div>
+    <Layout
+      session={session}
+      isOwner={isOwner}
+      onLogout={handleLogout}
+      activeView={activeView}
+      onNavigate={setActiveView}
+    >
+      {activeView === "inbox" && (
+        <InboxView
+          providers={providers}
+          selectedProviderKey={selectedProviderKey}
+          onSelectProvider={setSelectedProviderKey}
+          messages={messages}
+          selectedMessageId={selectedMessageId}
+          onSelectMessage={setSelectedMessageId}
+          isLoadingInbox={isLoadingInbox}
+          isSavingMessage={isSavingMessage}
+          onStatusChange={handleStatusChange}
+        />
+      )}
 
-        <div className="topbar-actions">
-          <div className="session-summary">
-            <span className="session-summary__label">Access</span>
-            <strong>{isOwner ? "Owner" : "Family member"}</strong>
-            <span>{session?.user?.email}</span>
-          </div>
+      {activeView === "quarantine" && isOwner && (
+        <QuarantineView
+          quarantineMessages={quarantineMessages}
+          selectedQuarantineId={selectedQuarantineId}
+          onSelectMessage={setSelectedQuarantineId}
+          isLoadingQuarantine={isLoadingQuarantine}
+          providers={providers}
+          releaseProviderKey={releaseProviderKey}
+          onReleaseProviderKeyChange={setReleaseProviderKey}
+          isReviewingQuarantine={isReviewingQuarantine}
+          onQuarantineReview={handleQuarantineReview}
+        />
+      )}
 
-          <button
-            className="secondary-button"
-            onClick={handleLogout}
-            type="button"
-          >
-            Sign out
-          </button>
-        </div>
-      </section>
+      {activeView === "members" && isOwner && (
+        <MembersView
+          members={members}
+          providerOptions={providerOptions}
+          selectedMemberId={selectedMemberId}
+          onSelectMember={setSelectedMemberId}
+          isLoadingMembers={isLoadingMembers}
+          memberFormState={memberFormState}
+          onMemberFormChange={(update) =>
+            setMemberFormState((current) => ({ ...current, ...update }))
+          }
+          onCreateMember={handleCreateMember}
+          isSavingMember={isSavingMember}
+          onRoleChange={handleMemberRoleChange}
+          onProviderAccessToggle={handleProviderAccessToggle}
+        />
+      )}
 
-      {statusMessage || viewError ? (
-        <section className="feedback-row" aria-live="polite">
-          {statusMessage ? (
-            <p className="feedback-pill">{statusMessage}</p>
-          ) : null}
-          {viewError ? (
-            <p className="feedback-pill feedback-pill--error">{viewError}</p>
-          ) : null}
-        </section>
-      ) : null}
-
-      <section className="dashboard-grid">
-        <aside className="panel-card provider-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="panel-eyebrow">Providers</p>
-              <h2>Your accessible groups</h2>
-            </div>
-            <span className="panel-meta">{providers.length} total</span>
-          </div>
-
-          <div className="provider-list">
-            {providers.map((provider) => {
-              const isSelected = provider.provider_key === selectedProviderKey;
-
-              return (
-                <button
-                  aria-pressed={isSelected}
-                  className={
-                    isSelected
-                      ? "provider-card provider-card--selected"
-                      : "provider-card"
-                  }
-                  key={provider.provider_key}
-                  onClick={() => setSelectedProviderKey(provider.provider_key)}
-                  type="button"
-                >
-                  <div>
-                    <strong>{provider.display_name}</strong>
-                    <p>{formatTimestamp(provider.latest_received_at)}</p>
-                  </div>
-                  <div className="provider-stats">
-                    <span>{provider.message_count} messages</span>
-                    <span>{provider.new_count} new</span>
-                  </div>
-                </button>
-              );
-            })}
-
-            {!providers.length && !isLoadingInbox ? (
-              <div className="empty-state">
-                <strong>No providers yet</strong>
-                <p>
-                  Once messages arrive for your household services, they’ll
-                  appear here.
-                </p>
-              </div>
-            ) : null}
-          </div>
-        </aside>
-
-        <section className="panel-card inbox-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="panel-eyebrow">Inbox</p>
-              <h2>{selectedProvider?.display_name ?? "Choose a provider"}</h2>
-            </div>
-            {selectedProvider ? (
-              <span className="panel-meta">{messages.length} messages</span>
-            ) : null}
-          </div>
-
-          <div className="two-column-panel">
-            <div className="message-list">
-              {messages.map((message) => {
-                const isSelected = message.id === selectedMessageId;
-
-                return (
-                  <button
-                    aria-pressed={isSelected}
-                    className={
-                      isSelected
-                        ? "message-card message-card--selected"
-                        : "message-card"
-                    }
-                    key={message.id}
-                    onClick={() => setSelectedMessageId(message.id)}
-                    type="button"
-                  >
-                    <div className="message-card__header">
-                      <strong>{message.subject ?? "Untitled message"}</strong>
-                      <span className={getStatusTone(message.status)}>
-                        {message.status}
-                      </span>
-                    </div>
-                    <p>{message.from_header ?? "Unknown sender"}</p>
-                    <span>{formatTimestamp(message.received_at)}</span>
-                  </button>
-                );
-              })}
-
-              {!messages.length && !isLoadingInbox ? (
-                <div className="empty-state">
-                  <strong>No messages here yet</strong>
-                  <p>
-                    Select another provider or wait for the next verification
-                    email.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-
-            <article className="detail-panel">
-              {selectedMessage ? (
-                <>
-                  <div className="detail-panel__header">
-                    <div>
-                      <p className="panel-eyebrow">Message detail</p>
-                      <h3>{selectedMessage.subject ?? "Untitled message"}</h3>
-                      <p>{selectedMessage.from_header ?? "Unknown sender"}</p>
-                    </div>
-                    <span className={getStatusTone(selectedMessage.status)}>
-                      {selectedMessage.status}
-                    </span>
-                  </div>
-
-                  <div className="code-card">
-                    <span className="code-card__label">Verification code</span>
-                    <strong>
-                      {selectedMessage.extracted_code ?? "No code detected"}
-                    </strong>
-                  </div>
-
-                  <div className="message-actions">
-                    <button
-                      className="secondary-button"
-                      disabled={isSavingMessage}
-                      onClick={() => handleStatusChange("new")}
-                      type="button"
-                    >
-                      Mark new
-                    </button>
-                    <button
-                      className="secondary-button"
-                      disabled={isSavingMessage}
-                      onClick={() => handleStatusChange("used")}
-                      type="button"
-                    >
-                      Mark used
-                    </button>
-                    <button
-                      className="secondary-button"
-                      disabled={isSavingMessage}
-                      onClick={() => handleStatusChange("expired")}
-                      type="button"
-                    >
-                      Mark expired
-                    </button>
-                  </div>
-
-                  <section className="message-body-card">
-                    <h4>Plain-text message</h4>
-                    <pre>{selectedMessage.text_body}</pre>
-                  </section>
-                </>
-              ) : (
-                <div className="empty-state empty-state--detail">
-                  <strong>Select a message</strong>
-                  <p>
-                    Pick the most recent message in a provider group to see the
-                    full code and body.
-                  </p>
-                </div>
-              )}
-            </article>
-          </div>
-        </section>
-
-        {isOwner ? (
-          <section className="panel-card owner-admin-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="panel-eyebrow">Owner tools</p>
-                <h2>Household access</h2>
-              </div>
-              <span className="panel-meta">{members.length} members</span>
-            </div>
-
-            <div className="owner-admin-grid">
-              <form
-                className="detail-panel admin-form-panel"
-                onSubmit={handleCreateMember}
-              >
-                <div className="detail-panel__header">
-                  <div>
-                    <p className="panel-eyebrow">Invite-only onboarding</p>
-                    <h3>Create a household member</h3>
-                    <p>
-                      Provision a member directly, then share the generated
-                      login details privately with them.
-                    </p>
-                  </div>
-                </div>
-
-                <label className="field-group">
-                  <span>Name</span>
-                  <input
-                    value={memberFormState.name}
-                    onChange={(event) =>
-                      setMemberFormState((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    required
-                  />
-                </label>
-
-                <label className="field-group">
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    value={memberFormState.email}
-                    onChange={(event) =>
-                      setMemberFormState((current) => ({
-                        ...current,
-                        email: event.target.value,
-                      }))
-                    }
-                    required
-                  />
-                </label>
-
-                <label className="field-group">
-                  <span>Temporary password</span>
-                  <input
-                    type="password"
-                    value={memberFormState.password}
-                    onChange={(event) =>
-                      setMemberFormState((current) => ({
-                        ...current,
-                        password: event.target.value,
-                      }))
-                    }
-                    minLength={12}
-                    required
-                  />
-                </label>
-
-                <label className="field-group">
-                  <span>Role</span>
-                  <select
-                    value={memberFormState.role}
-                    onChange={(event) =>
-                      setMemberFormState((current) => ({
-                        ...current,
-                        role:
-                          event.target.value === "admin" ? "admin" : "member",
-                      }))
-                    }
-                  >
-                    <option value="member">Member</option>
-                    <option value="admin">Owner</option>
-                  </select>
-                </label>
-
-                <button
-                  className="primary-button"
-                  disabled={isSavingMember}
-                  type="submit"
-                >
-                  {isSavingMember ? "Creating member…" : "Create member"}
-                </button>
-              </form>
-
-              <div className="two-column-panel owner-members-panel">
-                <div className="message-list">
-                  {members.map((member) => {
-                    const isSelected = member.id === selectedMemberId;
-
-                    return (
-                      <button
-                        aria-pressed={isSelected}
-                        className={
-                          isSelected
-                            ? "message-card message-card--selected"
-                            : "message-card"
-                        }
-                        key={member.id}
-                        onClick={() => setSelectedMemberId(member.id)}
-                        type="button"
-                      >
-                        <div className="message-card__header">
-                          <strong>{member.name}</strong>
-                          <span
-                            className={getStatusTone(
-                              member.role === "admin" ? "used" : "new",
-                            )}
-                          >
-                            {member.role}
-                          </span>
-                        </div>
-                        <p>{member.email}</p>
-                        <span>
-                          {member.providerAccess.length} provider
-                          {member.providerAccess.length === 1 ? "" : "s"}
-                        </span>
-                      </button>
-                    );
-                  })}
-
-                  {!members.length && !isLoadingMembers ? (
-                    <div className="empty-state">
-                      <strong>No members yet</strong>
-                      <p>
-                        Create the first invited household member to get
-                        started.
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-
-                <article className="detail-panel">
-                  {selectedMember ? (
-                    <>
-                      <div className="detail-panel__header">
-                        <div>
-                          <p className="panel-eyebrow">Member detail</p>
-                          <h3>{selectedMember.name}</h3>
-                          <p>{selectedMember.email}</p>
-                        </div>
-                      </div>
-
-                      <label className="field-group">
-                        <span>Role</span>
-                        <select
-                          value={selectedMember.role}
-                          onChange={(event) =>
-                            void handleMemberRoleChange(
-                              selectedMember.id,
-                              event.target.value,
-                            )
-                          }
-                        >
-                          <option value="member">Member</option>
-                          <option value="admin">Owner</option>
-                        </select>
-                      </label>
-
-                      <section className="message-body-card message-body-card--tight">
-                        <h4>Provider access</h4>
-                        <div className="access-grid">
-                          {providerOptions.map((provider) => {
-                            const hasAccess =
-                              selectedMember.providerAccess.some(
-                                (access) =>
-                                  access.providerKey === provider.provider_key,
-                              );
-
-                            return (
-                              <button
-                                className={
-                                  hasAccess
-                                    ? "access-pill access-pill--active"
-                                    : "access-pill"
-                                }
-                                key={provider.id}
-                                onClick={() =>
-                                  void handleProviderAccessToggle(
-                                    selectedMember.id,
-                                    provider.provider_key,
-                                    hasAccess,
-                                  )
-                                }
-                                type="button"
-                              >
-                                {provider.display_name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </section>
-                    </>
-                  ) : (
-                    <div className="empty-state empty-state--detail">
-                      <strong>Select a household member</strong>
-                      <p>Choose a member to adjust role or provider access.</p>
-                    </div>
-                  )}
-                </article>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        {isOwner ? (
-          <section className="panel-card quarantine-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="panel-eyebrow">Owner tools</p>
-                <h2>Quarantine review</h2>
-              </div>
-              <span className="panel-meta">
-                {quarantineMessages.length} pending
-              </span>
-            </div>
-
-            <div className="two-column-panel">
-              <div className="message-list">
-                {quarantineMessages.map((message) => {
-                  const isSelected = message.id === selectedQuarantineId;
-
-                  return (
-                    <button
-                      aria-pressed={isSelected}
-                      className={
-                        isSelected
-                          ? "message-card message-card--selected"
-                          : "message-card"
-                      }
-                      key={message.id}
-                      onClick={() => setSelectedQuarantineId(message.id)}
-                      type="button"
-                    >
-                      <div className="message-card__header">
-                        <strong>{message.subject ?? "Untitled message"}</strong>
-                        <span className="status-chip status-chip--quarantine">
-                          review
-                        </span>
-                      </div>
-                      <p>{message.envelope_from}</p>
-                      <span>{formatTimestamp(message.received_at)}</span>
-                    </button>
-                  );
-                })}
-
-                {!quarantineMessages.length && !isLoadingQuarantine ? (
-                  <div className="empty-state">
-                    <strong>Quarantine is empty</strong>
-                    <p>
-                      Messages that need manual classification will appear here
-                      for owner review.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-
-              <article className="detail-panel">
-                {selectedQuarantineMessage ? (
-                  <>
-                    <div className="detail-panel__header">
-                      <div>
-                        <p className="panel-eyebrow">Quarantine detail</p>
-                        <h3>
-                          {selectedQuarantineMessage.subject ??
-                            "Untitled message"}
-                        </h3>
-                        <p>{selectedQuarantineMessage.envelope_from}</p>
-                      </div>
-                      <span className="status-chip status-chip--quarantine">
-                        Needs review
-                      </span>
-                    </div>
-
-                    <div className="code-card">
-                      <span className="code-card__label">Detected code</span>
-                      <strong>
-                        {selectedQuarantineMessage.extracted_code ??
-                          "No code detected"}
-                      </strong>
-                    </div>
-
-                    <section className="message-body-card message-body-card--tight">
-                      <h4>Why it was quarantined</h4>
-                      <p>{selectedQuarantineMessage.quarantine_reason}</p>
-                    </section>
-
-                    <label className="field-group">
-                      <span>Release to provider</span>
-                      <select
-                        value={releaseProviderKey}
-                        onChange={(event) =>
-                          setReleaseProviderKey(event.target.value)
-                        }
-                      >
-                        {providers.map((provider) => (
-                          <option
-                            key={provider.provider_key}
-                            value={provider.provider_key}
-                          >
-                            {provider.display_name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <div className="message-actions">
-                      <button
-                        className="primary-button"
-                        disabled={isReviewingQuarantine || !releaseProviderKey}
-                        onClick={() => handleQuarantineReview("release")}
-                        type="button"
-                      >
-                        Release to inbox
-                      </button>
-                      <button
-                        className="secondary-button"
-                        disabled={isReviewingQuarantine}
-                        onClick={() => handleQuarantineReview("dismiss")}
-                        type="button"
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-
-                    <section className="message-body-card">
-                      <h4>Plain-text message</h4>
-                      <pre>{selectedQuarantineMessage.text_body}</pre>
-                    </section>
-                  </>
-                ) : (
-                  <div className="empty-state empty-state--detail">
-                    <strong>Select a quarantined message</strong>
-                    <p>
-                      Review the classification reason, then release it to the
-                      right provider or dismiss it.
-                    </p>
-                  </div>
-                )}
-              </article>
-            </div>
-          </section>
-        ) : null}
-      </section>
-    </main>
+      <Snackbar
+        open={Boolean(statusMessage || viewError)}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={handleSnackbarClose}
+          severity={viewError ? "error" : "success"}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {viewError || statusMessage}
+        </Alert>
+      </Snackbar>
+    </Layout>
   );
 }
