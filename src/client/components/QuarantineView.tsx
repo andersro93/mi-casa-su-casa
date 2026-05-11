@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Alert,
   Box,
@@ -19,7 +18,8 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import type { QuarantineMessage, ProviderSummary } from "../types";
+import React from "react";
+import type { ProviderSummary, QuarantineMessage } from "../types";
 import { formatTimestamp } from "../utils";
 
 interface QuarantineViewProps {
@@ -50,12 +50,30 @@ export function QuarantineView({
   );
 
   return (
-    <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 3, height: "100%" }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: { xs: "column", md: "row" },
+        gap: 3,
+        height: "100%",
+      }}
+    >
       <Box sx={{ width: { xs: "100%", md: 360 }, flexShrink: 0 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold" }}>
+        <Typography
+          variant="overline"
+          color="text.secondary"
+          sx={{ fontWeight: "bold" }}
+        >
           Owner tools
         </Typography>
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", mb: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            mb: 2,
+          }}
+        >
           <Typography variant="h5" component="h2" sx={{ fontWeight: "bold" }}>
             Quarantine review
           </Typography>
@@ -80,7 +98,13 @@ export function QuarantineView({
                     >
                       <ListItemText
                         primary={
-                          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              mb: 0.5,
+                            }}
+                          >
                             <Typography
                               variant="subtitle2"
                               sx={{
@@ -115,7 +139,11 @@ export function QuarantineView({
                             >
                               {message.envelope_from}
                             </Typography>
-                            <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5, display: "block" }}>
+                            <Typography
+                              variant="caption"
+                              color="text.disabled"
+                              sx={{ mt: 0.5, display: "block" }}
+                            >
                               {formatTimestamp(message.received_at)}
                             </Typography>
                           </>
@@ -129,11 +157,16 @@ export function QuarantineView({
 
             {!quarantineMessages.length && !isLoadingQuarantine && (
               <Box sx={{ p: 4, textAlign: "center" }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: "bold" }} gutterBottom>
+                <Typography
+                  variant="subtitle1"
+                  sx={{ fontWeight: "bold" }}
+                  gutterBottom
+                >
                   Quarantine is empty
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Messages that need manual classification will appear here for owner review.
+                  Messages that need manual classification will appear here for
+                  owner review.
                 </Typography>
               </Box>
             )}
@@ -142,16 +175,30 @@ export function QuarantineView({
       </Box>
 
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold" }}>
+        <Typography
+          variant="overline"
+          color="text.secondary"
+          sx={{ fontWeight: "bold" }}
+        >
           Quarantine detail
         </Typography>
-        <Typography variant="h5" component="h2" sx={{ fontWeight: "bold", mb: 2, visibility: "hidden" }}>
+        <Typography
+          variant="h5"
+          component="h2"
+          sx={{ fontWeight: "bold", mb: 2, visibility: "hidden" }}
+        >
           Detail
         </Typography>
 
         {selectedQuarantineMessage ? (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
+            >
               <Box>
                 <Typography variant="h5" sx={{ fontWeight: "bold", mb: 0.5 }}>
                   {selectedQuarantineMessage.subject ?? "Untitled message"}
@@ -167,19 +214,38 @@ export function QuarantineView({
               />
             </Box>
 
-            <Card elevation={0} sx={{ border: 1, borderColor: "divider", borderRadius: 2, bgcolor: "background.default" }}>
+            <Card
+              elevation={0}
+              sx={{
+                border: 1,
+                borderColor: "divider",
+                borderRadius: 2,
+                bgcolor: "background.default",
+              }}
+            >
               <CardContent sx={{ p: 4, textAlign: "center" }}>
-                <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1, fontWeight: "bold" }}>
+                <Typography
+                  variant="overline"
+                  color="text.secondary"
+                  sx={{ display: "block", mb: 1, fontWeight: "bold" }}
+                >
                   Detected code
                 </Typography>
-                <Typography variant="h3" sx={{ fontWeight: "bold", letterSpacing: 2 }}>
-                  {selectedQuarantineMessage.extracted_code ?? "No code detected"}
+                <Typography
+                  variant="h3"
+                  sx={{ fontWeight: "bold", letterSpacing: 2 }}
+                >
+                  {selectedQuarantineMessage.extracted_code ??
+                    "No code detected"}
                 </Typography>
               </CardContent>
             </Card>
 
             <Alert severity="warning" sx={{ borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 0.5 }}>
+              <Typography
+                variant="subtitle2"
+                sx={{ fontWeight: "bold", mb: 0.5 }}
+              >
                 Why it was quarantined
               </Typography>
               <Typography variant="body2">
@@ -187,9 +253,18 @@ export function QuarantineView({
               </Typography>
             </Alert>
 
-            <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 2, alignItems: { xs: "stretch", sm: "flex-end" } }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                gap: 2,
+                alignItems: { xs: "stretch", sm: "flex-end" },
+              }}
+            >
               <FormControl sx={{ minWidth: 200, flexGrow: 1 }}>
-                <InputLabel id="release-provider-label">Release to provider</InputLabel>
+                <InputLabel id="release-provider-label">
+                  Release to provider
+                </InputLabel>
                 <Select
                   labelId="release-provider-label"
                   value={releaseProviderKey}
@@ -197,7 +272,10 @@ export function QuarantineView({
                   onChange={(e) => onReleaseProviderKeyChange(e.target.value)}
                 >
                   {providers.map((provider) => (
-                    <MenuItem key={provider.provider_key} value={provider.provider_key}>
+                    <MenuItem
+                      key={provider.provider_key}
+                      value={provider.provider_key}
+                    >
                       {provider.display_name}
                     </MenuItem>
                   ))}
@@ -226,7 +304,10 @@ export function QuarantineView({
             </Box>
 
             <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: "bold" }}>
+              <Typography
+                variant="subtitle2"
+                sx={{ mb: 2, fontWeight: "bold" }}
+              >
                 Plain-text message
               </Typography>
               <Box
@@ -244,12 +325,21 @@ export function QuarantineView({
             </Paper>
           </Box>
         ) : (
-          <Paper variant="outlined" sx={{ p: 6, textAlign: "center", borderRadius: 2, borderStyle: "dashed" }}>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 6,
+              textAlign: "center",
+              borderRadius: 2,
+              borderStyle: "dashed",
+            }}
+          >
             <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
               Select a quarantined message
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Review the classification reason, then release it to the right provider or dismiss it.
+              Review the classification reason, then release it to the right
+              provider or dismiss it.
             </Typography>
           </Paper>
         )}

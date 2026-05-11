@@ -1,4 +1,3 @@
-import React, { type FormEvent, useState } from "react";
 import {
   Alert,
   Box,
@@ -9,6 +8,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { type FormEvent, useState } from "react";
 import type { SetupFormState } from "../types";
 import { fetchJson } from "../utils";
 
@@ -47,7 +47,7 @@ export function SetupPage({
         password: "",
         setupSecret: "",
       });
-      
+
       onSetupComplete();
     } catch (error) {
       onSetupError(
@@ -71,29 +71,49 @@ export function SetupPage({
       >
         <Card elevation={3} sx={{ borderRadius: 3 }}>
           <CardContent sx={{ p: 4 }}>
-            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold", letterSpacing: 1 }}>
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              sx={{ fontWeight: "bold", letterSpacing: 1 }}
+            >
               First-run setup
             </Typography>
-            <Typography variant="h4" component="h1" gutterBottom sx={{ mt: 1, fontWeight: "bold" }}>
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{ mt: 1, fontWeight: "bold" }}
+            >
               Finish setting up your household inbox.
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-              Create the initial owner account after your Cloudflare deployment completes. This screen closes automatically after the first successful setup.
+              Create the initial owner account after your Cloudflare deployment
+              completes. This screen closes automatically after the first
+              successful setup.
             </Typography>
 
             <Alert severity="info" sx={{ mb: 4, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 0.5 }}>
+              <Typography
+                variant="subtitle2"
+                sx={{ fontWeight: "bold", mb: 0.5 }}
+              >
                 What you need
               </Typography>
               <Box component="ul" sx={{ m: 0, pl: 2 }}>
                 <li>
-                  <Typography variant="body2">The owner email configured as <code>OWNER_EMAIL</code></Typography>
+                  <Typography variant="body2">
+                    The owner email configured as <code>OWNER_EMAIL</code>
+                  </Typography>
                 </li>
                 <li>
-                  <Typography variant="body2">Your one-time <code>SETUP_SECRET</code></Typography>
+                  <Typography variant="body2">
+                    Your one-time <code>SETUP_SECRET</code>
+                  </Typography>
                 </li>
                 <li>
-                  <Typography variant="body2">A strong password for the initial owner account</Typography>
+                  <Typography variant="body2">
+                    A strong password for the initial owner account
+                  </Typography>
                 </li>
               </Box>
             </Alert>

@@ -1,5 +1,5 @@
-import React, { type FormEvent, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -7,10 +7,10 @@ import {
   Container,
   TextField,
   Typography,
-  Alert,
 } from "@mui/material";
-import type { LoginState, SetupStatus } from "../types";
 import { authClient } from "@server/auth/client";
+import { type FormEvent, useState } from "react";
+import type { LoginState, SetupStatus } from "../types";
 
 interface LoginPageProps {
   setupStatus: SetupStatus | null;
@@ -23,7 +23,10 @@ export function LoginPage({
   setupError,
   onLoginSuccess,
 }: LoginPageProps) {
-  const [loginState, setLoginState] = useState<LoginState>({ email: "", password: "" });
+  const [loginState, setLoginState] = useState<LoginState>({
+    email: "",
+    password: "",
+  });
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -62,14 +65,25 @@ export function LoginPage({
       >
         <Card elevation={3} sx={{ borderRadius: 3 }}>
           <CardContent sx={{ p: 4 }}>
-            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold", letterSpacing: 1 }}>
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              sx={{ fontWeight: "bold", letterSpacing: 1 }}
+            >
               Mi Casa Su Casa
             </Typography>
-            <Typography variant="h4" component="h1" gutterBottom sx={{ mt: 1, fontWeight: "bold" }}>
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{ mt: 1, fontWeight: "bold" }}
+            >
               Shared verification inbox, without the chaos.
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-              Sign in with your invited household account to see the provider groups you have access to and quickly find the latest verification code.
+              Sign in with your invited household account to see the provider
+              groups you have access to and quickly find the latest verification
+              code.
             </Typography>
 
             <Box component="form" onSubmit={handleLogin} noValidate>

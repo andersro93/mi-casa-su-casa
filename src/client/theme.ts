@@ -62,9 +62,10 @@ export function getTheme(mode: "light" | "dark") {
       MuiCard: {
         styleOverrides: {
           root: {
-            boxShadow: mode === "light" 
-              ? "0px 4px 20px rgba(0, 0, 0, 0.05)" 
-              : "0px 4px 20px rgba(0, 0, 0, 0.5)",
+            boxShadow:
+              mode === "light"
+                ? "0px 4px 20px rgba(0, 0, 0, 0.05)"
+                : "0px 4px 20px rgba(0, 0, 0, 0.5)",
           },
         },
       },

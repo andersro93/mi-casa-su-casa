@@ -1,13 +1,15 @@
+import { CssBaseline, ThemeProvider, useMediaQuery } from "@mui/material";
 import { StrictMode, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ThemeProvider, CssBaseline, useMediaQuery } from "@mui/material";
 
 import { App } from "./App";
 import { ColorModeContext, getTheme } from "./theme";
 
 function AppWrapper() {
   const prefersDarkMode = useMediaQuery("(prefers-color-scheme: dark)");
-  const [mode, setMode] = useState<"light" | "dark">(prefersDarkMode ? "dark" : "light");
+  const [mode, setMode] = useState<"light" | "dark">(
+    prefersDarkMode ? "dark" : "light",
+  );
 
   const colorMode = useMemo(
     () => ({

@@ -1,7 +1,16 @@
-import React, { useState, useContext } from "react";
+import {
+  Brightness4,
+  Brightness7,
+  Inbox as InboxIcon,
+  Logout as LogoutIcon,
+  Menu as MenuIcon,
+  People as PeopleIcon,
+  Security as SecurityIcon,
+} from "@mui/icons-material";
 import {
   AppBar,
   Box,
+  Divider,
   Drawer,
   IconButton,
   List,
@@ -13,17 +22,9 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
-  Divider,
 } from "@mui/material";
-import {
-  Menu as MenuIcon,
-  Inbox as InboxIcon,
-  Security as SecurityIcon,
-  People as PeopleIcon,
-  Brightness4,
-  Brightness7,
-  Logout as LogoutIcon,
-} from "@mui/icons-material";
+import type React from "react";
+import { useContext, useState } from "react";
 import { ColorModeContext } from "../theme";
 import type { SessionData } from "../types";
 import { getDisplayName } from "../utils";
@@ -68,7 +69,12 @@ export function Layout({
   const drawerContent = (
     <>
       <Toolbar>
-        <Typography variant="h6" noWrap component="div" sx={{ fontWeight: "bold" }}>
+        <Typography
+          variant="h6"
+          noWrap
+          component="div"
+          sx={{ fontWeight: "bold" }}
+        >
           Mi Casa Su Casa
         </Typography>
       </Toolbar>
@@ -90,15 +96,21 @@ export function Layout({
             sx={{ borderRadius: 2 }}
           >
             <ListItemIcon>
-              <InboxIcon color={activeView === "inbox" ? "primary" : "inherit"} />
-            </ListItemIcon>
-              <ListItemText
-                primary={
-                  <Typography sx={{ fontWeight: activeView === 'inbox' ? 'bold' : 'normal' }}>
-                    Inbox
-                  </Typography>
-                }
+              <InboxIcon
+                color={activeView === "inbox" ? "primary" : "inherit"}
               />
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                <Typography
+                  sx={{
+                    fontWeight: activeView === "inbox" ? "bold" : "normal",
+                  }}
+                >
+                  Inbox
+                </Typography>
+              }
+            />
           </ListItemButton>
         </ListItem>
 
@@ -111,11 +123,18 @@ export function Layout({
                 sx={{ borderRadius: 2 }}
               >
                 <ListItemIcon>
-                  <SecurityIcon color={activeView === "quarantine" ? "primary" : "inherit"} />
+                  <SecurityIcon
+                    color={activeView === "quarantine" ? "primary" : "inherit"}
+                  />
                 </ListItemIcon>
                 <ListItemText
                   primary={
-                    <Typography sx={{ fontWeight: activeView === "quarantine" ? "bold" : "normal" }}>
+                    <Typography
+                      sx={{
+                        fontWeight:
+                          activeView === "quarantine" ? "bold" : "normal",
+                      }}
+                    >
                       Quarantine
                     </Typography>
                   }
@@ -130,11 +149,18 @@ export function Layout({
                 sx={{ borderRadius: 2 }}
               >
                 <ListItemIcon>
-                  <PeopleIcon color={activeView === "members" ? "primary" : "inherit"} />
+                  <PeopleIcon
+                    color={activeView === "members" ? "primary" : "inherit"}
+                  />
                 </ListItemIcon>
                 <ListItemText
                   primary={
-                    <Typography sx={{ fontWeight: activeView === "members" ? "bold" : "normal" }}>
+                    <Typography
+                      sx={{
+                        fontWeight:
+                          activeView === "members" ? "bold" : "normal",
+                      }}
+                    >
                       Members
                     </Typography>
                   }
@@ -171,17 +197,29 @@ export function Layout({
           >
             <MenuIcon />
           </IconButton>
-          
+
           <Box sx={{ flexGrow: 1 }} />
 
-          <Typography variant="body2" sx={{ mr: 2, display: { xs: "none", sm: "block" } }}>
+          <Typography
+            variant="body2"
+            sx={{ mr: 2, display: { xs: "none", sm: "block" } }}
+          >
             {getDisplayName(session)}
           </Typography>
 
-          <IconButton sx={{ ml: 1 }} onClick={colorMode.toggleColorMode} color="inherit">
+          <IconButton
+            sx={{ ml: 1 }}
+            onClick={colorMode.toggleColorMode}
+            color="inherit"
+          >
             {theme.palette.mode === "dark" ? <Brightness7 /> : <Brightness4 />}
           </IconButton>
-          <IconButton sx={{ ml: 1 }} onClick={onLogout} color="inherit" title="Sign out">
+          <IconButton
+            sx={{ ml: 1 }}
+            onClick={onLogout}
+            color="inherit"
+            title="Sign out"
+          >
             <LogoutIcon />
           </IconButton>
         </Toolbar>

@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Box,
   Button,
@@ -14,6 +13,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import React from "react";
 import type { InboxMessage, ProviderSummary } from "../types";
 import { formatTimestamp } from "../utils";
 
@@ -59,13 +59,31 @@ export function InboxView({
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 3, height: "100%" }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: { xs: "column", md: "row" },
+        gap: 3,
+        height: "100%",
+      }}
+    >
       {/* Providers Column */}
       <Box sx={{ width: { xs: "100%", md: 320 }, flexShrink: 0 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold" }}>
+        <Typography
+          variant="overline"
+          color="text.secondary"
+          sx={{ fontWeight: "bold" }}
+        >
           Providers
         </Typography>
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", mb: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            mb: 2,
+          }}
+        >
           <Typography variant="h5" component="h2" sx={{ fontWeight: "bold" }}>
             Your accessible groups
           </Typography>
@@ -87,19 +105,44 @@ export function InboxView({
                     >
                       <ListItemText
                         primary={
-                          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: isSelected ? "bold" : "medium" }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              mb: 0.5,
+                            }}
+                          >
+                            <Typography
+                              variant="subtitle1"
+                              sx={{
+                                fontWeight: isSelected ? "bold" : "medium",
+                              }}
+                            >
                               {provider.display_name}
                             </Typography>
                             {provider.new_count > 0 && (
-                              <Chip label={`${provider.new_count} new`} size="small" color="primary" />
+                              <Chip
+                                label={`${provider.new_count} new`}
+                                size="small"
+                                color="primary"
+                              />
                             )}
                           </Box>
                         }
                         secondary={
-                          <Box sx={{ display: "flex", justifyContent: "space-between", color: "text.secondary" }}>
-                            <Typography variant="body2">{formatTimestamp(provider.latest_received_at)}</Typography>
-                            <Typography variant="body2">{provider.message_count} total</Typography>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              color: "text.secondary",
+                            }}
+                          >
+                            <Typography variant="body2">
+                              {formatTimestamp(provider.latest_received_at)}
+                            </Typography>
+                            <Typography variant="body2">
+                              {provider.message_count} total
+                            </Typography>
                           </Box>
                         }
                       />
@@ -111,11 +154,16 @@ export function InboxView({
 
             {!providers.length && !isLoadingInbox && (
               <Box sx={{ p: 4, textAlign: "center" }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: "bold" }} gutterBottom>
+                <Typography
+                  variant="subtitle1"
+                  sx={{ fontWeight: "bold" }}
+                  gutterBottom
+                >
                   No providers yet
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Once messages arrive for your household services, they’ll appear here.
+                  Once messages arrive for your household services, they’ll
+                  appear here.
                 </Typography>
               </Box>
             )}
@@ -125,10 +173,21 @@ export function InboxView({
 
       {/* Messages Column */}
       <Box sx={{ width: { xs: "100%", md: 360 }, flexShrink: 0 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold" }}>
+        <Typography
+          variant="overline"
+          color="text.secondary"
+          sx={{ fontWeight: "bold" }}
+        >
           Inbox
         </Typography>
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", mb: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            mb: 2,
+          }}
+        >
           <Typography variant="h5" component="h2" sx={{ fontWeight: "bold" }}>
             {selectedProvider?.display_name ?? "Choose a provider"}
           </Typography>
@@ -155,7 +214,13 @@ export function InboxView({
                     >
                       <ListItemText
                         primary={
-                          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              mb: 0.5,
+                            }}
+                          >
                             <Typography
                               variant="subtitle2"
                               sx={{
@@ -190,7 +255,11 @@ export function InboxView({
                             >
                               {message.from_header ?? "Unknown sender"}
                             </Typography>
-                            <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5, display: "block" }}>
+                            <Typography
+                              variant="caption"
+                              color="text.disabled"
+                              sx={{ mt: 0.5, display: "block" }}
+                            >
                               {formatTimestamp(message.received_at)}
                             </Typography>
                           </>
@@ -204,11 +273,16 @@ export function InboxView({
 
             {!messages.length && !isLoadingInbox && (
               <Box sx={{ p: 4, textAlign: "center" }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: "bold" }} gutterBottom>
+                <Typography
+                  variant="subtitle1"
+                  sx={{ fontWeight: "bold" }}
+                  gutterBottom
+                >
                   No messages here yet
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Select another provider or wait for the next verification email.
+                  Select another provider or wait for the next verification
+                  email.
                 </Typography>
               </Box>
             )}
@@ -218,16 +292,30 @@ export function InboxView({
 
       {/* Message Detail Column */}
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold" }}>
+        <Typography
+          variant="overline"
+          color="text.secondary"
+          sx={{ fontWeight: "bold" }}
+        >
           Message Detail
         </Typography>
-        <Typography variant="h5" component="h2" sx={{ fontWeight: "bold", mb: 2, visibility: "hidden" }}>
+        <Typography
+          variant="h5"
+          component="h2"
+          sx={{ fontWeight: "bold", mb: 2, visibility: "hidden" }}
+        >
           Detail
         </Typography>
 
         {selectedMessage ? (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
+            >
               <Box>
                 <Typography variant="h5" sx={{ fontWeight: "bold", mb: 0.5 }}>
                   {selectedMessage.subject ?? "Untitled message"}
@@ -243,12 +331,27 @@ export function InboxView({
               />
             </Box>
 
-            <Card elevation={0} sx={{ border: 1, borderColor: "divider", borderRadius: 2, bgcolor: "background.default" }}>
+            <Card
+              elevation={0}
+              sx={{
+                border: 1,
+                borderColor: "divider",
+                borderRadius: 2,
+                bgcolor: "background.default",
+              }}
+            >
               <CardContent sx={{ p: 4, textAlign: "center" }}>
-                <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1, fontWeight: "bold" }}>
+                <Typography
+                  variant="overline"
+                  color="text.secondary"
+                  sx={{ display: "block", mb: 1, fontWeight: "bold" }}
+                >
                   Verification code
                 </Typography>
-                <Typography variant="h3" sx={{ fontWeight: "bold", letterSpacing: 2 }}>
+                <Typography
+                  variant="h3"
+                  sx={{ fontWeight: "bold", letterSpacing: 2 }}
+                >
                   {selectedMessage.extracted_code ?? "No code detected"}
                 </Typography>
               </CardContent>
@@ -279,7 +382,10 @@ export function InboxView({
             </Stack>
 
             <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: "bold" }}>
+              <Typography
+                variant="subtitle2"
+                sx={{ mb: 2, fontWeight: "bold" }}
+              >
                 Plain-text message
               </Typography>
               <Box
@@ -297,12 +403,21 @@ export function InboxView({
             </Paper>
           </Box>
         ) : (
-          <Paper variant="outlined" sx={{ p: 6, textAlign: "center", borderRadius: 2, borderStyle: "dashed" }}>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 6,
+              textAlign: "center",
+              borderRadius: 2,
+              borderStyle: "dashed",
+            }}
+          >
             <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
               Select a message
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Pick the most recent message in a provider group to see the full code and body.
+              Pick the most recent message in a provider group to see the full
+              code and body.
             </Typography>
           </Paper>
         )}

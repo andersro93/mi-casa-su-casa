@@ -1,25 +1,29 @@
+import {
+  Alert,
+  Box,
+  CircularProgress,
+  Snackbar,
+  Typography,
+} from "@mui/material";
 import { authClient } from "@server/auth/client";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
+import { InboxView } from "./components/InboxView";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./components/LoginPage";
-import { SetupPage } from "./components/SetupPage";
-import { InboxView } from "./components/InboxView";
-import { QuarantineView } from "./components/QuarantineView";
 import { MembersView } from "./components/MembersView";
-import {
-  type SetupStatus,
-  type SetupFormState,
-  type LoginState,
-  type ProviderSummary,
-  type InboxMessage,
-  type QuarantineMessage,
-  type MemberSummary,
-  type ProviderOption,
-  type MemberFormState,
-  type ProviderMessagesResponse,
+import { QuarantineView } from "./components/QuarantineView";
+import { SetupPage } from "./components/SetupPage";
+import type {
+  InboxMessage,
+  MemberFormState,
+  MemberSummary,
+  ProviderMessagesResponse,
+  ProviderOption,
+  ProviderSummary,
+  QuarantineMessage,
+  SetupStatus,
 } from "./types";
 import { fetchJson } from "./utils";
-import { Box, CircularProgress, Typography, Alert, Snackbar } from "@mui/material";
 
 type ViewType = "inbox" | "quarantine" | "members";
 
@@ -33,7 +37,6 @@ const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
 export function App() {
   const {
     data: session,
-    error: sessionError,
     isPending: isSessionPending,
     refetch,
   } = authClient.useSession();
@@ -49,18 +52,28 @@ export function App() {
 
   const [activeView, setActiveView] = useState<ViewType>("inbox");
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
-  const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(null);
+  const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(
+    null,
+  );
   const [messages, setMessages] = useState<InboxMessage[]>([]);
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
-  
-  const [quarantineMessages, setQuarantineMessages] = useState<QuarantineMessage[]>([]);
-  const [selectedQuarantineId, setSelectedQuarantineId] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
+    null,
+  );
+
+  const [quarantineMessages, setQuarantineMessages] = useState<
+    QuarantineMessage[]
+  >([]);
+  const [selectedQuarantineId, setSelectedQuarantineId] = useState<
+    string | null
+  >(null);
   const [releaseProviderKey, setReleaseProviderKey] = useState<string>("");
 
   const [members, setMembers] = useState<MemberSummary[]>([]);
   const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
-  const [memberFormState, setMemberFormState] = useState<MemberFormState>(INITIAL_MEMBER_FORM_STATE);
+  const [memberFormState, setMemberFormState] = useState<MemberFormState>(
+    INITIAL_MEMBER_FORM_STATE,
+  );
 
   const [isLoadingInbox, setIsLoadingInbox] = useState(false);
   const [isLoadingQuarantine, setIsLoadingQuarantine] = useState(false);
@@ -121,7 +134,10 @@ export function App() {
         if (status.needsSetup && window.location.pathname !== "/setup") {
           window.history.replaceState({}, "", "/setup");
           setIsSetupPath(true);
-        } else if (!status.needsSetup && window.location.pathname === "/setup") {
+        } else if (
+          !status.needsSetup &&
+          window.location.pathname === "/setup"
+        ) {
           window.history.replaceState({}, "", "/");
           setIsSetupPath(false);
         } else {
@@ -129,7 +145,11 @@ export function App() {
         }
       } catch (error) {
         if (!cancelled) {
-          setSetupError(error instanceof Error ? error.message : "Unable to check setup status");
+          setSetupError(
+            error instanceof Error
+              ? error.message
+              : "Unable to check setup status",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -169,26 +189,36 @@ export function App() {
       setViewError(null);
 
       try {
-        const response = await fetchJson<{ providers: ProviderSummary[] }>("/api/inbox/providers");
+        const response = await fetchJson<{ providers: ProviderSummary[] }>(
+          "/api/inbox/providers",
+        );
 
         if (cancelled) return;
 
         setProviders(response.providers);
         setReleaseProviderKey((current) => {
-          if (current && response.providers.some((p) => p.provider_key === current)) {
+          if (
+            current &&
+            response.providers.some((p) => p.provider_key === current)
+          ) {
             return current;
           }
           return response.providers[0]?.provider_key ?? "";
         });
         setSelectedProviderKey((current) => {
-          if (current && response.providers.some((p) => p.provider_key === current)) {
+          if (
+            current &&
+            response.providers.some((p) => p.provider_key === current)
+          ) {
             return current;
           }
           return response.providers[0]?.provider_key ?? null;
         });
       } catch (error) {
         if (!cancelled) {
-          setViewError(error instanceof Error ? error.message : "Unable to load providers");
+          setViewError(
+            error instanceof Error ? error.message : "Unable to load providers",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -233,7 +263,9 @@ export function App() {
         });
       } catch (error) {
         if (!cancelled) {
-          setViewError(error instanceof Error ? error.message : "Unable to load messages");
+          setViewError(
+            error instanceof Error ? error.message : "Unable to load messages",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -260,7 +292,9 @@ export function App() {
       setIsLoadingQuarantine(true);
 
       try {
-        const response = await fetchJson<{ messages: QuarantineMessage[] }>("/api/inbox/quarantine");
+        const response = await fetchJson<{ messages: QuarantineMessage[] }>(
+          "/api/inbox/quarantine",
+        );
 
         if (cancelled) return;
 
@@ -273,7 +307,11 @@ export function App() {
         });
       } catch (error) {
         if (!cancelled) {
-          setViewError(error instanceof Error ? error.message : "Unable to load quarantine");
+          setViewError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load quarantine",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -317,7 +355,9 @@ export function App() {
         });
       } catch (error) {
         if (!cancelled) {
-          setViewError(error instanceof Error ? error.message : "Unable to load members");
+          setViewError(
+            error instanceof Error ? error.message : "Unable to load members",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -335,10 +375,15 @@ export function App() {
 
   async function refreshProviders() {
     if (!isAuthenticated) return;
-    const response = await fetchJson<{ providers: ProviderSummary[] }>("/api/inbox/providers");
+    const response = await fetchJson<{ providers: ProviderSummary[] }>(
+      "/api/inbox/providers",
+    );
     setProviders(response.providers);
     setReleaseProviderKey((current) => {
-      if (current && response.providers.some((p) => p.provider_key === current)) {
+      if (
+        current &&
+        response.providers.some((p) => p.provider_key === current)
+      ) {
         return current;
       }
       return response.providers[0]?.provider_key ?? "";
@@ -347,7 +392,9 @@ export function App() {
 
   async function refreshQuarantine() {
     if (!isAuthenticated || !isOwner) return;
-    const response = await fetchJson<{ messages: QuarantineMessage[] }>("/api/inbox/quarantine");
+    const response = await fetchJson<{ messages: QuarantineMessage[] }>(
+      "/api/inbox/quarantine",
+    );
     setQuarantineMessages(response.messages);
     setSelectedQuarantineId((current) => {
       if (current && response.messages.some((m) => m.id === current)) {
@@ -397,12 +444,18 @@ export function App() {
       );
 
       setMessages((current) =>
-        current.map((m) => (m.id === response.message.id ? response.message : m)),
+        current.map((m) =>
+          m.id === response.message.id ? response.message : m,
+        ),
       );
       setStatusMessage(`Marked message as ${nextStatus}.`);
       await refreshProviders();
     } catch (error) {
-      setViewError(error instanceof Error ? error.message : "Unable to update the message status");
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update the message status",
+      );
     } finally {
       setIsSavingMessage(false);
     }
@@ -419,7 +472,9 @@ export function App() {
       await fetchJson(`/api/inbox/quarantine/${selectedQuarantineId}/review`, {
         method: "POST",
         body: JSON.stringify(
-          action === "release" ? { action, providerKey: releaseProviderKey } : { action },
+          action === "release"
+            ? { action, providerKey: releaseProviderKey }
+            : { action },
         ),
       });
 
@@ -431,7 +486,9 @@ export function App() {
 
       await Promise.all([refreshQuarantine(), refreshProviders()]);
     } catch (error) {
-      setViewError(error instanceof Error ? error.message : "Unable to review quarantine");
+      setViewError(
+        error instanceof Error ? error.message : "Unable to review quarantine",
+      );
     } finally {
       setIsReviewingQuarantine(false);
     }
@@ -453,13 +510,20 @@ export function App() {
       setStatusMessage("Household member created.");
       await refreshMembers();
     } catch (error) {
-      setViewError(error instanceof Error ? error.message : "Unable to create household member");
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create household member",
+      );
     } finally {
       setIsSavingMember(false);
     }
   }
 
-  async function handleMemberRoleChange(userId: string, role: MemberSummary["role"]) {
+  async function handleMemberRoleChange(
+    userId: string,
+    role: MemberSummary["role"],
+  ) {
     setStatusMessage(null);
     setViewError(null);
 
@@ -471,35 +535,60 @@ export function App() {
 
       setStatusMessage(`Updated member role to ${role}.`);
       await refreshMembers();
-      if (session?.user?.email === members.find((m) => m.id === userId)?.email) {
+      if (
+        session?.user?.email === members.find((m) => m.id === userId)?.email
+      ) {
         await refetch();
       }
     } catch (error) {
-      setViewError(error instanceof Error ? error.message : "Unable to update member role");
+      setViewError(
+        error instanceof Error ? error.message : "Unable to update member role",
+      );
     }
   }
 
-  async function handleProviderAccessToggle(userId: string, providerKey: string, hasAccess: boolean) {
+  async function handleProviderAccessToggle(
+    userId: string,
+    providerKey: string,
+    hasAccess: boolean,
+  ) {
     setStatusMessage(null);
     setViewError(null);
 
     try {
-      await fetchJson<{ ok: boolean }>(`/api/admin/members/${userId}/provider-access`, {
-        method: hasAccess ? "DELETE" : "POST",
-        body: JSON.stringify({ providerKey }),
-      });
+      await fetchJson<{ ok: boolean }>(
+        `/api/admin/members/${userId}/provider-access`,
+        {
+          method: hasAccess ? "DELETE" : "POST",
+          body: JSON.stringify({ providerKey }),
+        },
+      );
 
-      setStatusMessage(hasAccess ? "Provider access revoked." : "Provider access granted.");
+      setStatusMessage(
+        hasAccess ? "Provider access revoked." : "Provider access granted.",
+      );
       await refreshMembers();
       await refreshProviders();
     } catch (error) {
-      setViewError(error instanceof Error ? error.message : "Unable to update provider access");
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update provider access",
+      );
     }
   }
 
   if (isSessionPending || isCheckingSetup) {
     return (
-      <Box sx={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+      <Box
+        sx={{
+          display: "flex",
+          minHeight: "100vh",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+        }}
+      >
         <CircularProgress size={60} sx={{ mb: 4 }} />
         <Typography variant="h5" sx={{ fontWeight: "bold" }}>
           Loading your shared inbox…
@@ -578,7 +667,9 @@ export function App() {
           onSelectMember={setSelectedMemberId}
           isLoadingMembers={isLoadingMembers}
           memberFormState={memberFormState}
-          onMemberFormChange={(update) => setMemberFormState((current) => ({ ...current, ...update }))}
+          onMemberFormChange={(update) =>
+            setMemberFormState((current) => ({ ...current, ...update }))
+          }
           onCreateMember={handleCreateMember}
           isSavingMember={isSavingMember}
           onRoleChange={handleMemberRoleChange}

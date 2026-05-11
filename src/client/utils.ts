@@ -43,7 +43,9 @@ export function formatTimestamp(value: string | null): string {
   }).format(date);
 }
 
-export function getDisplayName(session: SessionData | null | undefined): string {
+export function getDisplayName(
+  session: SessionData | null | undefined,
+): string {
   const name = session?.user?.name?.trim();
   if (name) {
     return name;
