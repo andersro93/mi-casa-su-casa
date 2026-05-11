@@ -282,10 +282,20 @@ Repeat for the preview Worker (`mi-casa-su-casa-preview`) if you want setup to w
 
 ### 7. Set up email routing
 
+Your domain must be managed by Cloudflare (nameservers pointing to Cloudflare), and the Worker must be deployed at least once before Email Routing can target it.
+
 In the Cloudflare dashboard:
 
-1. Go to your domain → **Email → Email Routing**
-2. Create a routing rule that forwards your shared inbox address (e.g. `codes@yourdomain.com`) to the Worker
+1. Go to your domain → **Email → Email Routing → Overview**
+2. Enable Email Routing if not already active — accept the MX and SPF DNS record changes Cloudflare proposes
+3. Go to the **Routing rules** tab → **Create address**
+4. Set the custom address to the local part you want (e.g. `codes` for `codes@yourdomain.com`)
+5. Under **Action**, select **Send to a Worker** and choose your deployed Worker (`mi-casa-su-casa`)
+6. Save the rule
+
+> **Already using another email provider?** Enabling Email Routing changes MX records. See [`docs/email-routing.md`](./docs/email-routing.md) for guidance on coexisting with Google Workspace, Microsoft 365, or other providers.
+
+For the full email routing guide including the processing pipeline, local testing, and troubleshooting, see [`docs/email-routing.md`](./docs/email-routing.md).
 
 ### 8. Deploy and run first-time setup
 

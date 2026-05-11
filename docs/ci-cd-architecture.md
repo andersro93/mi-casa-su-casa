@@ -194,6 +194,7 @@ This issue adds the repository-side CI/CD wiring, but operators still need to:
 4. set `APP_URL`, `OWNER_EMAIL`, `AUTH_SECRET`, and `SETUP_SECRET` in the Cloudflare dashboard for each Worker (see table above)
 5. enable branch protection on `main` so `CI` stays required
 6. configure required reviewers for the `production-migrations` environment
+7. enable Cloudflare Email Routing on the domain and create a routing rule forwarding the shared inbox address to the Worker (see [`email-routing.md`](./email-routing.md))
 
 No edits to `wrangler.jsonc` are needed — all environment-specific values are injected by the workflows.
 
