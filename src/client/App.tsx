@@ -6,7 +6,7 @@ import {
   Typography,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -15,8 +15,8 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
-import { InboxView } from "./components/InboxView";
 import { CreateHouseholdPage } from "./components/CreateHouseholdPage";
+import { InboxView } from "./components/InboxView";
 import { InvitePage } from "./components/InvitePage";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./components/LoginPage";
@@ -108,8 +108,7 @@ export function App() {
   const location = useLocation();
   const routeSegments = location.pathname.split("/").filter(Boolean);
   const routeSlug =
-    routeSegments[0] &&
-    !["login", "setup", "invite"].includes(routeSegments[0])
+    routeSegments[0] && !["login", "setup", "invite"].includes(routeSegments[0])
       ? routeSegments[0]
       : null;
 
@@ -190,17 +189,20 @@ export function App() {
 
   const isAuthenticated = Boolean(session?.user?.email);
   const currentHousehold = routeSlug
-    ? households.find((household) => household.slug === routeSlug) ?? null
+    ? (households.find((household) => household.slug === routeSlug) ?? null)
     : null;
   const defaultHousehold = households[0] ?? null;
   const isOwner = currentHousehold?.role === "owner";
-  const householdApiPath = (path: string) => {
-    if (!currentHousehold) {
-      throw new Error("No household selected");
-    }
+  const householdApiPath = useCallback(
+    (path: string) => {
+      if (!currentHousehold) {
+        throw new Error("No household selected");
+      }
 
-    return buildHouseholdApiPath(currentHousehold.slug, path);
-  };
+      return buildHouseholdApiPath(currentHousehold.slug, path);
+    },
+    [currentHousehold],
+  );
 
   const handleSnackbarClose = () => {
     setStatusMessage(null);
@@ -218,7 +220,9 @@ export function App() {
       <InvitePage
         token={token}
         onAcceptSuccess={(householdSlug) => {
-          navigate(buildHouseholdPath(householdSlug, "/inbox"), { replace: true });
+          navigate(buildHouseholdPath(householdSlug, "/inbox"), {
+            replace: true,
+          });
           void refetch();
         }}
       />
@@ -247,7 +251,9 @@ export function App() {
       } catch (error) {
         if (!cancelled) {
           setViewError(
-            error instanceof Error ? error.message : "Unable to load households",
+            error instanceof Error
+              ? error.message
+              : "Unable to load households",
           );
         }
       } finally {
@@ -270,9 +276,15 @@ export function App() {
     }
 
     if (!routeSlug || !currentHousehold) {
-      navigate(buildHouseholdPath(defaultHousehold?.slug ?? households[0].slug, "/inbox"), {
-        replace: true,
-      });
+      navigate(
+        buildHouseholdPath(
+          defaultHousehold?.slug ?? households[0].slug,
+          "/inbox",
+        ),
+        {
+          replace: true,
+        },
+      );
     }
   }, [
     currentHousehold,
@@ -295,7 +307,8 @@ export function App() {
       setIsLoadingSettings(true);
 
       try {
-        const response = await fetchJson<AccountSettingsResponse>("/api/settings");
+        const response =
+          await fetchJson<AccountSettingsResponse>("/api/settings");
 
         if (cancelled) return;
 
@@ -684,7 +697,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [currentHousehold, isAuthenticated]);
+  }, [currentHousehold, householdApiPath, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !currentHousehold || !selectedProviderKey) {
@@ -731,10 +744,20 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [currentHousehold, isAuthenticated, selectedProviderKey]);
+  }, [
+    currentHousehold,
+    householdApiPath,
+    isAuthenticated,
+    selectedProviderKey,
+  ]);
 
   useEffect(() => {
-    if (!isAuthenticated || !isOwner || !currentHousehold || activeView !== "quarantine") {
+    if (
+      !isAuthenticated ||
+      !isOwner ||
+      !currentHousehold ||
+      activeView !== "quarantine"
+    ) {
       return;
     }
 
@@ -777,10 +800,21 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeView, currentHousehold, isAuthenticated, isOwner]);
+  }, [
+    activeView,
+    currentHousehold,
+    householdApiPath,
+    isAuthenticated,
+    isOwner,
+  ]);
 
   useEffect(() => {
-    if (!isAuthenticated || !isOwner || !currentHousehold || activeView !== "providers") {
+    if (
+      !isAuthenticated ||
+      !isOwner ||
+      !currentHousehold ||
+      activeView !== "providers"
+    ) {
       return;
     }
 
@@ -871,10 +905,16 @@ export function App() {
     activeView,
     selectedProviderId,
     selectedRuleId,
+    householdApiPath,
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated || !isOwner || !currentHousehold || activeView !== "members") {
+    if (
+      !isAuthenticated ||
+      !isOwner ||
+      !currentHousehold ||
+      activeView !== "members"
+    ) {
       return;
     }
 
@@ -926,7 +966,13 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeView, currentHousehold, isAuthenticated, isOwner]);
+  }, [
+    activeView,
+    currentHousehold,
+    householdApiPath,
+    isAuthenticated,
+    isOwner,
+  ]);
 
   async function refreshProviders() {
     if (!isAuthenticated || !currentHousehold) return;
@@ -1028,7 +1074,7 @@ export function App() {
     setViewError(null);
 
     try {
-        const response = await fetchJson<{ message: InboxMessage }>(
+      const response = await fetchJson<{ message: InboxMessage }>(
         householdApiPath(`/inbox/messages/${selectedMessageId}/status`),
         {
           method: "PATCH",
@@ -1064,14 +1110,17 @@ export function App() {
     setViewError(null);
 
     try {
-      await fetchJson(householdApiPath(`/inbox/quarantine/${selectedQuarantineId}/review`), {
-        method: "POST",
-        body: JSON.stringify(
-          action === "release"
-            ? { action, providerKey: releaseProviderKey }
-            : { action },
-        ),
-      });
+      await fetchJson(
+        householdApiPath(`/inbox/quarantine/${selectedQuarantineId}/review`),
+        {
+          method: "POST",
+          body: JSON.stringify(
+            action === "release"
+              ? { action, providerKey: releaseProviderKey }
+              : { action },
+          ),
+        },
+      );
 
       setStatusMessage(
         action === "release"
@@ -1100,10 +1149,13 @@ export function App() {
     setViewError(null);
 
     try {
-      await fetchJson<{ invitation: InvitationSummary }>(householdApiPath("/admin/members"), {
-        method: "POST",
-        body: JSON.stringify(memberFormState),
-      });
+      await fetchJson<{ invitation: InvitationSummary }>(
+        householdApiPath("/admin/members"),
+        {
+          method: "POST",
+          body: JSON.stringify(memberFormState),
+        },
+      );
 
       setMemberFormState(INITIAL_MEMBER_FORM_STATE);
       setStatusMessage("Invitation email sent.");
@@ -1209,10 +1261,13 @@ export function App() {
     setViewError(null);
 
     try {
-      await fetchJson<{ ok: boolean }>(householdApiPath(`/admin/members/${userId}/role`), {
-        method: "PATCH",
-        body: JSON.stringify({ role }),
-      });
+      await fetchJson<{ ok: boolean }>(
+        householdApiPath(`/admin/members/${userId}/role`),
+        {
+          method: "PATCH",
+          body: JSON.stringify({ role }),
+        },
+      );
 
       setStatusMessage(`Updated member role to ${role}.`);
       await refreshMembers();
@@ -1371,10 +1426,13 @@ export function App() {
     setIsSavingProviderConfiguration(true);
 
     try {
-      await fetchJson<{ rule: SenderRule }>(householdApiPath("/admin/provider-rules"), {
-        method: "POST",
-        body: JSON.stringify(ruleFormState),
-      });
+      await fetchJson<{ rule: SenderRule }>(
+        householdApiPath("/admin/provider-rules"),
+        {
+          method: "POST",
+          body: JSON.stringify(ruleFormState),
+        },
+      );
 
       setRuleFormState((current) => ({
         ...INITIAL_RULE_FORM_STATE,
@@ -1466,7 +1524,11 @@ export function App() {
     }
   }
 
-  if (isSessionPending || isCheckingSetup || (isAuthenticated && isLoadingHouseholds)) {
+  if (
+    isSessionPending ||
+    isCheckingSetup ||
+    (isAuthenticated && isLoadingHouseholds)
+  ) {
     return (
       <Box
         sx={{
@@ -1539,7 +1601,9 @@ export function App() {
       <CreateHouseholdPage
         onCreated={(household) => {
           setHouseholds([household]);
-          navigate(buildHouseholdPath(household.slug, "/inbox"), { replace: true });
+          navigate(buildHouseholdPath(household.slug, "/inbox"), {
+            replace: true,
+          });
         }}
       />
     );
