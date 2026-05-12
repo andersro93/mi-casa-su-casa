@@ -18,6 +18,33 @@ export default defineConfig({
   build: {
     outDir: "../../dist/client",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return undefined;
+          }
+
+          if (id.includes("@mui/x-data-grid")) {
+            return "mui-data-grid";
+          }
+
+          if (id.includes("@mui/icons-material")) {
+            return "mui-icons";
+          }
+
+          if (id.includes("@mui/material") || id.includes("@emotion")) {
+            return "mui-core";
+          }
+
+          if (id.includes("react")) {
+            return "react-vendor";
+          }
+
+          return "vendor";
+        },
+      },
+    },
   },
   server: {
     host: true,
