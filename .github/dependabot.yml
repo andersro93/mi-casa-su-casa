@@ -12,6 +12,26 @@ updates:
         patterns:
           - "*"
 
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+      timezone: "Europe/Oslo"
+    open-pull-requests-limit: 10
+    labels:
+      - "security"
+      - "dependencies"
+    commit-message:
+      prefix: "fix"
+      include: "scope"
+    groups:
+      all-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
