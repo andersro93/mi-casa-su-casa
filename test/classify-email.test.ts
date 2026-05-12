@@ -4,14 +4,12 @@ import type { ParsedIncomingEmail } from "../src/server/db/types";
 import { classifyEmail } from "../src/server/domain/classify-email";
 
 function createDbStub(
-  match:
-    | {
-        householdId: string;
-        householdSlug: string;
-        providerId: string;
-        providerKey: string;
-      }
-    | null,
+  match: {
+    householdId: string;
+    householdSlug: string;
+    providerId: string;
+    providerKey: string;
+  } | null,
 ): D1Database {
   let call = 0;
 

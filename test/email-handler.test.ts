@@ -22,7 +22,8 @@ const classifyState = vi.hoisted(() => ({
     providerId: "provider-1",
     providerKey: "netflix",
     code: "123456",
-    reason: "Sender matched a configured rule and a likely verification code was found.",
+    reason:
+      "Sender matched a configured rule and a likely verification code was found.",
   } as
     | {
         kind: "matched";
@@ -123,7 +124,8 @@ describe("handleIncomingEmail", () => {
       providerId: "provider-1",
       providerKey: "netflix",
       code: "123456",
-      reason: "Sender matched a configured rule and a likely verification code was found.",
+      reason:
+        "Sender matched a configured rule and a likely verification code was found.",
     };
     messageRepoState.insertMessage.mockReset();
     messageRepoState.insertQuarantineMessage.mockReset();
@@ -151,7 +153,8 @@ describe("handleIncomingEmail", () => {
   it("routes unmatched senders into quarantine within the resolved household", async () => {
     classifyState.result = {
       kind: "quarantine",
-      reason: "No sender rule matched the inbound email within the addressed household.",
+      reason:
+        "No sender rule matched the inbound email within the addressed household.",
       code: "654321",
     };
     parseState.result = {

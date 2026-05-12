@@ -73,7 +73,11 @@ const repoState = vi.hoisted(() => ({
   households: [] as HouseholdRecord[],
   memberships: [] as MembershipRecord[],
   providers: [] as ProviderRecord[],
-  providerAccess: [] as Array<{ householdId: string; userId: string; providerId: string }>,
+  providerAccess: [] as Array<{
+    householdId: string;
+    userId: string;
+    providerId: string;
+  }>,
   messages: [] as Array<{
     id: string;
     household_slug: string;
@@ -134,7 +138,9 @@ function getUser(userId: string) {
 }
 
 function getHouseholdBySlug(slug: string) {
-  return repoState.households.find((household) => household.slug === slug) ?? null;
+  return (
+    repoState.households.find((household) => household.slug === slug) ?? null
+  );
 }
 
 function getHouseholdByIdValue(id: string) {
@@ -152,7 +158,9 @@ function getMembership(userId: string, householdId: string) {
 
 function getInvitationProviders(providerIds: string[]) {
   return providerIds
-    .map((providerId) => repoState.providers.find((provider) => provider.id === providerId))
+    .map((providerId) =>
+      repoState.providers.find((provider) => provider.id === providerId),
+    )
     .filter((provider): provider is ProviderRecord => Boolean(provider))
     .map((provider) => ({
       id: provider.id,
@@ -305,7 +313,8 @@ vi.mock("../src/server/db/repositories/households", async () => {
       });
       return household;
     },
-    getHouseholdById: async (_db: D1Database, id: string) => getHouseholdByIdValue(id),
+    getHouseholdById: async (_db: D1Database, id: string) =>
+      getHouseholdByIdValue(id),
     assertProvidersBelongToHousehold: async (
       _db: D1Database,
       householdId: string,
@@ -342,7 +351,8 @@ vi.mock("../src/server/db/repositories/member-access", () => ({
       const user = getUser(membership.userId);
       const accessRows = repoState.providerAccess.filter(
         (entry) =>
-          entry.householdId === householdId && entry.userId === membership.userId,
+          entry.householdId === householdId &&
+          entry.userId === membership.userId,
       );
       if (accessRows.length === 0) {
         return [
@@ -373,7 +383,9 @@ vi.mock("../src/server/db/repositories/member-access", () => ({
       });
     }),
   listProviders: async (_db: D1Database, householdId: string) =>
-    repoState.providers.filter((provider) => provider.household_id === householdId),
+    repoState.providers.filter(
+      (provider) => provider.household_id === householdId,
+    ),
   grantProviderAccess: async (
     _db: D1Database,
     householdId: string,
@@ -427,7 +439,8 @@ vi.mock("../src/server/db/repositories/provider-rules", () => ({
   ) =>
     repoState.providers.find(
       (provider) =>
-        provider.household_id === householdId && provider.provider_key === providerKey,
+        provider.household_id === householdId &&
+        provider.provider_key === providerKey,
     ) ?? null,
   getProviderById: async (
     _db: D1Database,
@@ -441,7 +454,10 @@ vi.mock("../src/server/db/repositories/provider-rules", () => ({
   listProviderConfigurations: async (_db: D1Database, householdId: string) =>
     repoState.providers
       .filter((provider) => provider.household_id === householdId)
-      .map((provider) => ({ ...provider, rule_count: provider.rule_count ?? 0 })),
+      .map((provider) => ({
+        ...provider,
+        rule_count: provider.rule_count ?? 0,
+      })),
   listSenderRules: async (_db: D1Database, householdId: string) =>
     repoState.senderRules.filter((rule) => rule.household_id === householdId),
   createProvider: async (
@@ -498,21 +514,27 @@ vi.mock("../src/server/db/repositories/messages", () => ({
       if (provider.household_id !== householdId) return false;
       if (membership.role === "owner") return true;
       return repoState.providerAccess.some(
-        (entry) => entry.householdId === householdId && entry.userId === userId && entry.providerId === provider.id,
+        (entry) =>
+          entry.householdId === householdId &&
+          entry.userId === userId &&
+          entry.providerId === provider.id,
       );
     });
 
     return visibleProviders.map((provider) => {
       const providerMessages = repoState.messages.filter(
         (message) =>
-          message.householdId === householdId && message.provider_key === provider.provider_key,
+          message.householdId === householdId &&
+          message.provider_key === provider.provider_key,
       );
       return {
         household_slug: getHouseholdByIdValue(householdId)?.slug ?? "unknown",
         provider_key: provider.provider_key,
         display_name: provider.display_name,
         message_count: providerMessages.length,
-        new_count: providerMessages.filter((message) => message.status === "new").length,
+        new_count: providerMessages.filter(
+          (message) => message.status === "new",
+        ).length,
         latest_received_at: providerMessages[0]?.received_at ?? null,
       };
     });
@@ -524,7 +546,8 @@ vi.mock("../src/server/db/repositories/messages", () => ({
   ) =>
     repoState.messages.filter(
       (message) =>
-        message.householdId === householdId && message.provider_key === providerKey,
+        message.householdId === householdId &&
+        message.provider_key === providerKey,
     ),
   findMessageById: async (
     _db: D1Database,
@@ -532,7 +555,8 @@ vi.mock("../src/server/db/repositories/messages", () => ({
     messageId: string,
   ) =>
     repoState.messages.find(
-      (message) => message.householdId === householdId && message.id === messageId,
+      (message) =>
+        message.householdId === householdId && message.id === messageId,
     ) ?? null,
   updateMessageStatus: async (
     _db: D1Database,
@@ -541,7 +565,8 @@ vi.mock("../src/server/db/repositories/messages", () => ({
     status: "new" | "used" | "expired",
   ) => {
     const message = repoState.messages.find(
-      (candidate) => candidate.householdId === householdId && candidate.id === messageId,
+      (candidate) =>
+        candidate.householdId === householdId && candidate.id === messageId,
     );
     if (!message) return null;
     message.status = status;
@@ -559,7 +584,8 @@ vi.mock("../src/server/db/repositories/messages", () => ({
   ) => {
     repoState.reviewCalls.push({ householdId, messageId, input });
     const message = repoState.quarantine.find(
-      (candidate) => candidate.householdId === householdId && candidate.id === messageId,
+      (candidate) =>
+        candidate.householdId === householdId && candidate.id === messageId,
     );
     if (!message) return null;
     message.reviewed = true;
@@ -787,10 +813,15 @@ async function invokeWorker(
 ) {
   const fetchHandler = getWorkerFetch();
   const db = createDbStub();
-  const request = new Request(`http://localhost:8787${path}`, options) as Parameters<
-    WorkerFetch
-  >[0];
-  return fetchHandler(request, createEnv(db, envOverrides), createExecutionContext());
+  const request = new Request(
+    `http://localhost:8787${path}`,
+    options,
+  ) as Parameters<WorkerFetch>[0];
+  return fetchHandler(
+    request,
+    createEnv(db, envOverrides),
+    createExecutionContext(),
+  );
 }
 
 describe("worker routes", () => {
@@ -979,10 +1010,13 @@ describe("worker routes", () => {
       session: { id: "session-1", userId: "member-home" },
     };
 
-    const response = await invokeWorker("/api/inbox/home/messages/msg-home-1/status", {
-      method: "PATCH",
-      body: JSON.stringify({ status: "used" }),
-    });
+    const response = await invokeWorker(
+      "/api/inbox/home/messages/msg-home-1/status",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status: "used" }),
+      },
+    );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -1142,13 +1176,18 @@ describe("worker routes", () => {
       session: { id: "session-1", userId: "owner-home" },
     };
 
-    const response = await invokeWorker("/api/admin/home/members/member-away/role", {
-      method: "PATCH",
-      body: JSON.stringify({ role: "admin" }),
-    });
+    const response = await invokeWorker(
+      "/api/admin/home/members/member-away/role",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role: "admin" }),
+      },
+    );
 
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: "Member not found" });
+    await expect(response.json()).resolves.toEqual({
+      error: "Member not found",
+    });
   });
 
   it("rejects provider-access changes for a user outside the active household", async () => {
@@ -1166,7 +1205,9 @@ describe("worker routes", () => {
     );
 
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: "Member not found" });
+    await expect(response.json()).resolves.toEqual({
+      error: "Member not found",
+    });
   });
 
   it("accepts an invitation via provisioning signup and attaches the user to the invited household", async () => {
