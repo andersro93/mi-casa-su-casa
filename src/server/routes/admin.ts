@@ -3,6 +3,14 @@ import { Hono } from "hono";
 import { authForEnv } from "../auth/auth";
 import { type AppVariables, requireOwner } from "../auth/middleware";
 import {
+  cancelInvitation,
+  createHouseholdInvitation,
+  getInvitationById,
+  type InvitationRole,
+  listHouseholdInvitations,
+  refreshExpiredInvitations,
+} from "../db/repositories/invitations";
+import {
   grantProviderAccess,
   listMemberProviderAccess,
   listMembers,
@@ -22,6 +30,8 @@ import {
   updateProvider,
   updateSenderRule,
 } from "../db/repositories/provider-rules";
+import { sendHouseholdInvitationEmail } from "../email/sender";
+import { createInvitationToken } from "../security/tokens";
 
 type AccessPayload = {
   providerKey?: string;
@@ -45,6 +55,13 @@ type SenderRulePayload = {
   matchValue?: string;
 };
 
+type InvitationPayload = {
+  email?: string;
+  name?: string;
+  role?: InvitationRole;
+  providerIds?: string[];
+};
+
 export const adminRoutes = new Hono<{
   Bindings: Env;
   Variables: AppVariables;
@@ -62,6 +79,10 @@ function normalizeDisplayName(value: string | undefined) {
   return value?.trim() ?? "";
 }
 
+function normalizeEmail(value: string | undefined) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
 function normalizeMatchValue(matchType: string, value: string | undefined) {
   const trimmed = value?.trim().toLowerCase() ?? "";
 
@@ -72,7 +93,9 @@ function normalizeMatchValue(matchType: string, value: string | undefined) {
   return trimmed;
 }
 
-function isValidMatchType(value: string | undefined): value is "exact" | "domain" {
+function isValidMatchType(
+  value: string | undefined,
+): value is "exact" | "domain" {
   return value === "exact" || value === "domain";
 }
 
@@ -176,7 +199,10 @@ adminRoutes.post("/provider-rules", async (c) => {
   }
 
   if (!payload.providerId || !isValidMatchType(payload.matchType)) {
-    return c.json({ error: "providerId and a valid matchType are required" }, 400);
+    return c.json(
+      { error: "providerId and a valid matchType are required" },
+      400,
+    );
   }
 
   const matchValue = normalizeMatchValue(payload.matchType, payload.matchValue);
@@ -213,7 +239,10 @@ adminRoutes.patch("/provider-rules/:ruleId", async (c) => {
   const ruleId = c.req.param("ruleId");
 
   if (!payload.providerId || !isValidMatchType(payload.matchType)) {
-    return c.json({ error: "providerId and a valid matchType are required" }, 400);
+    return c.json(
+      { error: "providerId and a valid matchType are required" },
+      400,
+    );
   }
 
   const matchValue = normalizeMatchValue(payload.matchType, payload.matchValue);
@@ -294,6 +323,135 @@ adminRoutes.get("/members", async (c) => {
     })),
     providers,
   });
+});
+
+adminRoutes.get("/invitations", async (c) => {
+  await refreshExpiredInvitations(c.env.DB);
+  const invitations = await listHouseholdInvitations(c.env.DB);
+  return c.json({ invitations });
+});
+
+adminRoutes.post("/invitations", async (c) => {
+  let payload: InvitationPayload;
+
+  try {
+    payload = await c.req.json<InvitationPayload>();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const email = normalizeEmail(payload.email);
+  const name = normalizeDisplayName(payload.name);
+  const role: InvitationRole = payload.role === "admin" ? "admin" : "member";
+  const providerIds = Array.isArray(payload.providerIds)
+    ? payload.providerIds.filter((providerId) => Boolean(providerId))
+    : [];
+
+  if (!email || !name) {
+    return c.json({ error: "email and name are required" }, 400);
+  }
+
+  const inviter = c.get("user");
+
+  if (!inviter) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { token, tokenHash } = await createInvitationToken();
+  const expiresAt = new Date(
+    Date.now() + 1000 * 60 * 60 * 24 * 7,
+  ).toISOString();
+  const invitationId = await createHouseholdInvitation(c.env.DB, {
+    email,
+    name,
+    role,
+    tokenHash,
+    invitedByUserId: inviter.id,
+    expiresAt,
+    providerIds,
+  });
+
+  const invitation = await getInvitationById(c.env.DB, invitationId);
+
+  if (!invitation) {
+    return c.json({ error: "Unable to create invitation" }, 500);
+  }
+
+  void sendHouseholdInvitationEmail(c.env, {
+    to: email,
+    inviteeName: name,
+    inviterName: inviter.email,
+    inviterEmail: inviter.email,
+    inviteUrl: `${c.env.APP_URL.replace(/\/$/, "")}/invite/${token}`,
+    expiresAt,
+    role,
+  });
+
+  return c.json({ invitation }, 201);
+});
+
+adminRoutes.post("/invitations/:invitationId/resend", async (c) => {
+  await refreshExpiredInvitations(c.env.DB);
+
+  const invitationId = c.req.param("invitationId");
+  const invitation = await getInvitationById(c.env.DB, invitationId);
+
+  if (!invitation || invitation.status !== "pending") {
+    return c.json({ error: "Invitation not found or not resendable" }, 404);
+  }
+
+  const inviter = c.get("user");
+
+  if (!inviter) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { token, tokenHash } = await createInvitationToken();
+  const expiresAt = new Date(
+    Date.now() + 1000 * 60 * 60 * 24 * 7,
+  ).toISOString();
+
+  await cancelInvitation(c.env.DB, invitationId);
+
+  const replacementId = await createHouseholdInvitation(c.env.DB, {
+    email: invitation.email,
+    name: invitation.name,
+    role: invitation.role,
+    tokenHash,
+    invitedByUserId: inviter.id,
+    expiresAt,
+    providerIds: invitation.providers.map((provider) => provider.id),
+  });
+
+  const replacement = await getInvitationById(c.env.DB, replacementId);
+
+  if (!replacement) {
+    return c.json({ error: "Unable to resend invitation" }, 500);
+  }
+
+  void sendHouseholdInvitationEmail(c.env, {
+    to: replacement.email,
+    inviteeName: replacement.name,
+    inviterName: inviter.email,
+    inviterEmail: inviter.email,
+    inviteUrl: `${c.env.APP_URL.replace(/\/$/, "")}/invite/${token}`,
+    expiresAt,
+    role: replacement.role,
+  });
+
+  return c.json({ invitation: replacement });
+});
+
+adminRoutes.delete("/invitations/:invitationId", async (c) => {
+  const invitationId = c.req.param("invitationId");
+  const invitation = await getInvitationById(c.env.DB, invitationId);
+
+  if (!invitation) {
+    return c.json({ error: "Invitation not found" }, 404);
+  }
+
+  await cancelInvitation(c.env.DB, invitationId);
+  return c.json({ ok: true });
 });
 
 adminRoutes.post("/members", async (c) => {
