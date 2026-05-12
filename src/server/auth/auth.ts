@@ -1,9 +1,19 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
-import { admin } from "better-auth/plugins";
+import { admin, twoFactor } from "better-auth/plugins";
 
 import { dbForEnv } from "../db/client";
 import * as schema from "../db/schema";
+import { sendPasswordResetEmail } from "../email/sender";
+
+function getRpId(url: string) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "localhost";
+  }
+}
 
 export function authForEnv(env: Env) {
   return betterAuth({
@@ -19,6 +29,13 @@ export function authForEnv(env: Env) {
       disableSignUp: true,
       minPasswordLength: 12,
       maxPasswordLength: 128,
+      sendResetPassword: async ({ user, url }) => {
+        void sendPasswordResetEmail(env, {
+          to: user.email,
+          recipientName: user.name,
+          resetUrl: url,
+        });
+      },
     },
     user: {
       additionalFields: {
@@ -39,6 +56,11 @@ export function authForEnv(env: Env) {
       admin({
         adminRoles: ["admin"],
         defaultRole: "user",
+      }),
+      twoFactor(),
+      passkey({
+        rpID: getRpId(env.APP_URL),
+        rpName: env.APP_NAME,
       }),
     ],
   });
