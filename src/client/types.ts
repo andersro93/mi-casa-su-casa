@@ -59,6 +59,38 @@ export type ProviderOption = {
   display_name: string;
 };
 
+export type ProviderConfiguration = {
+  id: string;
+  provider_key: string;
+  display_name: string;
+  created_at: string;
+  rule_count: number;
+};
+
+export type SenderRule = {
+  id: string;
+  provider_id: string;
+  match_type: "exact" | "domain";
+  match_value: string;
+  created_at: string;
+};
+
+export type ProviderConfigurationResponse = {
+  providers: ProviderConfiguration[];
+  rules: SenderRule[];
+};
+
+export type ProviderFormState = {
+  providerKey: string;
+  displayName: string;
+};
+
+export type SenderRuleFormState = {
+  providerId: string;
+  matchType: "exact" | "domain";
+  matchValue: string;
+};
+
 export type MemberFormState = {
   email: string;
   name: string;
