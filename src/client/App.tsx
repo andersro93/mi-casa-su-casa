@@ -11,27 +11,44 @@ import { InboxView } from "./components/InboxView";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./components/LoginPage";
 import { MembersView } from "./components/MembersView";
+import { ProvidersRulesView } from "./components/ProvidersRulesView";
 import { QuarantineView } from "./components/QuarantineView";
 import { SetupPage } from "./components/SetupPage";
 import type {
   InboxMessage,
   MemberFormState,
   MemberSummary,
+  ProviderConfiguration,
+  ProviderConfigurationResponse,
+  ProviderFormState,
   ProviderMessagesResponse,
   ProviderOption,
+  SenderRule,
+  SenderRuleFormState,
   ProviderSummary,
   QuarantineMessage,
   SetupStatus,
 } from "./types";
 import { fetchJson } from "./utils";
 
-type ViewType = "inbox" | "quarantine" | "members";
+type ViewType = "inbox" | "quarantine" | "members" | "providers";
 
 const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
   email: "",
   name: "",
   password: "",
   role: "member",
+};
+
+const INITIAL_PROVIDER_FORM_STATE: ProviderFormState = {
+  providerKey: "",
+  displayName: "",
+};
+
+const INITIAL_RULE_FORM_STATE: SenderRuleFormState = {
+  providerId: "",
+  matchType: "domain",
+  matchValue: "",
 };
 
 export function App() {
@@ -74,6 +91,20 @@ export function App() {
   const [memberFormState, setMemberFormState] = useState<MemberFormState>(
     INITIAL_MEMBER_FORM_STATE,
   );
+  const [providerConfigurations, setProviderConfigurations] = useState<
+    ProviderConfiguration[]
+  >([]);
+  const [senderRules, setSenderRules] = useState<SenderRule[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
+    null,
+  );
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  const [providerFormState, setProviderFormState] = useState<ProviderFormState>(
+    INITIAL_PROVIDER_FORM_STATE,
+  );
+  const [ruleFormState, setRuleFormState] = useState<SenderRuleFormState>(
+    INITIAL_RULE_FORM_STATE,
+  );
 
   const [isLoadingInbox, setIsLoadingInbox] = useState(false);
   const [isLoadingQuarantine, setIsLoadingQuarantine] = useState(false);
@@ -81,6 +112,8 @@ export function App() {
   const [isSavingMessage, setIsSavingMessage] = useState(false);
   const [isReviewingQuarantine, setIsReviewingQuarantine] = useState(false);
   const [isSavingMember, setIsSavingMember] = useState(false);
+  const [isSavingProviderConfiguration, setIsSavingProviderConfiguration] =
+    useState(false);
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
@@ -176,8 +209,14 @@ export function App() {
       setSelectedMessageId(null);
       setSelectedQuarantineId(null);
       setSelectedMemberId(null);
+      setSelectedProviderId(null);
+      setSelectedRuleId(null);
       setReleaseProviderKey("");
       setMemberFormState(INITIAL_MEMBER_FORM_STATE);
+      setProviderConfigurations([]);
+      setSenderRules([]);
+      setProviderFormState(INITIAL_PROVIDER_FORM_STATE);
+      setRuleFormState(INITIAL_RULE_FORM_STATE);
       setActiveView("inbox");
       return;
     }
@@ -328,6 +367,88 @@ export function App() {
   }, [isAuthenticated, isOwner, activeView]);
 
   useEffect(() => {
+    if (!isAuthenticated || !isOwner || activeView !== "providers") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadProviderConfigurations = async () => {
+      setIsSavingProviderConfiguration(false);
+
+      try {
+        const response = await fetchJson<ProviderConfigurationResponse>(
+          "/api/admin/providers",
+        );
+
+        if (cancelled) return;
+
+        setProviderConfigurations(response.providers);
+        setSenderRules(response.rules);
+
+        const nextProviderId =
+          selectedProviderId &&
+          response.providers.some((provider) => provider.id === selectedProviderId)
+            ? selectedProviderId
+            : response.providers[0]?.id ?? null;
+
+        setSelectedProviderId(nextProviderId);
+
+        const selectedProvider = response.providers.find(
+          (provider) => provider.id === nextProviderId,
+        );
+
+        setProviderFormState(
+          selectedProvider
+            ? {
+                providerKey: selectedProvider.provider_key,
+                displayName: selectedProvider.display_name,
+              }
+            : INITIAL_PROVIDER_FORM_STATE,
+        );
+
+        const nextRuleId =
+          selectedRuleId &&
+          response.rules.some((rule) => rule.id === selectedRuleId)
+            ? selectedRuleId
+            : response.rules.find((rule) => rule.provider_id === nextProviderId)?.id ??
+              null;
+
+        setSelectedRuleId(nextRuleId);
+
+        const selectedRule = response.rules.find((rule) => rule.id === nextRuleId);
+
+        setRuleFormState(
+          selectedRule
+            ? {
+                providerId: selectedRule.provider_id,
+                matchType: selectedRule.match_type,
+                matchValue: selectedRule.match_value,
+              }
+            : {
+                ...INITIAL_RULE_FORM_STATE,
+                providerId: nextProviderId ?? "",
+              },
+        );
+      } catch (error) {
+        if (!cancelled) {
+          setViewError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load provider configuration",
+          );
+        }
+      }
+    };
+
+    void loadProviderConfigurations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOwner, activeView, selectedProviderId, selectedRuleId]);
+
+  useEffect(() => {
     if (!isAuthenticated || !isOwner || activeView !== "members") {
       return;
     }
@@ -417,6 +538,33 @@ export function App() {
         return current;
       }
       return response.members[0]?.id ?? null;
+    });
+  }
+
+  async function refreshProviderConfigurations() {
+    if (!isAuthenticated || !isOwner) return;
+
+    const response = await fetchJson<ProviderConfigurationResponse>(
+      "/api/admin/providers",
+    );
+
+    setProviderConfigurations(response.providers);
+    setSenderRules(response.rules);
+
+    setSelectedProviderId((current) => {
+      if (current && response.providers.some((provider) => provider.id === current)) {
+        return current;
+      }
+
+      return response.providers[0]?.id ?? null;
+    });
+
+    setSelectedRuleId((current) => {
+      if (current && response.rules.some((rule) => rule.id === current)) {
+        return current;
+      }
+
+      return null;
     });
   }
 
@@ -578,6 +726,165 @@ export function App() {
     }
   }
 
+  async function handleCreateProvider(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatusMessage(null);
+    setViewError(null);
+    setIsSavingProviderConfiguration(true);
+
+    try {
+      await fetchJson<{ provider: ProviderConfiguration }>("/api/admin/providers", {
+        method: "POST",
+        body: JSON.stringify(providerFormState),
+      });
+
+      setProviderFormState(INITIAL_PROVIDER_FORM_STATE);
+      setStatusMessage("Provider created.");
+      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to create provider",
+      );
+    } finally {
+      setIsSavingProviderConfiguration(false);
+    }
+  }
+
+  async function handleUpdateProvider() {
+    if (!selectedProviderId) return;
+
+    setStatusMessage(null);
+    setViewError(null);
+    setIsSavingProviderConfiguration(true);
+
+    try {
+      await fetchJson<{ provider: ProviderConfiguration }>(
+        `/api/admin/providers/${selectedProviderId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(providerFormState),
+        },
+      );
+
+      setStatusMessage("Provider updated.");
+      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to update provider",
+      );
+    } finally {
+      setIsSavingProviderConfiguration(false);
+    }
+  }
+
+  async function handleDeleteProvider() {
+    if (!selectedProviderId) return;
+
+    setStatusMessage(null);
+    setViewError(null);
+    setIsSavingProviderConfiguration(true);
+
+    try {
+      await fetchJson<{ ok: boolean }>(`/api/admin/providers/${selectedProviderId}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      setProviderFormState(INITIAL_PROVIDER_FORM_STATE);
+      setRuleFormState(INITIAL_RULE_FORM_STATE);
+      setStatusMessage("Provider deleted.");
+      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to delete provider",
+      );
+    } finally {
+      setIsSavingProviderConfiguration(false);
+    }
+  }
+
+  async function handleCreateRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatusMessage(null);
+    setViewError(null);
+    setIsSavingProviderConfiguration(true);
+
+    try {
+      await fetchJson<{ rule: SenderRule }>("/api/admin/provider-rules", {
+        method: "POST",
+        body: JSON.stringify(ruleFormState),
+      });
+
+      setRuleFormState((current) => ({
+        ...INITIAL_RULE_FORM_STATE,
+        providerId: current.providerId,
+      }));
+      setStatusMessage("Sender rule created.");
+      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to create sender rule",
+      );
+    } finally {
+      setIsSavingProviderConfiguration(false);
+    }
+  }
+
+  async function handleUpdateRule() {
+    if (!selectedRuleId) return;
+
+    setStatusMessage(null);
+    setViewError(null);
+    setIsSavingProviderConfiguration(true);
+
+    try {
+      await fetchJson<{ rule: SenderRule }>(
+        `/api/admin/provider-rules/${selectedRuleId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(ruleFormState),
+        },
+      );
+
+      setStatusMessage("Sender rule updated.");
+      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to update sender rule",
+      );
+    } finally {
+      setIsSavingProviderConfiguration(false);
+    }
+  }
+
+  async function handleDeleteRule() {
+    if (!selectedRuleId) return;
+
+    setStatusMessage(null);
+    setViewError(null);
+    setIsSavingProviderConfiguration(true);
+
+    try {
+      await fetchJson<{ ok: boolean }>(`/api/admin/provider-rules/${selectedRuleId}`, {
+        method: "DELETE",
+      });
+
+      setRuleFormState((current) => ({
+        ...INITIAL_RULE_FORM_STATE,
+        providerId: current.providerId,
+      }));
+      setStatusMessage("Sender rule deleted.");
+      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to delete sender rule",
+      );
+    } finally {
+      setIsSavingProviderConfiguration(false);
+    }
+  }
+
   if (isSessionPending || isCheckingSetup) {
     return (
       <Box
@@ -674,6 +981,72 @@ export function App() {
           isSavingMember={isSavingMember}
           onRoleChange={handleMemberRoleChange}
           onProviderAccessToggle={handleProviderAccessToggle}
+        />
+      )}
+
+      {activeView === "providers" && isOwner && (
+        <ProvidersRulesView
+          providers={providerConfigurations}
+          rules={senderRules}
+          selectedProviderId={selectedProviderId}
+          selectedRuleId={selectedRuleId}
+          providerFormState={providerFormState}
+          ruleFormState={ruleFormState}
+          isSaving={isSavingProviderConfiguration}
+          onSelectProvider={(providerId) => {
+            setSelectedProviderId(providerId);
+            const provider = providerConfigurations.find((item) => item.id === providerId);
+
+            setProviderFormState(
+              provider
+                ? {
+                    providerKey: provider.provider_key,
+                    displayName: provider.display_name,
+                  }
+                : INITIAL_PROVIDER_FORM_STATE,
+            );
+
+            const firstRule = senderRules.find((rule) => rule.provider_id === providerId) ?? null;
+            setSelectedRuleId(firstRule?.id ?? null);
+            setRuleFormState(
+              firstRule
+                ? {
+                    providerId: firstRule.provider_id,
+                    matchType: firstRule.match_type,
+                    matchValue: firstRule.match_value,
+                  }
+                : {
+                    ...INITIAL_RULE_FORM_STATE,
+                    providerId,
+                  },
+            );
+          }}
+          onSelectRule={(ruleId) => {
+            setSelectedRuleId(ruleId);
+            const rule = senderRules.find((item) => item.id === ruleId);
+
+            if (!rule) {
+              return;
+            }
+
+            setRuleFormState({
+              providerId: rule.provider_id,
+              matchType: rule.match_type,
+              matchValue: rule.match_value,
+            });
+          }}
+          onProviderFormChange={(update) =>
+            setProviderFormState((current) => ({ ...current, ...update }))
+          }
+          onRuleFormChange={(update) =>
+            setRuleFormState((current) => ({ ...current, ...update }))
+          }
+          onCreateProvider={handleCreateProvider}
+          onUpdateProvider={handleUpdateProvider}
+          onDeleteProvider={handleDeleteProvider}
+          onCreateRule={handleCreateRule}
+          onUpdateRule={handleUpdateRule}
+          onDeleteRule={handleDeleteRule}
         />
       )}
 
