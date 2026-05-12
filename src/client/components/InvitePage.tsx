@@ -10,6 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import { type FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { InvitationAcceptanceState, InvitationSummary } from "../types";
 import { fetchJson } from "../utils";
 
@@ -19,6 +20,7 @@ interface InvitePageProps {
 }
 
 export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
+  const navigate = useNavigate();
   const [invitation, setInvitation] = useState<InvitationSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,8 +133,7 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
                 variant="outlined"
                 fullWidth
                 onClick={() => {
-                  window.history.replaceState({}, "", "/");
-                  window.location.reload();
+                  navigate("/login", { replace: true });
                 }}
               >
                 Return to Login
