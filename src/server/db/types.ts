@@ -61,6 +61,23 @@ export type ProviderRow = {
   id: string;
   provider_key: string;
   display_name: string;
+  created_at?: string;
+};
+
+export type ProviderConfigurationRow = {
+  id: string;
+  provider_key: string;
+  display_name: string;
+  created_at: string;
+  rule_count: number;
+};
+
+export type SenderRuleRow = {
+  id: string;
+  provider_id: string;
+  match_type: "exact" | "domain";
+  match_value: string;
+  created_at: string;
 };
 
 export type MessageStatus = InboxMessageRow["status"];

@@ -1,7 +1,11 @@
 import { sql } from "drizzle-orm";
 
 import { dbForDatabase } from "../client";
-import type { ProviderRow } from "../types";
+import type {
+  ProviderConfigurationRow,
+  ProviderRow,
+  SenderRuleRow,
+} from "../types";
 
 export type SenderRuleMatch = {
   providerId: string;
@@ -60,9 +64,146 @@ export async function getProviderByKey(
   providerKey: string,
 ): Promise<ProviderRow | null> {
   return dbForDatabase(db).get<ProviderRow>(sql`
-    SELECT id, provider_key, display_name
+    SELECT id, provider_key, display_name, created_at
     FROM providers
     WHERE provider_key = ${providerKey}
+    LIMIT 1
+  `);
+}
+
+export async function listProviderConfigurations(
+  db: D1Database,
+): Promise<ProviderConfigurationRow[]> {
+  return dbForDatabase(db).all<ProviderConfigurationRow>(sql`
+    SELECT providers.id,
+           providers.provider_key,
+           providers.display_name,
+           providers.created_at,
+           COUNT(sender_rules.id) AS rule_count
+    FROM providers
+    LEFT JOIN sender_rules ON sender_rules.provider_id = providers.id
+    GROUP BY providers.id, providers.provider_key, providers.display_name, providers.created_at
+    ORDER BY providers.display_name ASC
+  `);
+}
+
+export async function listSenderRules(
+  db: D1Database,
+): Promise<SenderRuleRow[]> {
+  return dbForDatabase(db).all<SenderRuleRow>(sql`
+    SELECT id, provider_id, match_type, match_value, created_at
+    FROM sender_rules
+    ORDER BY created_at ASC, match_value ASC
+  `);
+}
+
+export async function createProvider(
+  db: D1Database,
+  providerKey: string,
+  displayName: string,
+): Promise<ProviderRow> {
+  const id = crypto.randomUUID();
+
+  await dbForDatabase(db).run(sql`
+    INSERT INTO providers (id, provider_key, display_name)
+    VALUES (${id}, ${providerKey}, ${displayName})
+  `);
+
+  const provider = await getProviderByKey(db, providerKey);
+
+  if (!provider) {
+    throw new Error("Provider creation failed");
+  }
+
+  return provider;
+}
+
+export async function updateProvider(
+  db: D1Database,
+  providerId: string,
+  providerKey: string,
+  displayName: string,
+) {
+  await dbForDatabase(db).run(sql`
+    UPDATE providers
+    SET provider_key = ${providerKey},
+        display_name = ${displayName}
+    WHERE id = ${providerId}
+  `);
+}
+
+export async function deleteProvider(db: D1Database, providerId: string) {
+  await dbForDatabase(db).run(sql`
+    DELETE FROM providers
+    WHERE id = ${providerId}
+  `);
+}
+
+export async function getProviderById(
+  db: D1Database,
+  providerId: string,
+): Promise<ProviderRow | null> {
+  return dbForDatabase(db).get<ProviderRow>(sql`
+    SELECT id, provider_key, display_name, created_at
+    FROM providers
+    WHERE id = ${providerId}
+    LIMIT 1
+  `);
+}
+
+export async function createSenderRule(
+  db: D1Database,
+  providerId: string,
+  matchType: SenderRuleRow["match_type"],
+  matchValue: string,
+): Promise<SenderRuleRow> {
+  const id = crypto.randomUUID();
+
+  await dbForDatabase(db).run(sql`
+    INSERT INTO sender_rules (id, provider_id, match_type, match_value)
+    VALUES (${id}, ${providerId}, ${matchType}, ${matchValue})
+  `);
+
+  const rule = await getSenderRuleById(db, id);
+
+  if (!rule) {
+    throw new Error("Sender rule creation failed");
+  }
+
+  return rule;
+}
+
+export async function updateSenderRule(
+  db: D1Database,
+  ruleId: string,
+  providerId: string,
+  matchType: SenderRuleRow["match_type"],
+  matchValue: string,
+) {
+  await dbForDatabase(db).run(sql`
+    UPDATE sender_rules
+    SET provider_id = ${providerId},
+        match_type = ${matchType},
+        match_value = ${matchValue}
+    WHERE id = ${ruleId}
+  `);
+}
+
+export async function deleteSenderRule(db: D1Database, ruleId: string) {
+  await dbForDatabase(db).run(sql`
+    DELETE FROM sender_rules
+    WHERE id = ${ruleId}
+  `);
+}
+
+export async function getSenderRuleById(
+  db: D1Database,
+  ruleId: string,
+): Promise<SenderRuleRow | null> {
+  return dbForDatabase(db).get<SenderRuleRow>(sql`
+    SELECT id, provider_id, match_type, match_value, created_at
+    FROM sender_rules
+    WHERE id = ${ruleId}
     LIMIT 1
   `);
 }
