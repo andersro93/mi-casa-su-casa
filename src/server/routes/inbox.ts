@@ -2,8 +2,8 @@ import { Hono } from "hono";
 
 import {
   type AppVariables,
-  requireHouseholdContext,
   requireAuthenticatedUser,
+  requireHouseholdContext,
   requireOwner,
 } from "../auth/middleware";
 import {
@@ -104,7 +104,11 @@ inboxRoutes.patch("/:slug/messages/:messageId/status", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const existingMessage = await findMessageById(c.env.DB, household.id, messageId);
+  const existingMessage = await findMessageById(
+    c.env.DB,
+    household.id,
+    messageId,
+  );
 
   if (!existingMessage) {
     return c.json({ error: "Message not found" }, 404);
@@ -206,10 +210,15 @@ inboxRoutes.post("/:slug/quarantine/:messageId/review", async (c) => {
     providerId = provider.id;
   }
 
-  const result = await reviewQuarantineMessage(c.env.DB, household.id, messageId, {
-    action: payload.action,
-    providerId,
-  });
+  const result = await reviewQuarantineMessage(
+    c.env.DB,
+    household.id,
+    messageId,
+    {
+      action: payload.action,
+      providerId,
+    },
+  );
 
   if (!result) {
     return c.json({ error: "Quarantine message not found" }, 404);

@@ -60,7 +60,10 @@ householdRoutes.post("/", async (c) => {
 
   if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
     return c.json(
-      { error: "slug is required and may only contain lowercase letters, numbers, and hyphens" },
+      {
+        error:
+          "slug is required and may only contain lowercase letters, numbers, and hyphens",
+      },
       400,
     );
   }

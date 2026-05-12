@@ -2,13 +2,13 @@ import { isAPIError } from "better-auth/api";
 import { Hono } from "hono";
 
 import { provisioningAuthForEnv } from "../auth/auth";
+import { createHousehold } from "../db/repositories/households";
 import {
   beginInstallationSetup,
   completeInstallationSetup,
   getInstallationState,
   resetInstallationSetup,
 } from "../db/repositories/installation-state";
-import { createHousehold } from "../db/repositories/households";
 
 type SetupPayload = {
   email?: string;
