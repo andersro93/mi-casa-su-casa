@@ -49,10 +49,10 @@ export async function createHouseholdInvitation(
   const invitationId = crypto.randomUUID();
 
   await dbForDatabase(db).transaction(async (tx) => {
-      await tx.insert(householdInvitations).values({
-        id: invitationId,
-        householdId: input.householdId,
-        email: input.email,
+    await tx.insert(householdInvitations).values({
+      id: invitationId,
+      householdId: input.householdId,
+      email: input.email,
       name: input.name,
       role: input.role,
       tokenHash: input.tokenHash,
@@ -117,7 +117,9 @@ export async function listHouseholdInvitations(
       eq(providers.id, householdInvitationProviderAccess.providerId),
     )
     .where(
-      householdId ? eq(householdInvitations.householdId, householdId) : undefined,
+      householdId
+        ? eq(householdInvitations.householdId, householdId)
+        : undefined,
     )
     .orderBy(sql`${householdInvitations.createdAt} DESC`);
 
@@ -222,20 +224,23 @@ export async function acceptInvitation(
   },
 ) {
   await dbForDatabase(db).transaction(async (tx) => {
-    await tx.insert(householdMemberships).values({
-      id: crypto.randomUUID(),
-      householdId: input.householdId,
-      userId: input.acceptedByUserId,
-      role: input.role,
-      createdAt: sql`CURRENT_TIMESTAMP`,
-      updatedAt: sql`CURRENT_TIMESTAMP`,
-    }).onConflictDoUpdate({
-      target: [householdMemberships.householdId, householdMemberships.userId],
-      set: {
+    await tx
+      .insert(householdMemberships)
+      .values({
+        id: crypto.randomUUID(),
+        householdId: input.householdId,
+        userId: input.acceptedByUserId,
         role: input.role,
+        createdAt: sql`CURRENT_TIMESTAMP`,
         updatedAt: sql`CURRENT_TIMESTAMP`,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [householdMemberships.householdId, householdMemberships.userId],
+        set: {
+          role: input.role,
+          updatedAt: sql`CURRENT_TIMESTAMP`,
+        },
+      });
 
     await tx
       .update(householdInvitations)

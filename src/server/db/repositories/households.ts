@@ -1,7 +1,12 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { dbForDatabase } from "../client";
-import { householdMemberships, households, providers, senderRules } from "../schema";
+import {
+  householdMemberships,
+  households,
+  providers,
+  senderRules,
+} from "../schema";
 
 export type HouseholdMembershipRole = "owner" | "member";
 
@@ -205,7 +210,10 @@ export async function assertProvidersBelongToHousehold(
     .select({ id: providers.id })
     .from(providers)
     .where(
-      and(eq(providers.householdId, householdId), inArray(providers.id, providerIds)),
+      and(
+        eq(providers.householdId, householdId),
+        inArray(providers.id, providerIds),
+      ),
     );
 
   return rows.length === providerIds.length;
@@ -219,7 +227,9 @@ export async function assertSenderRuleBelongsToHousehold(
   const rows = await dbForDatabase(db)
     .select({ id: senderRules.id })
     .from(senderRules)
-    .where(and(eq(senderRules.id, ruleId), eq(senderRules.householdId, householdId)))
+    .where(
+      and(eq(senderRules.id, ruleId), eq(senderRules.householdId, householdId)),
+    )
     .limit(1);
 
   return Boolean(rows[0]);

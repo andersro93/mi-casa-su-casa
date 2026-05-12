@@ -1,10 +1,10 @@
 import type { MiddlewareHandler } from "hono";
-import { authForEnv } from "./auth";
-import type { AuthContext } from "./auth-context";
 import {
   listHouseholdsForUser,
   userBelongsToHousehold,
 } from "../db/repositories/households";
+import { authForEnv } from "./auth";
+import type { AuthContext } from "./auth-context";
 
 export type AppVariables = AuthContext;
 
@@ -17,7 +17,8 @@ export const loadAuthSession: MiddlewareHandler<{
     headers: c.req.raw.headers,
   });
 
-  const role = typeof result?.user?.role === "string" ? result.user.role : "user";
+  const role =
+    typeof result?.user?.role === "string" ? result.user.role : "user";
   const households = result?.user
     ? await listHouseholdsForUser(c.env.DB, result.user.id)
     : [];
@@ -25,7 +26,7 @@ export const loadAuthSession: MiddlewareHandler<{
   c.set(
     "user",
     result?.user
-        ? {
+      ? {
           id: result.user.id,
           email: result.user.email,
           role,

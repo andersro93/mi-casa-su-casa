@@ -1,8 +1,8 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 
 import { dbForDatabase } from "../client";
-import { listHouseholdsForUser } from "./households";
 import { session, user } from "../schema";
+import { listHouseholdsForUser } from "./households";
 
 function normalizeTimestamp(value: Date | number | null | undefined) {
   if (!value) {
