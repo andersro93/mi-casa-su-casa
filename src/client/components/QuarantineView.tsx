@@ -32,6 +32,7 @@ import {
 import React, { useState } from "react";
 import type { ProviderSummary, QuarantineMessage } from "../types";
 import { formatTimestamp } from "../utils";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const avatarColors = [
   "#6366F1", // Indigo
@@ -77,7 +78,7 @@ interface QuarantineViewProps {
   releaseProviderKey: string;
   onReleaseProviderKeyChange: (key: string) => void;
   isReviewingQuarantine: boolean;
-  onQuarantineReview: (action: "dismiss" | "release") => void;
+  onQuarantineReview: (action: "dismiss" | "release") => Promise<boolean>;
 }
 
 export function QuarantineView({
@@ -92,6 +93,9 @@ export function QuarantineView({
   onQuarantineReview,
 }: QuarantineViewProps) {
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+  const [reviewAction, setReviewAction] = useState<
+    "dismiss" | "release" | null
+  >(null);
 
   const selectedQuarantineMessage = quarantineMessages.find(
     (m) => m.id === selectedQuarantineId,
@@ -104,6 +108,18 @@ export function QuarantineView({
       setTimeout(() => setCopiedCodeId(null), 2000);
     } catch (err) {
       console.error("Failed to copy text: ", err);
+    }
+  };
+
+  const handleReviewConfirm = async () => {
+    if (!reviewAction) {
+      return;
+    }
+
+    const didReview = await onQuarantineReview(reviewAction);
+
+    if (didReview) {
+      setReviewAction(null);
     }
   };
 
@@ -399,7 +415,7 @@ export function QuarantineView({
                   color="primary"
                   startIcon={<MoveToInboxOutlined />}
                   disabled={isReviewingQuarantine || !releaseProviderKey}
-                  onClick={() => onQuarantineReview("release")}
+                  onClick={() => setReviewAction("release")}
                   sx={{ px: 4, py: 1.5 }}
                 >
                   Release to inbox
@@ -408,7 +424,7 @@ export function QuarantineView({
                   variant="outlined"
                   startIcon={<DeleteOutlined />}
                   disabled={isReviewingQuarantine}
-                  onClick={() => onQuarantineReview("dismiss")}
+                  onClick={() => setReviewAction("dismiss")}
                   sx={{ px: 4, py: 1.5 }}
                 >
                   Dismiss
@@ -460,6 +476,42 @@ export function QuarantineView({
           </Paper>
         )}
       </Box>
+
+      <ConfirmDialog
+        open={reviewAction !== null}
+        title={
+          reviewAction === "release"
+            ? "Release message to inbox?"
+            : "Dismiss quarantined message?"
+        }
+        description={
+          selectedQuarantineMessage ? (
+            <Stack spacing={1}>
+              <Typography variant="body2" color="text.secondary">
+                <strong>
+                  {selectedQuarantineMessage.subject ?? "Untitled message"}
+                </strong>{" "}
+                from {selectedQuarantineMessage.envelope_from}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {reviewAction === "release"
+                  ? `This will move the message into ${providers.find((provider) => provider.provider_key === releaseProviderKey)?.display_name || "the selected provider"}.`
+                  : "This will remove the message from quarantine review."}
+              </Typography>
+            </Stack>
+          ) : (
+            ""
+          )
+        }
+        confirmLabel={
+          reviewAction === "release" ? "Release to inbox" : "Dismiss message"
+        }
+        confirmColor={reviewAction === "release" ? "primary" : "error"}
+        isLoading={isReviewingQuarantine}
+        confirmDisabled={reviewAction === "release" && !releaseProviderKey}
+        onClose={() => setReviewAction(null)}
+        onConfirm={handleReviewConfirm}
+      />
     </Box>
   );
 }

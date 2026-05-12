@@ -1,6 +1,8 @@
 import {
+  AddCircleOutlined,
   AdminPanelSettingsOutlined,
   ChevronRightOutlined,
+  CloseOutlined,
   EmailOutlined,
   GroupOutlined,
   KeyOutlined,
@@ -15,10 +17,13 @@ import {
   Box,
   Button,
   Card,
-  CardActions,
   CardContent,
   CardHeader,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   IconButton,
@@ -40,7 +45,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import React, { type FormEvent } from "react";
+import React, { type FormEvent, useState } from "react";
 import type {
   InvitationFormState,
   InvitationSummary,
@@ -48,6 +53,7 @@ import type {
   MemberSummary,
   ProviderOption,
 } from "../types";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface MembersViewProps {
   members: MemberSummary[];
@@ -58,13 +64,13 @@ interface MembersViewProps {
   isLoadingMembers: boolean;
   memberFormState: MemberFormState;
   onMemberFormChange: (update: Partial<MemberFormState>) => void;
-  onCreateMember: (e: FormEvent<HTMLFormElement>) => void;
+  onCreateMember: (e: FormEvent<HTMLFormElement>) => Promise<boolean>;
   isSavingMember: boolean;
   invitationFormState: InvitationFormState;
   onInvitationFormChange: (update: Partial<InvitationFormState>) => void;
-  onCreateInvitation: (e: FormEvent<HTMLFormElement>) => void;
+  onCreateInvitation: (e: FormEvent<HTMLFormElement>) => Promise<boolean>;
   onResendInvitation: (invitationId: string) => void;
-  onCancelInvitation: (invitationId: string) => void;
+  onCancelInvitation: (invitationId: string) => Promise<boolean>;
   isSavingInvitation: boolean;
   onRoleChange: (userId: string, role: MemberSummary["role"]) => void;
   onProviderAccessToggle: (
@@ -130,135 +136,234 @@ export function MembersView({
   onProviderAccessToggle,
 }: MembersViewProps) {
   const selectedMember = members.find((m) => m.id === selectedMemberId);
+  const [isCreateMemberOpen, setIsCreateMemberOpen] = useState(false);
+  const [isInviteMemberOpen, setIsInviteMemberOpen] = useState(false);
+  const [invitationToCancel, setInvitationToCancel] =
+    useState<InvitationSummary | null>(null);
+
+  const handleOpenCreateMember = () => {
+    onMemberFormChange({
+      name: "",
+      email: "",
+      password: "",
+      role: "member",
+    });
+    setIsCreateMemberOpen(true);
+  };
+
+  const handleOpenInviteMember = () => {
+    onInvitationFormChange({
+      name: "",
+      email: "",
+      role: "member",
+      providerIds: [],
+    });
+    setIsInviteMemberOpen(true);
+  };
+
+  const handleCreateMemberSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    const didCreate = await onCreateMember(event);
+
+    if (didCreate) {
+      setIsCreateMemberOpen(false);
+    }
+  };
+
+  const handleCreateInvitationSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    const didInvite = await onCreateInvitation(event);
+
+    if (didInvite) {
+      setIsInviteMemberOpen(false);
+    }
+  };
+
+  const handleCancelInvitationConfirm = async () => {
+    if (!invitationToCancel) {
+      return;
+    }
+
+    const didCancel = await onCancelInvitation(invitationToCancel.id);
+
+    if (didCancel) {
+      setInvitationToCancel(null);
+    }
+  };
 
   return (
     <Box
       sx={{ display: "flex", flexDirection: "column", gap: 4, height: "100%" }}
     >
       <Card variant="outlined" sx={{ borderRadius: 2, borderColor: "divider" }}>
-        <Box component="form" onSubmit={onCreateMember}>
-          <CardHeader
-            avatar={
-              <Avatar
-                sx={{ bgcolor: "primary.light", color: "primary.contrastText" }}
-              >
-                <PersonAddOutlined />
-              </Avatar>
-            }
-            title="Create a household member"
-            subheader="Invite-only onboarding"
-            titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
-          />
-          <Divider />
-          <CardContent>
-            <Alert severity="info" sx={{ mb: 3 }} icon={<KeyOutlined />}>
-              Provision a member directly, then share the generated login
-              details privately with them.
+        <CardHeader
+          avatar={
+            <Avatar
+              sx={{ bgcolor: "primary.light", color: "primary.contrastText" }}
+            >
+              <AddCircleOutlined />
+            </Avatar>
+          }
+          title="Household member actions"
+          subheader="Open a focused flow when you need to add or invite someone"
+          titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+        />
+        <Divider />
+        <CardContent>
+          <Stack spacing={2}>
+            <Alert severity="info" icon={<PersonAddOutlined />}>
+              Keep the roster visible while opening a dedicated dialog for
+              create and invite actions.
             </Alert>
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: { xs: "column", md: "row" },
-                gap: 2,
-                alignItems: "flex-start",
-              }}
-            >
-              <TextField
-                label="Name"
-                size="small"
-                value={memberFormState.name}
-                onChange={(e) => onMemberFormChange({ name: e.target.value })}
-                required
-                fullWidth
-              />
-              <TextField
-                label="Email"
-                type="email"
-                size="small"
-                value={memberFormState.email}
-                onChange={(e) => onMemberFormChange({ email: e.target.value })}
-                required
-                fullWidth
-              />
-              <TextField
-                label="Temporary password"
-                type="password"
-                size="small"
-                value={memberFormState.password}
-                onChange={(e) =>
-                  onMemberFormChange({ password: e.target.value })
-                }
-                slotProps={{ htmlInput: { minLength: 12 } }}
-                required
-                fullWidth
-              />
-              <FormControl size="small" fullWidth>
-                <InputLabel id="role-select-label">Role</InputLabel>
-                <Select
-                  labelId="role-select-label"
-                  value={memberFormState.role}
-                  label="Role"
-                  onChange={(e) =>
-                    onMemberFormChange({
-                      role: e.target.value as "member" | "admin",
-                    })
-                  }
-                >
-                  <MenuItem value="member">Member</MenuItem>
-                  <MenuItem value="admin">Owner</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-          </CardContent>
-          <CardActions sx={{ justifyContent: "flex-end", px: 3, pb: 3, pt: 0 }}>
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={isSavingMember}
-              sx={{ minWidth: 160 }}
-            >
-              {isSavingMember ? "Creating…" : "Create member"}
-            </Button>
-          </CardActions>
-        </Box>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <Button
+                variant="contained"
+                startIcon={<PersonAddOutlined />}
+                onClick={handleOpenCreateMember}
+                sx={{ minWidth: 180 }}
+              >
+                Create member
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<EmailOutlined />}
+                onClick={handleOpenInviteMember}
+                sx={{ minWidth: 180 }}
+              >
+                Invite member
+              </Button>
+            </Stack>
+          </Stack>
+        </CardContent>
       </Card>
 
-      <Card variant="outlined" sx={{ borderRadius: 2, borderColor: "divider" }}>
-        <Box component="form" onSubmit={onCreateInvitation}>
-          <CardHeader
-            avatar={
-              <Avatar
-                sx={{
-                  bgcolor: "secondary.light",
-                  color: "secondary.contrastText",
-                }}
-              >
-                <EmailOutlined />
-              </Avatar>
-            }
-            title="Invite a household member"
-            subheader="Send a secure invite link by email"
-            titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
-          />
-          <Divider />
-          <CardContent>
-            <Alert severity="info" sx={{ mb: 3 }} icon={<PersonAddOutlined />}>
-              Invitations let members choose their own password and immediately
-              receive provider access once accepted.
-            </Alert>
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-              }}
-            >
+      <Dialog
+        open={isCreateMemberOpen}
+        onClose={
+          isSavingMember ? undefined : () => setIsCreateMemberOpen(false)
+        }
+        fullWidth
+        maxWidth="md"
+      >
+        <Box component="form" onSubmit={handleCreateMemberSubmit}>
+          <DialogTitle sx={{ pr: 7 }}>Create a household member</DialogTitle>
+          <IconButton
+            aria-label="Close create member dialog"
+            onClick={() => setIsCreateMemberOpen(false)}
+            disabled={isSavingMember}
+            sx={{ position: "absolute", top: 12, right: 12 }}
+          >
+            <CloseOutlined />
+          </IconButton>
+          <DialogContent dividers>
+            <Stack spacing={3}>
+              <Alert severity="info" icon={<KeyOutlined />}>
+                Provision a member directly, then share the generated login
+                details privately with them.
+              </Alert>
               <Box
                 sx={{
-                  display: "flex",
-                  flexDirection: { xs: "column", md: "row" },
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: "repeat(2, 1fr)" },
                   gap: 2,
-                  alignItems: "flex-start",
+                }}
+              >
+                <TextField
+                  label="Name"
+                  size="small"
+                  value={memberFormState.name}
+                  onChange={(e) => onMemberFormChange({ name: e.target.value })}
+                  required
+                  fullWidth
+                />
+                <TextField
+                  label="Email"
+                  type="email"
+                  size="small"
+                  value={memberFormState.email}
+                  onChange={(e) =>
+                    onMemberFormChange({ email: e.target.value })
+                  }
+                  required
+                  fullWidth
+                />
+                <TextField
+                  label="Temporary password"
+                  type="password"
+                  size="small"
+                  value={memberFormState.password}
+                  onChange={(e) =>
+                    onMemberFormChange({ password: e.target.value })
+                  }
+                  helperText="Must be at least 12 characters."
+                  slotProps={{ htmlInput: { minLength: 12 } }}
+                  required
+                  fullWidth
+                />
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="role-select-label">Role</InputLabel>
+                  <Select
+                    labelId="role-select-label"
+                    value={memberFormState.role}
+                    label="Role"
+                    onChange={(e) =>
+                      onMemberFormChange({
+                        role: e.target.value as "member" | "admin",
+                      })
+                    }
+                  >
+                    <MenuItem value="member">Member</MenuItem>
+                    <MenuItem value="admin">Owner</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button
+              onClick={() => setIsCreateMemberOpen(false)}
+              disabled={isSavingMember}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained" disabled={isSavingMember}>
+              {isSavingMember ? "Creating…" : "Create member"}
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      <Dialog
+        open={isInviteMemberOpen}
+        onClose={
+          isSavingInvitation ? undefined : () => setIsInviteMemberOpen(false)
+        }
+        fullWidth
+        maxWidth="md"
+      >
+        <Box component="form" onSubmit={handleCreateInvitationSubmit}>
+          <DialogTitle sx={{ pr: 7 }}>Invite a household member</DialogTitle>
+          <IconButton
+            aria-label="Close invite member dialog"
+            onClick={() => setIsInviteMemberOpen(false)}
+            disabled={isSavingInvitation}
+            sx={{ position: "absolute", top: 12, right: 12 }}
+          >
+            <CloseOutlined />
+          </IconButton>
+          <DialogContent dividers>
+            <Stack spacing={3}>
+              <Alert severity="info" icon={<PersonAddOutlined />}>
+                Invitations let members choose their own password and receive
+                provider access once accepted.
+              </Alert>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: "repeat(2, 1fr)" },
+                  gap: 2,
                 }}
               >
                 <TextField
@@ -298,45 +403,54 @@ export function MembersView({
                     <MenuItem value="admin">Owner</MenuItem>
                   </Select>
                 </FormControl>
-              </Box>
-
-              <FormControl size="small" fullWidth>
-                <InputLabel id="invite-providers-select-label">
-                  Provider Access
-                </InputLabel>
-                <Select
-                  labelId="invite-providers-select-label"
-                  multiple
-                  value={invitationFormState.providerIds}
-                  label="Provider Access"
-                  onChange={(e) =>
-                    onInvitationFormChange({
-                      providerIds: e.target.value as string[],
-                    })
-                  }
-                  renderValue={(selected) => {
-                    const providerIds = selected as string[];
-
-                    if (!providerIds.length) {
-                      return "No provider access yet";
-                    }
-
-                    return providerOptions
-                      .filter((provider) => providerIds.includes(provider.id))
-                      .map((provider) => provider.display_name)
-                      .join(", ");
-                  }}
+                <FormControl
+                  size="small"
+                  fullWidth
+                  sx={{ gridColumn: { md: "1 / -1" } }}
                 >
-                  {providerOptions.map((provider) => (
-                    <MenuItem key={provider.id} value={provider.id}>
-                      {provider.display_name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-          </CardContent>
-          <CardActions sx={{ justifyContent: "flex-end", px: 3, pb: 3, pt: 0 }}>
+                  <InputLabel id="invite-providers-select-label">
+                    Provider Access
+                  </InputLabel>
+                  <Select
+                    labelId="invite-providers-select-label"
+                    multiple
+                    value={invitationFormState.providerIds}
+                    label="Provider Access"
+                    onChange={(e) =>
+                      onInvitationFormChange({
+                        providerIds: e.target.value as string[],
+                      })
+                    }
+                    renderValue={(selected) => {
+                      const providerIds = selected as string[];
+
+                      if (!providerIds.length) {
+                        return "No provider access yet";
+                      }
+
+                      return providerOptions
+                        .filter((provider) => providerIds.includes(provider.id))
+                        .map((provider) => provider.display_name)
+                        .join(", ");
+                    }}
+                  >
+                    {providerOptions.map((provider) => (
+                      <MenuItem key={provider.id} value={provider.id}>
+                        {provider.display_name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button
+              onClick={() => setIsInviteMemberOpen(false)}
+              disabled={isSavingInvitation}
+            >
+              Cancel
+            </Button>
             <Button
               type="submit"
               variant="contained"
@@ -345,13 +459,12 @@ export function MembersView({
                 !invitationFormState.name.trim() ||
                 !invitationFormState.email.trim()
               }
-              sx={{ minWidth: 160 }}
             >
               {isSavingInvitation ? "Sending…" : "Send invitation"}
             </Button>
-          </CardActions>
+          </DialogActions>
         </Box>
-      </Card>
+      </Dialog>
 
       <Card variant="outlined" sx={{ borderRadius: 2, borderColor: "divider" }}>
         <CardHeader
@@ -455,7 +568,7 @@ export function MembersView({
                           color="error"
                           variant="text"
                           disabled={!isPending || isSavingInvitation}
-                          onClick={() => onCancelInvitation(invitation.id)}
+                          onClick={() => setInvitationToCancel(invitation)}
                         >
                           Cancel
                         </Button>
@@ -856,6 +969,31 @@ export function MembersView({
           </Card>
         )}
       </Box>
+
+      <ConfirmDialog
+        open={Boolean(invitationToCancel)}
+        title="Cancel invitation?"
+        description={
+          invitationToCancel ? (
+            <Stack spacing={1}>
+              <Typography variant="body2" color="text.secondary">
+                This will invalidate the pending invite link for
+                <strong>{` ${invitationToCancel.name}`}</strong>.
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                They will need a new invitation before they can join.
+              </Typography>
+            </Stack>
+          ) : (
+            ""
+          )
+        }
+        confirmLabel="Cancel invitation"
+        confirmColor="error"
+        isLoading={isSavingInvitation}
+        onClose={() => setInvitationToCancel(null)}
+        onConfirm={handleCancelInvitationConfirm}
+      />
     </Box>
   );
 }
