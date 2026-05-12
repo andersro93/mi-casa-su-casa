@@ -751,6 +751,203 @@ describe("worker routes", () => {
     });
   });
 
+  it("lists provider configuration for owners", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub((sql) => {
+      if (sql.includes("COUNT(sender_rules.id) AS rule_count")) {
+        return {
+          run: async () => ({
+            results: [
+              {
+                id: "provider-1",
+                provider_key: "netflix",
+                display_name: "Netflix",
+                created_at: "2026-05-10T12:00:00.000Z",
+                rule_count: 2,
+              },
+            ],
+          }),
+        };
+      }
+
+      if (
+        sql.includes("SELECT id, provider_id, match_type, match_value, created_at") &&
+        sql.includes("FROM sender_rules")
+      ) {
+        return {
+          run: async () => ({
+            results: [
+              {
+                id: "rule-1",
+                provider_id: "provider-1",
+                match_type: "domain",
+                match_value: "netflix.com",
+                created_at: "2026-05-10T12:00:00.000Z",
+              },
+            ],
+          }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker("/api/admin/providers", undefined, db);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      providers: [
+        {
+          id: "provider-1",
+          provider_key: "netflix",
+          display_name: "Netflix",
+          created_at: "2026-05-10T12:00:00.000Z",
+          rule_count: 2,
+        },
+      ],
+      rules: [
+        {
+          id: "rule-1",
+          provider_id: "provider-1",
+          match_type: "domain",
+          match_value: "netflix.com",
+          created_at: "2026-05-10T12:00:00.000Z",
+        },
+      ],
+    });
+  });
+
+  it("creates a provider from the admin route", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    let providerInserted = false;
+
+    const db = createDbStub((sql, params) => {
+      if (sql.includes("WHERE provider_key = ?") && sql.includes("LIMIT 1")) {
+        const providerKey = params[0];
+
+        if (providerKey === "hulu" && providerInserted) {
+          return {
+            first: async () => ({
+              id: "provider-1",
+              provider_key: "hulu",
+              display_name: "Hulu",
+              created_at: "2026-05-10T12:00:00.000Z",
+            }),
+          };
+        }
+
+        return {
+          first: async () => null,
+        };
+      }
+
+      if (sql.startsWith("INSERT INTO providers")) {
+        return {
+          run: async () => {
+            providerInserted = true;
+            return { results: [] };
+          },
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker(
+      "/api/admin/providers",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          providerKey: "hulu",
+          displayName: "Hulu",
+        }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      provider: {
+        id: "provider-1",
+        provider_key: "hulu",
+        display_name: "Hulu",
+        created_at: "2026-05-10T12:00:00.000Z",
+      },
+    });
+  });
+
+  it("creates a sender rule from the admin route", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub((sql, params) => {
+      if (sql.includes("WHERE id = ?") && sql.includes("FROM providers")) {
+        return {
+          first: async () => ({
+            id: params[0],
+            provider_key: "netflix",
+            display_name: "Netflix",
+            created_at: "2026-05-10T12:00:00.000Z",
+          }),
+        };
+      }
+
+      if (sql.startsWith("INSERT INTO sender_rules")) {
+        return {
+          run: async () => ({ results: [] }),
+        };
+      }
+
+      if (sql.includes("FROM sender_rules") && sql.includes("WHERE id = ?")) {
+        return {
+          first: async () => ({
+            id: params[0],
+            provider_id: "provider-1",
+            match_type: "domain",
+            match_value: "netflix.com",
+            created_at: "2026-05-10T12:00:00.000Z",
+          }),
+        };
+      }
+
+      return {};
+    });
+
+    const response = await invokeWorker(
+      "/api/admin/provider-rules",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          providerId: "provider-1",
+          matchType: "domain",
+          matchValue: "@Netflix.com",
+        }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      rule: {
+        id: expect.any(String),
+        provider_id: "provider-1",
+        match_type: "domain",
+        match_value: "netflix.com",
+        created_at: "2026-05-10T12:00:00.000Z",
+      },
+    });
+  });
+
   it("grants provider access from the admin route", async () => {
     sessionState.current = {
       user: { id: "admin-1", email: "owner@example.com", role: "admin" },
