@@ -8,6 +8,8 @@ import { purgeExpiredMessages } from "./server/jobs/retention";
 import { adminRoutes } from "./server/routes/admin";
 import { healthRoutes } from "./server/routes/health";
 import { inboxRoutes } from "./server/routes/inbox";
+import { invitationRoutes } from "./server/routes/invitations";
+import { settingsRoutes } from "./server/routes/settings";
 import { setupRoutes } from "./server/routes/setup";
 import { createAppContext } from "./server/runtime/context";
 
@@ -25,6 +27,7 @@ app.use(
 
 app.use("/api/inbox/*", loadAuthSession);
 app.use("/api/admin/*", loadAuthSession);
+app.use("/api/settings/*", loadAuthSession);
 
 app.on(["GET", "POST"], "/api/auth/*", (c) =>
   authForEnv(c.env).handler(c.req.raw),
@@ -32,6 +35,8 @@ app.on(["GET", "POST"], "/api/auth/*", (c) =>
 app.route("/api/health", healthRoutes);
 app.route("/api/inbox", inboxRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/invitations", invitationRoutes);
+app.route("/api/settings", settingsRoutes);
 app.route("/api/setup", setupRoutes);
 
 app.get("*", async (c) => {

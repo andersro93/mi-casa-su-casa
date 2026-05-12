@@ -17,6 +17,9 @@ export const user = sqliteTable("user", {
     .notNull(),
   image: text("image"),
   role: text("role").default("user"),
+  twoFactorEnabled: integer("twoFactorEnabled", { mode: "boolean" })
+    .default(false)
+    .notNull(),
   banned: integer("banned", { mode: "boolean" }).default(false),
   banReason: text("banReason"),
   banExpires: integer("banExpires", { mode: "timestamp_ms" }),
@@ -79,6 +82,46 @@ export const verification = sqliteTable(
     updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
+);
+
+export const twoFactor = sqliteTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    verified: integer("verified", { mode: "boolean" }).default(true),
+  },
+  (table) => [
+    index("twoFactor_secret_idx").on(table.secret),
+    index("twoFactor_userId_idx").on(table.userId),
+  ],
+);
+
+export const passkey = sqliteTable(
+  "passkey",
+  {
+    id: text("id").primaryKey(),
+    name: text("name"),
+    publicKey: text("public_key").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    credentialID: text("credential_id").notNull(),
+    counter: integer("counter").notNull(),
+    deviceType: text("device_type").notNull(),
+    backedUp: integer("backed_up", { mode: "boolean" }).notNull(),
+    transports: text("transports"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }),
+    aaguid: text("aaguid"),
+  },
+  (table) => [
+    index("passkey_userId_idx").on(table.userId),
+    index("passkey_credentialID_idx").on(table.credentialID),
+  ],
 );
 
 export const providers = sqliteTable("providers", {
@@ -214,5 +257,62 @@ export const appInstallation = sqliteTable(
       "app_installation_status_check",
       sql`${table.status} in ('pending', 'in_progress', 'complete')`,
     ),
+  ],
+);
+
+export const householdInvitations = sqliteTable(
+  "household_invitations",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    role: text("role").$type<"member" | "admin">().notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    status: text("status")
+      .$type<"pending" | "accepted" | "cancelled" | "expired">()
+      .notNull(),
+    invitedByUserId: text("invited_by_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    acceptedByUserId: text("accepted_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: text("expires_at").notNull(),
+    acceptedAt: text("accepted_at"),
+    cancelledAt: text("cancelled_at"),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => [
+    index("idx_household_invitations_email").on(table.email),
+    index("idx_household_invitations_status").on(table.status),
+    index("idx_household_invitations_expires_at").on(table.expiresAt),
+    check(
+      "household_invitations_role_check",
+      sql`${table.role} in ('member', 'admin')`,
+    ),
+    check(
+      "household_invitations_status_check",
+      sql`${table.status} in ('pending', 'accepted', 'cancelled', 'expired')`,
+    ),
+  ],
+);
+
+export const householdInvitationProviderAccess = sqliteTable(
+  "household_invitation_provider_access",
+  {
+    id: text("id").primaryKey(),
+    invitationId: text("invitation_id")
+      .notNull()
+      .references(() => householdInvitations.id, { onDelete: "cascade" }),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => providers.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => [
+    uniqueIndex(
+      "household_invitation_provider_access_invitation_provider_unique",
+    ).on(table.invitationId, table.providerId),
   ],
 );

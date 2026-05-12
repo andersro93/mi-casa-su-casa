@@ -1,5 +1,16 @@
+type TransactionalEmailMessage = {
+  from: string;
+  to: string | string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  replyTo?: string;
+};
+
 type SendEmail = {
-  send(message: EmailMessage): Promise<void>;
+  send(
+    message: TransactionalEmailMessage,
+  ): Promise<{ messageId?: string } | undefined>;
 };
 
 interface Env {
@@ -10,6 +21,7 @@ interface Env {
   DB: D1Database;
   EMAIL: SendEmail;
   ENVIRONMENT: string;
+  OUTBOUND_EMAIL_FROM?: string;
   OWNER_EMAIL?: string;
   SETUP_SECRET?: string;
 }
