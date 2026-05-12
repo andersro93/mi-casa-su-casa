@@ -16,7 +16,7 @@ import { fetchJson } from "../utils";
 
 interface InvitePageProps {
   token: string;
-  onAcceptSuccess: () => void;
+  onAcceptSuccess: (householdSlug: string) => void;
 }
 
 export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
@@ -76,15 +76,22 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
     setIsAccepting(true);
 
     try {
-      await fetchJson(`/api/invitations/${token}/accept`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: formState.name,
-          password: formState.password,
-        }),
-      });
+      const response = await fetchJson<{ household?: { slug: string } | null }>(
+        `/api/invitations/${token}/accept`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: formState.name,
+            password: formState.password,
+          }),
+        },
+      );
 
-      onAcceptSuccess();
+      if (!response.household?.slug) {
+        throw new Error("Invitation accepted but no household was returned");
+      }
+
+      onAcceptSuccess(response.household.slug);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to accept invitation",

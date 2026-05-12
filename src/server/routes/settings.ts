@@ -43,6 +43,16 @@ settingsRoutes.get("/", async (c) => {
   return c.json({ profile, sessions });
 });
 
+settingsRoutes.get("/households", async (c) => {
+  const currentUser = c.get("user");
+
+  if (!currentUser) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  return c.json({ households: currentUser.households });
+});
+
 settingsRoutes.patch("/profile", async (c) => {
   const currentUser = c.get("user");
 

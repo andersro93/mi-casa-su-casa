@@ -2,6 +2,17 @@ import PostalMime from "postal-mime";
 
 import type { ParsedIncomingEmail } from "../db/types";
 
+function extractHouseholdSlug(address: string): string | null {
+  const normalized = address.trim().toLowerCase();
+  const localPart = normalized.split("@")[0]?.trim();
+
+  if (!localPart) {
+    return null;
+  }
+
+  return /^[a-z0-9-]+$/.test(localPart) ? localPart : null;
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<[^>]+>/g, " ")
@@ -24,6 +35,7 @@ export async function parseIncomingEmail(
   return {
     envelopeFrom: message.from,
     envelopeTo: message.to,
+    householdSlug: extractHouseholdSlug(message.to),
     fromHeader:
       parsed.headers.find((header) => header.key.toLowerCase() === "from")
         ?.value ?? null,

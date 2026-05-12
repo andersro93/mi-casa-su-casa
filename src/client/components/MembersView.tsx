@@ -145,7 +145,6 @@ export function MembersView({
     onMemberFormChange({
       name: "",
       email: "",
-      password: "",
       role: "member",
     });
     setIsCreateMemberOpen(true);
@@ -260,8 +259,8 @@ export function MembersView({
           <DialogContent dividers>
             <Stack spacing={3}>
               <Alert severity="info" icon={<KeyOutlined />}>
-                Provision a member directly, then share the generated login
-                details privately with them.
+                Send a direct invitation so the member can choose their own
+                password securely.
               </Alert>
               <Box
                 sx={{
@@ -286,19 +285,6 @@ export function MembersView({
                   onChange={(e) =>
                     onMemberFormChange({ email: e.target.value })
                   }
-                  required
-                  fullWidth
-                />
-                <TextField
-                  label="Temporary password"
-                  type="password"
-                  size="small"
-                  value={memberFormState.password}
-                  onChange={(e) =>
-                    onMemberFormChange({ password: e.target.value })
-                  }
-                  helperText="Must be at least 12 characters."
-                  slotProps={{ htmlInput: { minLength: 12 } }}
                   required
                   fullWidth
                 />
@@ -329,7 +315,7 @@ export function MembersView({
               Cancel
             </Button>
             <Button type="submit" variant="contained" disabled={isSavingMember}>
-              {isSavingMember ? "Creating…" : "Create member"}
+              {isSavingMember ? "Sending…" : "Send invite"}
             </Button>
           </DialogActions>
         </Box>

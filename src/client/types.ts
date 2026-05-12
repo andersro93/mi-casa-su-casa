@@ -11,6 +11,13 @@ export type SessionData = {
   };
 };
 
+export type HouseholdSummary = {
+  id: string;
+  slug: string;
+  displayName: string;
+  role: "owner" | "member";
+};
+
 export type ProviderSummary = {
   provider_key: string;
   display_name: string;
@@ -99,7 +106,6 @@ export type SenderRuleFormState = {
 export type MemberFormState = {
   email: string;
   name: string;
-  password: string;
   role: "member" | "admin";
 };
 
@@ -144,6 +150,7 @@ export type AccountProfile = {
   image: string | null;
   role: string | null;
   twoFactorEnabled: boolean;
+  households: HouseholdSummary[];
 };
 
 export type AccountSettingsResponse = {
@@ -192,5 +199,12 @@ export type SetupFormState = {
   email: string;
   name: string;
   password: string;
+  householdName: string;
+  householdSlug: string;
   setupSecret: string;
+};
+
+export type CreateHouseholdFormState = {
+  displayName: string;
+  slug: string;
 };

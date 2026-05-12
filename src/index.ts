@@ -7,6 +7,7 @@ import { handleIncomingEmail } from "./server/email/handler";
 import { purgeExpiredMessages } from "./server/jobs/retention";
 import { adminRoutes } from "./server/routes/admin";
 import { healthRoutes } from "./server/routes/health";
+import { householdRoutes } from "./server/routes/households";
 import { inboxRoutes } from "./server/routes/inbox";
 import { invitationRoutes } from "./server/routes/invitations";
 import { settingsRoutes } from "./server/routes/settings";
@@ -27,12 +28,14 @@ app.use(
 
 app.use("/api/inbox/*", loadAuthSession);
 app.use("/api/admin/*", loadAuthSession);
+app.use("/api/households/*", loadAuthSession);
 app.use("/api/settings/*", loadAuthSession);
 
 app.on(["GET", "POST"], "/api/auth/*", (c) =>
   authForEnv(c.env).handler(c.req.raw),
 );
 app.route("/api/health", healthRoutes);
+app.route("/api/households", householdRoutes);
 app.route("/api/inbox", inboxRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/invitations", invitationRoutes);

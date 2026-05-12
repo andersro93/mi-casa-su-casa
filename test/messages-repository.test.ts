@@ -12,6 +12,7 @@ function createParsedEmail(
   return {
     envelopeFrom: "login@service.example",
     envelopeTo: "codes@example.com",
+    householdSlug: "codes",
     fromHeader: "Service <login@service.example>",
     subject: "Your verification code",
     messageId: "<message-1@test>",
@@ -43,12 +44,16 @@ function createDb(runImpl: () => Promise<unknown>) {
 describe("messages repository inserts", () => {
   it("ignores duplicate inbox message ids", async () => {
     const db = createDb(async () => {
-      throw new Error("UNIQUE constraint failed: messages.message_id");
+      throw new Error(
+        "UNIQUE constraint failed: messages.household_id, messages.message_id",
+      );
     });
 
     await expect(
-      insertMessage(db.db, createParsedEmail(), "provider-1", {
+      insertMessage(db.db, createParsedEmail(), "household-1", "provider-1", {
         kind: "matched",
+        householdId: "household-1",
+        householdSlug: "codes",
         providerId: "provider-1",
         providerKey: "netflix",
         code: "123456",
@@ -69,12 +74,12 @@ describe("messages repository inserts", () => {
   it("ignores duplicate quarantine message ids", async () => {
     const db = createDb(async () => {
       throw new Error(
-        "UNIQUE constraint failed: quarantine_messages.message_id",
+        "UNIQUE constraint failed: quarantine_messages.household_id, quarantine_messages.message_id",
       );
     });
 
     await expect(
-      insertQuarantineMessage(db.db, createParsedEmail(), {
+      insertQuarantineMessage(db.db, createParsedEmail(), "household-1", {
         kind: "quarantine",
         reason: "No sender rule matched the inbound email.",
         code: "123456",
@@ -96,8 +101,10 @@ describe("messages repository inserts", () => {
     });
 
     await expect(
-      insertMessage(db.db, createParsedEmail(), "provider-1", {
+      insertMessage(db.db, createParsedEmail(), "household-1", "provider-1", {
         kind: "matched",
+        householdId: "household-1",
+        householdSlug: "codes",
         providerId: "provider-1",
         providerKey: "netflix",
         code: "123456",

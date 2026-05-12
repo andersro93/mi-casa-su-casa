@@ -1,6 +1,8 @@
 export type ClassificationResult =
   | {
       kind: "matched";
+      householdId: string;
+      householdSlug: string;
       providerId: string;
       providerKey: string;
       code: string | null;
@@ -15,6 +17,7 @@ export type ClassificationResult =
 export type ParsedIncomingEmail = {
   envelopeFrom: string;
   envelopeTo: string;
+  householdSlug: string | null;
   fromHeader: string | null;
   subject: string | null;
   messageId: string | null;
@@ -25,6 +28,7 @@ export type ParsedIncomingEmail = {
 
 export type InboxMessageRow = {
   id: string;
+  household_slug: string;
   provider_key: string;
   provider_display_name: string;
   subject: string | null;
@@ -36,6 +40,7 @@ export type InboxMessageRow = {
 };
 
 export type ProviderSummaryRow = {
+  household_slug: string;
   provider_key: string;
   display_name: string;
   message_count: number;
@@ -45,6 +50,7 @@ export type ProviderSummaryRow = {
 
 export type QuarantineMessageRow = {
   id: string;
+  household_slug: string;
   provider_key: "quarantine";
   provider_display_name: "Quarantine";
   subject: string | null;
@@ -59,6 +65,7 @@ export type QuarantineMessageRow = {
 
 export type ProviderRow = {
   id: string;
+  household_id?: string;
   provider_key: string;
   display_name: string;
   created_at?: string;
@@ -66,6 +73,7 @@ export type ProviderRow = {
 
 export type ProviderConfigurationRow = {
   id: string;
+  household_id: string;
   provider_key: string;
   display_name: string;
   created_at: string;
@@ -74,6 +82,7 @@ export type ProviderConfigurationRow = {
 
 export type SenderRuleRow = {
   id: string;
+  household_id: string;
   provider_id: string;
   match_type: "exact" | "domain";
   match_value: string;
@@ -84,6 +93,7 @@ export type MessageStatus = InboxMessageRow["status"];
 
 export type MemberRecord = {
   id: string;
+  householdRole: "owner" | "member";
   email: string;
   name: string;
   role: string | null;
@@ -93,11 +103,19 @@ export type MemberRecord = {
 
 export type MemberAccessRow = {
   id: string;
+  household_role: "owner" | "member";
   email: string;
   name: string;
   role: string | null;
   provider_key: string | null;
   provider_display_name: string | null;
+};
+
+export type HouseholdSummaryRow = {
+  id: string;
+  slug: string;
+  displayName: string;
+  role: "owner" | "member";
 };
 
 export type InstallationStateRow = {

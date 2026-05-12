@@ -4,15 +4,16 @@ import { dbForDatabase } from "../client";
 import {
   householdInvitationProviderAccess,
   householdInvitations,
+  householdMemberships,
   providers,
-  userProviderAccess,
 } from "../schema";
 
-export type InvitationRole = "member" | "admin";
+export type InvitationRole = "member" | "owner";
 export type InvitationStatus = "pending" | "accepted" | "cancelled" | "expired";
 
 export type InvitationRecord = {
   id: string;
+  householdId: string;
   email: string;
   name: string;
   role: InvitationRole;
@@ -35,6 +36,7 @@ type InvitationWithProviderRow = InvitationRecord & {
 export async function createHouseholdInvitation(
   db: D1Database,
   input: {
+    householdId: string;
     email: string;
     name: string;
     role: InvitationRole;
@@ -47,9 +49,10 @@ export async function createHouseholdInvitation(
   const invitationId = crypto.randomUUID();
 
   await dbForDatabase(db).transaction(async (tx) => {
-    await tx.insert(householdInvitations).values({
-      id: invitationId,
-      email: input.email,
+      await tx.insert(householdInvitations).values({
+        id: invitationId,
+        householdId: input.householdId,
+        email: input.email,
       name: input.name,
       role: input.role,
       tokenHash: input.tokenHash,
@@ -78,10 +81,14 @@ export async function createHouseholdInvitation(
   return invitationId;
 }
 
-export async function listHouseholdInvitations(db: D1Database) {
+export async function listHouseholdInvitations(
+  db: D1Database,
+  householdId?: string,
+) {
   const rows = await dbForDatabase(db)
     .select({
       id: householdInvitations.id,
+      householdId: householdInvitations.householdId,
       email: householdInvitations.email,
       name: householdInvitations.name,
       role: householdInvitations.role,
@@ -109,6 +116,9 @@ export async function listHouseholdInvitations(db: D1Database) {
       providers,
       eq(providers.id, householdInvitationProviderAccess.providerId),
     )
+    .where(
+      householdId ? eq(householdInvitations.householdId, householdId) : undefined,
+    )
     .orderBy(sql`${householdInvitations.createdAt} DESC`);
 
   return groupInvitationRows(rows);
@@ -121,6 +131,7 @@ export async function getInvitationByTokenHash(
   const rows = await dbForDatabase(db)
     .select({
       id: householdInvitations.id,
+      householdId: householdInvitations.householdId,
       email: householdInvitations.email,
       name: householdInvitations.name,
       role: householdInvitations.role,
@@ -157,6 +168,7 @@ export async function getInvitationById(db: D1Database, invitationId: string) {
   const rows = await dbForDatabase(db)
     .select({
       id: householdInvitations.id,
+      householdId: householdInvitations.householdId,
       email: householdInvitations.email,
       name: householdInvitations.name,
       role: householdInvitations.role,
@@ -204,21 +216,26 @@ export async function acceptInvitation(
   db: D1Database,
   input: {
     invitationId: string;
+    householdId: string;
     acceptedByUserId: string;
-    providerIds: string[];
+    role: InvitationRole;
   },
 ) {
   await dbForDatabase(db).transaction(async (tx) => {
-    if (input.providerIds.length > 0) {
-      await tx.insert(userProviderAccess).values(
-        input.providerIds.map((providerId) => ({
-          id: crypto.randomUUID(),
-          userId: input.acceptedByUserId,
-          providerId,
-          createdAt: sql`CURRENT_TIMESTAMP`,
-        })),
-      );
-    }
+    await tx.insert(householdMemberships).values({
+      id: crypto.randomUUID(),
+      householdId: input.householdId,
+      userId: input.acceptedByUserId,
+      role: input.role,
+      createdAt: sql`CURRENT_TIMESTAMP`,
+      updatedAt: sql`CURRENT_TIMESTAMP`,
+    }).onConflictDoUpdate({
+      target: [householdMemberships.householdId, householdMemberships.userId],
+      set: {
+        role: input.role,
+        updatedAt: sql`CURRENT_TIMESTAMP`,
+      },
+    });
 
     await tx
       .update(householdInvitations)
@@ -251,6 +268,7 @@ function groupInvitationRows(rows: InvitationWithProviderRow[]) {
   const grouped = new Map<
     string,
     InvitationRecord & {
+      householdId: string;
       providers: Array<{
         id: string;
         provider_key: string;
@@ -275,6 +293,7 @@ function groupInvitationRows(rows: InvitationWithProviderRow[]) {
 
     grouped.set(row.id, {
       id: row.id,
+      householdId: row.householdId,
       email: row.email,
       name: row.name,
       role: row.role,

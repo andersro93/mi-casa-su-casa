@@ -1,6 +1,10 @@
 import type { MiddlewareHandler } from "hono";
 import { authForEnv } from "./auth";
 import type { AuthContext } from "./auth-context";
+import {
+  listHouseholdsForUser,
+  userBelongsToHousehold,
+} from "../db/repositories/households";
 
 export type AppVariables = AuthContext;
 
@@ -13,32 +17,19 @@ export const loadAuthSession: MiddlewareHandler<{
     headers: c.req.raw.headers,
   });
 
-  const storedRole =
-    typeof result?.user?.role === "string" ? result.user.role : "user";
-  let role = storedRole === "admin" ? "admin" : "member";
-
-  if (
-    result?.user &&
-    c.env.OWNER_EMAIL &&
-    result.user.email.toLowerCase() === c.env.OWNER_EMAIL.toLowerCase() &&
-    storedRole !== "admin"
-  ) {
-    // Direct D1 update bypasses Better Auth admin plugin permission check.
-    // The admin plugin's setRole API requires the *caller* to already be admin,
-    // creating a chicken-and-egg problem for owner auto-promotion.
-    await c.env.DB.prepare("UPDATE user SET role = 'admin' WHERE id = ?")
-      .bind(result.user.id)
-      .run();
-    role = "admin";
-  }
+  const role = typeof result?.user?.role === "string" ? result.user.role : "user";
+  const households = result?.user
+    ? await listHouseholdsForUser(c.env.DB, result.user.id)
+    : [];
 
   c.set(
     "user",
     result?.user
-      ? {
+        ? {
           id: result.user.id,
           email: result.user.email,
           role,
+          households,
         }
       : null,
   );
@@ -51,6 +42,7 @@ export const loadAuthSession: MiddlewareHandler<{
         }
       : null,
   );
+  c.set("household", null);
 
   await next();
 };
@@ -70,11 +62,42 @@ export const requireOwner: MiddlewareHandler<{
   Bindings: Env;
   Variables: AppVariables;
 }> = async (c, next) => {
-  const user = c.get("user");
+  const household = c.get("household");
 
-  if (!user || user.role !== "admin") {
+  if (!household || household.role !== "owner") {
     return c.json({ error: "Forbidden" }, 403);
   }
+
+  await next();
+};
+
+export const requireHouseholdContext: MiddlewareHandler<{
+  Bindings: Env;
+  Variables: AppVariables;
+}> = async (c, next) => {
+  const user = c.get("user");
+
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const slug = c.req.param("slug");
+
+  if (!slug) {
+    return c.json({ error: "Household slug is required" }, 400);
+  }
+
+  const membership = await userBelongsToHousehold(c.env.DB, user.id, slug);
+
+  if (!membership) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  c.set("household", {
+    id: membership.householdId,
+    slug: membership.slug,
+    role: membership.role,
+  });
 
   await next();
 };

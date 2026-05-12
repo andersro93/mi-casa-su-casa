@@ -70,14 +70,14 @@ export async function sendHouseholdInvitationEmail(
     inviterEmail: string;
     inviteUrl: string;
     expiresAt: string;
-    role: "member" | "admin";
+    role: "member" | "owner";
   },
 ) {
   const safeInviteeName = escapeHtml(input.inviteeName);
   const safeInviterName = escapeHtml(input.inviterName);
   const safeInviterEmail = escapeHtml(input.inviterEmail);
   const safeInviteUrl = escapeHtml(input.inviteUrl);
-  const roleLabel = input.role === "admin" ? "Owner" : "Member";
+  const roleLabel = input.role === "owner" ? "Owner" : "Member";
 
   return sendTransactionalEmail(env, {
     to: input.to,

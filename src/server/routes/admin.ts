@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 
-import { authForEnv } from "../auth/auth";
-import { type AppVariables, requireOwner } from "../auth/middleware";
+import {
+  type AppVariables,
+  requireHouseholdContext,
+  requireOwner,
+} from "../auth/middleware";
 import {
   cancelInvitation,
   createHouseholdInvitation,
@@ -10,6 +13,12 @@ import {
   listHouseholdInvitations,
   refreshExpiredInvitations,
 } from "../db/repositories/invitations";
+import {
+  addUserToHousehold,
+  assertProvidersBelongToHousehold,
+  getHouseholdMembership,
+  updateHouseholdMembershipRole,
+} from "../db/repositories/households";
 import {
   grantProviderAccess,
   listMemberProviderAccess,
@@ -40,7 +49,6 @@ type AccessPayload = {
 type CreateMemberPayload = {
   email?: string;
   name?: string;
-  password?: string;
   role?: string;
 };
 
@@ -58,7 +66,7 @@ type SenderRulePayload = {
 type InvitationPayload = {
   email?: string;
   name?: string;
-  role?: InvitationRole;
+  role?: InvitationRole | "admin";
   providerIds?: string[];
 };
 
@@ -66,10 +74,6 @@ export const adminRoutes = new Hono<{
   Bindings: Env;
   Variables: AppVariables;
 }>();
-
-function mapStoredRoleToAppRole(role: string | null | undefined) {
-  return role === "admin" ? "admin" : "member";
-}
 
 function normalizeProviderKey(value: string | undefined) {
   return value?.trim().toLowerCase() ?? "";
@@ -99,12 +103,15 @@ function isValidMatchType(
   return value === "exact" || value === "domain";
 }
 
-adminRoutes.use("*", requireOwner);
+adminRoutes.use("/:slug/*", requireHouseholdContext);
+adminRoutes.use("/:slug/*", requireOwner);
 
-adminRoutes.get("/providers", async (c) => {
+adminRoutes.get("/:slug/providers", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   const [providers, rules] = await Promise.all([
-    listProviderConfigurations(c.env.DB),
-    listSenderRules(c.env.DB),
+    listProviderConfigurations(c.env.DB, household.id),
+    listSenderRules(c.env.DB, household.id),
   ]);
 
   return c.json({
@@ -113,7 +120,9 @@ adminRoutes.get("/providers", async (c) => {
   });
 });
 
-adminRoutes.post("/providers", async (c) => {
+adminRoutes.post("/:slug/providers", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   let payload: ProviderPayload;
 
   try {
@@ -129,18 +138,25 @@ adminRoutes.post("/providers", async (c) => {
     return c.json({ error: "providerKey and displayName are required" }, 400);
   }
 
-  const existing = await getProviderByKey(c.env.DB, providerKey);
+  const existing = await getProviderByKey(c.env.DB, household.id, providerKey);
 
   if (existing) {
     return c.json({ error: "Provider key already exists" }, 409);
   }
 
-  const provider = await createProvider(c.env.DB, providerKey, displayName);
+  const provider = await createProvider(
+    c.env.DB,
+    household.id,
+    providerKey,
+    displayName,
+  );
 
   return c.json({ provider }, 201);
 });
 
-adminRoutes.patch("/providers/:providerId", async (c) => {
+adminRoutes.patch("/:slug/providers/:providerId", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   let payload: ProviderPayload;
 
   try {
@@ -157,39 +173,49 @@ adminRoutes.patch("/providers/:providerId", async (c) => {
     return c.json({ error: "providerKey and displayName are required" }, 400);
   }
 
-  const existing = await getProviderById(c.env.DB, providerId);
+  const existing = await getProviderById(c.env.DB, household.id, providerId);
 
   if (!existing) {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const conflict = await getProviderByKey(c.env.DB, providerKey);
+  const conflict = await getProviderByKey(c.env.DB, household.id, providerKey);
 
   if (conflict && conflict.id !== providerId) {
     return c.json({ error: "Provider key already exists" }, 409);
   }
 
-  await updateProvider(c.env.DB, providerId, providerKey, displayName);
+  await updateProvider(
+    c.env.DB,
+    household.id,
+    providerId,
+    providerKey,
+    displayName,
+  );
 
-  const provider = await getProviderById(c.env.DB, providerId);
+  const provider = await getProviderById(c.env.DB, household.id, providerId);
 
   return c.json({ provider });
 });
 
-adminRoutes.delete("/providers/:providerId", async (c) => {
+adminRoutes.delete("/:slug/providers/:providerId", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   const providerId = c.req.param("providerId");
-  const provider = await getProviderById(c.env.DB, providerId);
+  const provider = await getProviderById(c.env.DB, household.id, providerId);
 
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  await deleteProvider(c.env.DB, providerId);
+  await deleteProvider(c.env.DB, household.id, providerId);
 
   return c.json({ ok: true });
 });
 
-adminRoutes.post("/provider-rules", async (c) => {
+adminRoutes.post("/:slug/provider-rules", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   let payload: SenderRulePayload;
 
   try {
@@ -211,7 +237,7 @@ adminRoutes.post("/provider-rules", async (c) => {
     return c.json({ error: "matchValue is required" }, 400);
   }
 
-  const provider = await getProviderById(c.env.DB, payload.providerId);
+  const provider = await getProviderById(c.env.DB, household.id, payload.providerId);
 
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
@@ -219,6 +245,7 @@ adminRoutes.post("/provider-rules", async (c) => {
 
   const rule = await createSenderRule(
     c.env.DB,
+    household.id,
     payload.providerId,
     payload.matchType,
     matchValue,
@@ -227,7 +254,9 @@ adminRoutes.post("/provider-rules", async (c) => {
   return c.json({ rule }, 201);
 });
 
-adminRoutes.patch("/provider-rules/:ruleId", async (c) => {
+adminRoutes.patch("/:slug/provider-rules/:ruleId", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   let payload: SenderRulePayload;
 
   try {
@@ -252,8 +281,8 @@ adminRoutes.patch("/provider-rules/:ruleId", async (c) => {
   }
 
   const [provider, existingRule] = await Promise.all([
-    getProviderById(c.env.DB, payload.providerId),
-    getSenderRuleById(c.env.DB, ruleId),
+    getProviderById(c.env.DB, household.id, payload.providerId),
+    getSenderRuleById(c.env.DB, household.id, ruleId),
   ]);
 
   if (!provider) {
@@ -266,35 +295,40 @@ adminRoutes.patch("/provider-rules/:ruleId", async (c) => {
 
   await updateSenderRule(
     c.env.DB,
+    household.id,
     ruleId,
     payload.providerId,
     payload.matchType,
     matchValue,
   );
 
-  const rule = await getSenderRuleById(c.env.DB, ruleId);
+  const rule = await getSenderRuleById(c.env.DB, household.id, ruleId);
 
   return c.json({ rule });
 });
 
-adminRoutes.delete("/provider-rules/:ruleId", async (c) => {
+adminRoutes.delete("/:slug/provider-rules/:ruleId", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   const ruleId = c.req.param("ruleId");
-  const rule = await getSenderRuleById(c.env.DB, ruleId);
+  const rule = await getSenderRuleById(c.env.DB, household.id, ruleId);
 
   if (!rule) {
     return c.json({ error: "Sender rule not found" }, 404);
   }
 
-  await deleteSenderRule(c.env.DB, ruleId);
+  await deleteSenderRule(c.env.DB, household.id, ruleId);
 
   return c.json({ ok: true });
 });
 
-adminRoutes.get("/members", async (c) => {
+adminRoutes.get("/:slug/members", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   const [members, accessRows, providers] = await Promise.all([
-    listMembers(c.env.DB),
-    listMemberProviderAccess(c.env.DB),
-    listProviders(c.env.DB),
+    listMembers(c.env.DB, household.id),
+    listMemberProviderAccess(c.env.DB, household.id),
+    listProviders(c.env.DB, household.id),
   ]);
 
   const accessByUserId = new Map<
@@ -318,20 +352,24 @@ adminRoutes.get("/members", async (c) => {
   return c.json({
     members: members.map((member) => ({
       ...member,
-      role: mapStoredRoleToAppRole(member.role),
-      providerAccess: accessByUserId.get(member.id) ?? [],
-    })),
+        role: member.householdRole === "owner" ? "admin" : "member",
+        providerAccess: accessByUserId.get(member.id) ?? [],
+      })),
     providers,
   });
 });
 
-adminRoutes.get("/invitations", async (c) => {
+adminRoutes.get("/:slug/invitations", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   await refreshExpiredInvitations(c.env.DB);
-  const invitations = await listHouseholdInvitations(c.env.DB);
+  const invitations = await listHouseholdInvitations(c.env.DB, household.id);
   return c.json({ invitations });
 });
 
-adminRoutes.post("/invitations", async (c) => {
+adminRoutes.post("/:slug/invitations", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   let payload: InvitationPayload;
 
   try {
@@ -342,13 +380,26 @@ adminRoutes.post("/invitations", async (c) => {
 
   const email = normalizeEmail(payload.email);
   const name = normalizeDisplayName(payload.name);
-  const role: InvitationRole = payload.role === "admin" ? "admin" : "member";
+  const role: InvitationRole =
+    payload.role === "owner" || payload.role === "admin"
+      ? "owner"
+      : "member";
   const providerIds = Array.isArray(payload.providerIds)
     ? payload.providerIds.filter((providerId) => Boolean(providerId))
     : [];
 
   if (!email || !name) {
     return c.json({ error: "email and name are required" }, 400);
+  }
+
+  const providersBelong = await assertProvidersBelongToHousehold(
+    c.env.DB,
+    household.id,
+    providerIds,
+  );
+
+  if (!providersBelong) {
+    return c.json({ error: "One or more selected providers do not belong to this household" }, 400);
   }
 
   const inviter = c.get("user");
@@ -362,6 +413,7 @@ adminRoutes.post("/invitations", async (c) => {
     Date.now() + 1000 * 60 * 60 * 24 * 7,
   ).toISOString();
   const invitationId = await createHouseholdInvitation(c.env.DB, {
+    householdId: household.id,
     email,
     name,
     role,
@@ -390,13 +442,19 @@ adminRoutes.post("/invitations", async (c) => {
   return c.json({ invitation }, 201);
 });
 
-adminRoutes.post("/invitations/:invitationId/resend", async (c) => {
+adminRoutes.post("/:slug/invitations/:invitationId/resend", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   await refreshExpiredInvitations(c.env.DB);
 
   const invitationId = c.req.param("invitationId");
   const invitation = await getInvitationById(c.env.DB, invitationId);
 
-  if (!invitation || invitation.status !== "pending") {
+  if (
+    !invitation ||
+    invitation.householdId !== household.id ||
+    invitation.status !== "pending"
+  ) {
     return c.json({ error: "Invitation not found or not resendable" }, 404);
   }
 
@@ -414,6 +472,7 @@ adminRoutes.post("/invitations/:invitationId/resend", async (c) => {
   await cancelInvitation(c.env.DB, invitationId);
 
   const replacementId = await createHouseholdInvitation(c.env.DB, {
+    householdId: household.id,
     email: invitation.email,
     name: invitation.name,
     role: invitation.role,
@@ -442,11 +501,13 @@ adminRoutes.post("/invitations/:invitationId/resend", async (c) => {
   return c.json({ invitation: replacement });
 });
 
-adminRoutes.delete("/invitations/:invitationId", async (c) => {
+adminRoutes.delete("/:slug/invitations/:invitationId", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   const invitationId = c.req.param("invitationId");
   const invitation = await getInvitationById(c.env.DB, invitationId);
 
-  if (!invitation) {
+  if (!invitation || invitation.householdId !== household.id) {
     return c.json({ error: "Invitation not found" }, 404);
   }
 
@@ -454,7 +515,9 @@ adminRoutes.delete("/invitations/:invitationId", async (c) => {
   return c.json({ ok: true });
 });
 
-adminRoutes.post("/members", async (c) => {
+adminRoutes.post("/:slug/members", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   let payload: CreateMemberPayload;
 
   try {
@@ -463,35 +526,54 @@ adminRoutes.post("/members", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  if (!payload.email || !payload.name || !payload.password) {
-    return c.json({ error: "email, name, and password are required" }, 400);
+  if (!payload.email || !payload.name) {
+    return c.json({ error: "email and name are required" }, 400);
   }
 
-  const role = payload.role === "admin" ? "admin" : "user";
-  const headers = new Headers(c.req.raw.headers);
+  const inviter = c.get("user");
 
-  const created = await authForEnv(c.env).api.createUser({
-    body: {
-      email: payload.email,
-      name: payload.name,
-      password: payload.password,
-      role,
-    },
-    headers,
+  if (!inviter) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { token, tokenHash } = await createInvitationToken();
+  const expiresAt = new Date(
+    Date.now() + 1000 * 60 * 60 * 24 * 7,
+  ).toISOString();
+  const invitationRole: InvitationRole =
+    payload.role === "admin" ? "owner" : "member";
+
+  const invitationId = await createHouseholdInvitation(c.env.DB, {
+    householdId: household.id,
+    email: normalizeEmail(payload.email),
+    name: payload.name.trim(),
+    role: invitationRole,
+    tokenHash,
+    invitedByUserId: inviter.id,
+    expiresAt,
+    providerIds: [],
   });
 
-  return c.json(
-    {
-      member: {
-        ...created.user,
-        role: mapStoredRoleToAppRole(created.user.role),
-      },
-    },
-    201,
-  );
+  const invitation = await getInvitationById(c.env.DB, invitationId);
+
+  if (!invitation) {
+    return c.json({ error: "Unable to create invitation" }, 500);
+  }
+
+  void sendHouseholdInvitationEmail(c.env, {
+    to: invitation.email,
+    inviteeName: invitation.name,
+    inviterName: inviter.email,
+    inviterEmail: inviter.email,
+    inviteUrl: `${c.env.APP_URL.replace(/\/$/, "")}/invite/${token}`,
+    expiresAt,
+    role: invitation.role,
+  });
+
+  return c.json({ invitation }, 201);
 });
 
-adminRoutes.patch("/members/:userId/role", async (c) => {
+adminRoutes.patch("/:slug/members/:userId/role", async (c) => {
   const userId = c.req.param("userId");
   const currentUser = c.get("user");
 
@@ -514,43 +596,30 @@ adminRoutes.patch("/members/:userId/role", async (c) => {
     return c.json({ error: "role must be admin or member" }, 400);
   }
 
-  await authForEnv(c.env).api.setRole({
-    body: {
-      userId,
-      role: payload.role === "admin" ? "admin" : "user",
-    },
-    headers: new Headers(c.req.raw.headers),
+  const household = c.get("household");
+
+  if (!household) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const membership = await getHouseholdMembership(c.env.DB, userId, household.id);
+
+  if (!membership) {
+    return c.json({ error: "Member not found" }, 404);
+  }
+
+  await updateHouseholdMembershipRole(c.env.DB, {
+    householdId: household.id,
+    userId,
+    role: payload.role === "admin" ? "owner" : "member",
   });
 
   return c.json({ ok: true });
 });
 
-adminRoutes.patch("/members/:userId/password", async (c) => {
-  const userId = c.req.param("userId");
-  let payload: { password?: string };
-
-  try {
-    payload = await c.req.json<{ password?: string }>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (!payload.password) {
-    return c.json({ error: "password is required" }, 400);
-  }
-
-  await authForEnv(c.env).api.setUserPassword({
-    body: {
-      userId,
-      newPassword: payload.password,
-    },
-    headers: new Headers(c.req.raw.headers),
-  });
-
-  return c.json({ ok: true });
-});
-
-adminRoutes.post("/members/:userId/provider-access", async (c) => {
+adminRoutes.post("/:slug/members/:userId/provider-access", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   const userId = c.req.param("userId");
   let payload: AccessPayload;
 
@@ -564,17 +633,25 @@ adminRoutes.post("/members/:userId/provider-access", async (c) => {
     return c.json({ error: "providerKey is required" }, 400);
   }
 
-  const provider = await getProviderByKey(c.env.DB, payload.providerKey);
+  const provider = await getProviderByKey(c.env.DB, household.id, payload.providerKey);
 
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  await grantProviderAccess(c.env.DB, userId, provider.id);
+  const membership = await getHouseholdMembership(c.env.DB, userId, household.id);
+
+  if (!membership) {
+    return c.json({ error: "Member not found" }, 404);
+  }
+
+  await grantProviderAccess(c.env.DB, household.id, userId, provider.id);
   return c.json({ ok: true });
 });
 
-adminRoutes.delete("/members/:userId/provider-access", async (c) => {
+adminRoutes.delete("/:slug/members/:userId/provider-access", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
   const userId = c.req.param("userId");
   let payload: AccessPayload;
 
@@ -588,12 +665,18 @@ adminRoutes.delete("/members/:userId/provider-access", async (c) => {
     return c.json({ error: "providerKey is required" }, 400);
   }
 
-  const provider = await getProviderByKey(c.env.DB, payload.providerKey);
+  const provider = await getProviderByKey(c.env.DB, household.id, payload.providerKey);
 
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  await revokeProviderAccess(c.env.DB, userId, provider.id);
+  const membership = await getHouseholdMembership(c.env.DB, userId, household.id);
+
+  if (!membership) {
+    return c.json({ error: "Member not found" }, 404);
+  }
+
+  await revokeProviderAccess(c.env.DB, household.id, userId, provider.id);
   return c.json({ ok: true });
 });

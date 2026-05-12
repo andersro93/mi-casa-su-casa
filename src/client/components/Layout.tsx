@@ -30,7 +30,7 @@ import { useContext, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ColorModeContext } from "../theme";
 import type { SessionData } from "../types";
-import { getDisplayName } from "../utils";
+import { buildHouseholdPath, getDisplayName } from "../utils";
 
 const DRAWER_WIDTH = 280;
 
@@ -38,18 +38,27 @@ interface LayoutProps {
   children: React.ReactNode;
   session: SessionData | null | undefined;
   isOwner: boolean;
+  householdSlug: string;
+  householdName: string;
   onLogout: () => void;
 }
 
-export function Layout({ children, session, isOwner, onLogout }: LayoutProps) {
+export function Layout({
+  children,
+  session,
+  isOwner,
+  householdSlug,
+  householdName,
+  onLogout,
+}: LayoutProps) {
   const location = useLocation();
-  const activeView = location.pathname.startsWith("/settings")
+  const activeView = location.pathname.includes("/settings")
     ? "settings"
-    : location.pathname.startsWith("/quarantine")
+    : location.pathname.includes("/quarantine")
       ? "quarantine"
-      : location.pathname.startsWith("/members")
+      : location.pathname.includes("/members")
         ? "members"
-        : location.pathname.startsWith("/providers")
+        : location.pathname.includes("/providers")
           ? "providers"
           : "inbox";
   const theme = useTheme();
@@ -82,7 +91,7 @@ export function Layout({ children, session, isOwner, onLogout }: LayoutProps) {
       <Divider />
       <Box sx={{ p: 2 }}>
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          Access: {isOwner ? "Owner" : "Family member"}
+          {householdName} · {isOwner ? "Owner" : "Family member"}
         </Typography>
         <Typography variant="body2" noWrap title={session?.user?.email ?? ""}>
           {session?.user?.email}
@@ -94,7 +103,7 @@ export function Layout({ children, session, isOwner, onLogout }: LayoutProps) {
           <ListItemButton
             selected={activeView === "inbox"}
             component={Link}
-            to="/inbox"
+            to={buildHouseholdPath(householdSlug, "/inbox")}
             onClick={handleNavClick}
             sx={{ borderRadius: 2 }}
           >
@@ -121,7 +130,7 @@ export function Layout({ children, session, isOwner, onLogout }: LayoutProps) {
           <ListItemButton
             selected={activeView === "settings"}
             component={Link}
-            to="/settings"
+            to={buildHouseholdPath(householdSlug, "/settings")}
             onClick={handleNavClick}
             sx={{ borderRadius: 2 }}
           >
@@ -150,7 +159,7 @@ export function Layout({ children, session, isOwner, onLogout }: LayoutProps) {
               <ListItemButton
                 selected={activeView === "quarantine"}
                 component={Link}
-                to="/quarantine"
+                to={buildHouseholdPath(householdSlug, "/quarantine")}
                 onClick={handleNavClick}
                 sx={{ borderRadius: 2 }}
               >
@@ -178,7 +187,7 @@ export function Layout({ children, session, isOwner, onLogout }: LayoutProps) {
               <ListItemButton
                 selected={activeView === "members"}
                 component={Link}
-                to="/members"
+                to={buildHouseholdPath(householdSlug, "/members")}
                 onClick={handleNavClick}
                 sx={{ borderRadius: 2 }}
               >
@@ -206,7 +215,7 @@ export function Layout({ children, session, isOwner, onLogout }: LayoutProps) {
               <ListItemButton
                 selected={activeView === "providers"}
                 component={Link}
-                to="/providers"
+                to={buildHouseholdPath(householdSlug, "/providers")}
                 onClick={handleNavClick}
                 sx={{ borderRadius: 2 }}
               >

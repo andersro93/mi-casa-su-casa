@@ -1,22 +1,84 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleIncomingEmail } from "../src/server/email/handler";
-import type { AppContext } from "../src/server/runtime/context";
+const parseState = vi.hoisted(() => ({
+  result: {
+    envelopeFrom: "login@service.example",
+    envelopeTo: "codes@example.com",
+    householdSlug: "codes",
+    fromHeader: "Service <login@service.example>",
+    subject: "Verification code",
+    messageId: "<message-1@test>",
+    dateHeader: "2026-05-10T12:00:00.000Z",
+    textBody: "Your verification code is 123456",
+    rawSize: 128,
+  },
+}));
 
-function createMessage(
-  raw: string,
-  overrides?: Partial<ForwardableEmailMessage>,
-) {
+const classifyState = vi.hoisted(() => ({
+  result: {
+    kind: "matched",
+    householdId: "household-1",
+    householdSlug: "codes",
+    providerId: "provider-1",
+    providerKey: "netflix",
+    code: "123456",
+    reason: "Sender matched a configured rule and a likely verification code was found.",
+  } as
+    | {
+        kind: "matched";
+        householdId: string;
+        householdSlug: string;
+        providerId: string;
+        providerKey: string;
+        code: string | null;
+        reason: string;
+      }
+    | {
+        kind: "quarantine";
+        reason: string;
+        code: string | null;
+      },
+}));
+
+const messageRepoState = vi.hoisted(() => ({
+  insertMessage: vi.fn(),
+  insertQuarantineMessage: vi.fn(),
+}));
+
+const householdRepoState = vi.hoisted(() => ({
+  getHouseholdBySlug: vi.fn(),
+}));
+
+vi.mock("../src/server/email/parse", () => ({
+  parseIncomingEmail: vi.fn(async () => parseState.result),
+}));
+
+vi.mock("../src/server/domain/classify-email", () => ({
+  classifyEmail: vi.fn(async () => classifyState.result),
+}));
+
+vi.mock("../src/server/db/repositories/messages", () => ({
+  insertMessage: messageRepoState.insertMessage,
+  insertQuarantineMessage: messageRepoState.insertQuarantineMessage,
+}));
+
+vi.mock("../src/server/db/repositories/households", () => ({
+  getHouseholdBySlug: householdRepoState.getHouseholdBySlug,
+}));
+
+const { handleIncomingEmail } = await import("../src/server/email/handler");
+
+function createMessage(): ForwardableEmailMessage {
   return {
     from: "login@service.example",
     to: "codes@example.com",
     raw: new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(raw));
+        controller.enqueue(new TextEncoder().encode("raw"));
         controller.close();
       },
     }),
-    rawSize: raw.length,
+    rawSize: 128,
     headers: new Headers(),
     setReject() {},
     forward() {
@@ -25,34 +87,13 @@ function createMessage(
     reply() {
       return Promise.resolve();
     },
-    ...overrides,
   } as unknown as ForwardableEmailMessage;
 }
 
-function createDb(match: { providerId: string; providerKey: string } | null) {
-  const run = vi.fn(async () => ({ results: [] }));
-  const first = vi.fn(async () => match);
-  const all = vi.fn(async () => ({ results: match ? [match] : [] }));
-  const bind = vi.fn(() => ({ all, first, run }));
-  const prepare = vi.fn(() => ({ bind, all, first, run }));
-
-  return {
-    db: {
-      prepare,
-      batch: vi.fn(async () => []),
-    } as unknown as D1Database,
-    prepare,
-    bind,
-    all,
-    first,
-    run,
-  };
-}
-
-function createAppContext(db: D1Database): AppContext {
+function createAppContext(): import("../src/server/runtime/context").AppContext {
   return {
     env: {
-      DB: db,
+      DB: {} as D1Database,
     } as Env,
     executionContext: {
       waitUntil() {},
@@ -63,92 +104,89 @@ function createAppContext(db: D1Database): AppContext {
 }
 
 describe("handleIncomingEmail", () => {
-  it("persists a matched email to messages without a second provider lookup", async () => {
-    const db = createDb({ providerId: "provider-1", providerKey: "netflix" });
-
-    await handleIncomingEmail(
-      createMessage(
-        [
-          "From: Service <login@service.example>",
-          "To: codes@example.com",
-          "Subject: Verification code",
-          "",
-          "Your verification code is 123456",
-        ].join("\n"),
-      ),
-      createAppContext(db.db),
-    );
-
-    expect(db.run).toHaveBeenCalledTimes(1);
-    expect(db.prepare).toHaveBeenCalledWith(
-      expect.stringContaining("INSERT INTO messages"),
-    );
-  });
-
-  it("routes unmatched senders into quarantine", async () => {
-    const db = createDb(null);
-
-    await handleIncomingEmail(
-      createMessage(
-        [
-          "From: Unknown <unknown@example.net>",
-          "To: codes@example.com",
-          "Subject: Sign in",
-          "",
-          "Use 654321 to continue.",
-        ].join("\n"),
-        { from: "unknown@example.net" },
-      ),
-      createAppContext(db.db),
-    );
-
-    expect(db.run).toHaveBeenCalledTimes(1);
-    expect(db.prepare).toHaveBeenCalledWith(
-      expect.stringContaining("INSERT INTO quarantine_messages"),
-    );
-  });
-
-  it("ignores duplicate message deliveries without failing the handler", async () => {
-    const duplicateError = new Error(
-      "UNIQUE constraint failed: messages.message_id",
-    );
-    const run = vi.fn(async () => {
-      throw duplicateError;
-    });
-    const first = vi.fn(async () => ({
+  beforeEach(() => {
+    parseState.result = {
+      envelopeFrom: "login@service.example",
+      envelopeTo: "codes@example.com",
+      householdSlug: "codes",
+      fromHeader: "Service <login@service.example>",
+      subject: "Verification code",
+      messageId: "<message-1@test>",
+      dateHeader: "2026-05-10T12:00:00.000Z",
+      textBody: "Your verification code is 123456",
+      rawSize: 128,
+    };
+    classifyState.result = {
+      kind: "matched",
+      householdId: "household-1",
+      householdSlug: "codes",
       providerId: "provider-1",
       providerKey: "netflix",
-    }));
-    const all = vi.fn(async () => ({
-      results: [{ providerId: "provider-1", providerKey: "netflix" }],
-    }));
-    const bind = vi.fn(() => ({ all, first, run }));
-    const prepare = vi.fn(() => ({ bind, all, first, run }));
+      code: "123456",
+      reason: "Sender matched a configured rule and a likely verification code was found.",
+    };
+    messageRepoState.insertMessage.mockReset();
+    messageRepoState.insertQuarantineMessage.mockReset();
+    householdRepoState.getHouseholdBySlug.mockReset();
+    householdRepoState.getHouseholdBySlug.mockResolvedValue({
+      id: "household-1",
+      slug: "codes",
+      displayName: "Codes",
+    });
+  });
 
-    const db = {
-      prepare,
-      batch: vi.fn(async () => []),
-    } as unknown as D1Database;
+  it("persists matched emails to messages", async () => {
+    await handleIncomingEmail(createMessage(), createAppContext());
 
-    await expect(
-      handleIncomingEmail(
-        createMessage(
-          [
-            "From: Service <login@service.example>",
-            "To: codes@example.com",
-            "Subject: Verification code",
-            "Message-ID: <duplicate@test>",
-            "",
-            "Your verification code is 123456",
-          ].join("\n"),
-        ),
-        createAppContext(db),
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(prepare).toHaveBeenCalledWith(
-      expect.stringContaining("INSERT INTO messages"),
+    expect(messageRepoState.insertMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      parseState.result,
+      "household-1",
+      "provider-1",
+      classifyState.result,
     );
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(messageRepoState.insertQuarantineMessage).not.toHaveBeenCalled();
+  });
+
+  it("routes unmatched senders into quarantine within the resolved household", async () => {
+    classifyState.result = {
+      kind: "quarantine",
+      reason: "No sender rule matched the inbound email within the addressed household.",
+      code: "654321",
+    };
+    parseState.result = {
+      ...parseState.result,
+      envelopeFrom: "unknown@example.net",
+      fromHeader: "Unknown <unknown@example.net>",
+      textBody: "Use 654321 to continue.",
+    };
+
+    await handleIncomingEmail(createMessage(), createAppContext());
+
+    expect(householdRepoState.getHouseholdBySlug).toHaveBeenCalledWith(
+      expect.anything(),
+      "codes",
+    );
+    expect(messageRepoState.insertQuarantineMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      parseState.result,
+      "household-1",
+      classifyState.result,
+    );
+    expect(messageRepoState.insertMessage).not.toHaveBeenCalled();
+  });
+
+  it("drops quarantined emails when no household can be resolved", async () => {
+    classifyState.result = {
+      kind: "quarantine",
+      reason: "No household matched the inbound recipient address.",
+      code: "654321",
+    };
+    householdRepoState.getHouseholdBySlug.mockResolvedValue(null);
+
+    await handleIncomingEmail(createMessage(), createAppContext());
+
+    expect(messageRepoState.insertQuarantineMessage).not.toHaveBeenCalled();
+    expect(messageRepoState.insertMessage).not.toHaveBeenCalled();
   });
 });

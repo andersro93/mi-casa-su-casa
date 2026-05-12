@@ -4,15 +4,54 @@ type SessionUser = {
   id: string;
   email: string;
   role: string;
+  name?: string;
 };
 
-type DbRunner = {
-  all?: () => Promise<{ results: unknown[] }>;
-  first?: () => Promise<unknown>;
-  run?: () => Promise<{ results: unknown[] }>;
+type UserRecord = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
 };
 
-type DbResolver = (sql: string, params: unknown[]) => DbRunner;
+type HouseholdRecord = {
+  id: string;
+  slug: string;
+  displayName: string;
+};
+
+type MembershipRecord = {
+  householdId: string;
+  userId: string;
+  role: "owner" | "member";
+};
+
+type ProviderRecord = {
+  id: string;
+  household_id: string;
+  provider_key: string;
+  display_name: string;
+  created_at?: string;
+  rule_count?: number;
+};
+
+type InvitationRecord = {
+  id: string;
+  householdId: string;
+  email: string;
+  name: string;
+  role: "owner" | "member";
+  status: "pending" | "accepted" | "cancelled" | "expired";
+  invitedByUserId: string;
+  acceptedByUserId: string | null;
+  expiresAt: string;
+  acceptedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  tokenHash: string;
+  providerIds: string[];
+};
 
 const sessionState = vi.hoisted(() => ({
   current: null as {
@@ -22,38 +61,124 @@ const sessionState = vi.hoisted(() => ({
 }));
 
 const authApiState = vi.hoisted(() => ({
-  createUserCalls: [] as unknown[],
-  listUsersCalls: [] as unknown[],
-  signInEmailCalls: [] as unknown[],
-  setRoleCalls: [] as unknown[],
-  setPasswordCalls: [] as unknown[],
-  listUsersResponse: {
-    users: [] as Array<{ id: string; email: string; role: string }>,
-    total: 0,
-  },
+  signUpEmailCalls: [] as unknown[],
 }));
 
 const invitationEmailState = vi.hoisted(() => ({
   calls: [] as unknown[],
 }));
 
-const settingsRepoState = vi.hoisted(() => ({
-  getUserProfile: vi.fn(),
-  listUserSessions: vi.fn(),
-  updateUserProfile: vi.fn(),
-  deleteOtherSessions: vi.fn(),
-  deleteSessionById: vi.fn(),
+const repoState = vi.hoisted(() => ({
+  users: [] as UserRecord[],
+  households: [] as HouseholdRecord[],
+  memberships: [] as MembershipRecord[],
+  providers: [] as ProviderRecord[],
+  providerAccess: [] as Array<{ householdId: string; userId: string; providerId: string }>,
+  messages: [] as Array<{
+    id: string;
+    household_slug: string;
+    householdId: string;
+    provider_key: string;
+    provider_display_name: string;
+    subject: string;
+    from_header: string;
+    text_body: string;
+    extracted_code: string | null;
+    status: "new" | "used" | "expired";
+    received_at: string;
+  }>,
+  quarantine: [] as Array<{
+    id: string;
+    household_slug: string;
+    householdId: string;
+    provider_key: string;
+    provider_display_name: string;
+    subject: string;
+    from_header: string;
+    envelope_from: string;
+    text_body: string;
+    extracted_code: string | null;
+    quarantine_reason: string;
+    received_at: string;
+    reviewed: boolean;
+  }>,
+  invitations: [] as InvitationRecord[],
+  senderRules: [] as Array<{
+    id: string;
+    household_id: string;
+    provider_id: string;
+    match_type: "exact" | "domain";
+    match_value: string;
+    created_at: string;
+  }>,
+  createHouseholdCalls: [] as unknown[],
+  createInvitationCalls: [] as unknown[],
+  acceptInvitationCalls: [] as unknown[],
+  updateRoleCalls: [] as unknown[],
+  grantAccessCalls: [] as unknown[],
+  reviewCalls: [] as unknown[],
+  setupState: {
+    status: "pending",
+    owner_user_id: null,
+    owner_email: null,
+  } as {
+    status: "pending" | "in_progress" | "complete";
+    owner_user_id: string | null;
+    owner_email: string | null;
+  },
+  beginSetupResult: true,
 }));
 
-const invitationsRepoState = vi.hoisted(() => ({
-  createHouseholdInvitation: vi.fn(),
-  getInvitationById: vi.fn(),
-  getInvitationByTokenHash: vi.fn(),
-  listHouseholdInvitations: vi.fn(),
-  refreshExpiredInvitations: vi.fn(),
-  cancelInvitation: vi.fn(),
-  acceptInvitation: vi.fn(),
-}));
+function getUser(userId: string) {
+  return repoState.users.find((user) => user.id === userId) ?? null;
+}
+
+function getHouseholdBySlug(slug: string) {
+  return repoState.households.find((household) => household.slug === slug) ?? null;
+}
+
+function getHouseholdByIdValue(id: string) {
+  return repoState.households.find((household) => household.id === id) ?? null;
+}
+
+function getMembership(userId: string, householdId: string) {
+  return (
+    repoState.memberships.find(
+      (membership) =>
+        membership.userId === userId && membership.householdId === householdId,
+    ) ?? null
+  );
+}
+
+function getInvitationProviders(providerIds: string[]) {
+  return providerIds
+    .map((providerId) => repoState.providers.find((provider) => provider.id === providerId))
+    .filter((provider): provider is ProviderRecord => Boolean(provider))
+    .map((provider) => ({
+      id: provider.id,
+      provider_key: provider.provider_key,
+      display_name: provider.display_name,
+    }));
+}
+
+function invitationSummary(invitation: InvitationRecord) {
+  return {
+    id: invitation.id,
+    householdId: invitation.householdId,
+    email: invitation.email,
+    name: invitation.name,
+    role: invitation.role,
+    status: invitation.status,
+    invitedByUserId: invitation.invitedByUserId,
+    acceptedByUserId: invitation.acceptedByUserId,
+    expiresAt: invitation.expiresAt,
+    acceptedAt: invitation.acceptedAt,
+    cancelledAt: invitation.cancelledAt,
+    createdAt: invitation.createdAt,
+    updatedAt: invitation.updatedAt,
+    providers: getInvitationProviders(invitation.providerIds),
+  };
+}
 
 vi.mock("../src/server/email/sender", () => ({
   sendHouseholdInvitationEmail: async (env: unknown, input: unknown) => {
@@ -63,12 +188,399 @@ vi.mock("../src/server/email/sender", () => ({
   sendTransactionalEmail: async () => {},
 }));
 
-vi.mock("../src/server/db/repositories/settings", () => ({
-  getUserProfile: settingsRepoState.getUserProfile,
-  listUserSessions: settingsRepoState.listUserSessions,
-  updateUserProfile: settingsRepoState.updateUserProfile,
-  deleteOtherSessions: settingsRepoState.deleteOtherSessions,
-  deleteSessionById: settingsRepoState.deleteSessionById,
+vi.mock("../src/server/security/tokens", () => ({
+  createInvitationToken: async () => ({
+    token: "invite-token",
+    tokenHash: "hash:invite-token",
+  }),
+  hashInvitationToken: async (token: string) => `hash:${token}`,
+}));
+
+vi.mock("../src/server/db/repositories/installation-state", () => ({
+  getInstallationState: async () => ({
+    id: 1,
+    status: repoState.setupState.status,
+    owner_user_id: repoState.setupState.owner_user_id,
+    owner_email: repoState.setupState.owner_email,
+    completed_at: null,
+    created_at: "2026-05-10T12:00:00.000Z",
+    updated_at: "2026-05-10T12:00:00.000Z",
+  }),
+  beginInstallationSetup: async () => repoState.beginSetupResult,
+  completeInstallationSetup: async (
+    _db: D1Database,
+    ownerUserId: string,
+    ownerEmail: string,
+  ) => {
+    repoState.setupState = {
+      status: "complete",
+      owner_user_id: ownerUserId,
+      owner_email: ownerEmail,
+    };
+  },
+  resetInstallationSetup: async () => {
+    repoState.setupState = {
+      status: "pending",
+      owner_user_id: null,
+      owner_email: null,
+    };
+  },
+}));
+
+vi.mock("../src/server/db/repositories/households", async () => {
+  const actual = await vi.importActual<
+    typeof import("../src/server/db/repositories/households")
+  >("../src/server/db/repositories/households");
+
+  return {
+    ...actual,
+    listHouseholdsForUser: async (_db: D1Database, userId: string) =>
+      repoState.memberships
+        .filter((membership) => membership.userId === userId)
+        .map((membership) => {
+          const household = getHouseholdByIdValue(membership.householdId);
+          return {
+            id: membership.householdId,
+            slug: household?.slug ?? "unknown",
+            displayName: household?.displayName ?? "Unknown",
+            role: membership.role,
+          };
+        }),
+    userBelongsToHousehold: async (
+      _db: D1Database,
+      userId: string,
+      householdSlug: string,
+    ) => {
+      const household = getHouseholdBySlug(householdSlug);
+      if (!household) return null;
+      const membership = getMembership(userId, household.id);
+      if (!membership) return null;
+      return {
+        householdId: household.id,
+        role: membership.role,
+        slug: household.slug,
+      };
+    },
+    getHouseholdMembership: async (
+      _db: D1Database,
+      userId: string,
+      householdId: string,
+    ) => {
+      const membership = getMembership(userId, householdId);
+      const household = getHouseholdByIdValue(householdId);
+      if (!membership || !household) return null;
+      return {
+        householdId,
+        userId,
+        role: membership.role,
+        slug: household.slug,
+        displayName: household.displayName,
+      };
+    },
+    updateHouseholdMembershipRole: async (
+      _db: D1Database,
+      input: { householdId: string; userId: string; role: "owner" | "member" },
+    ) => {
+      repoState.updateRoleCalls.push(input);
+      const membership = getMembership(input.userId, input.householdId);
+      if (membership) {
+        membership.role = input.role;
+      }
+    },
+    createHousehold: async (
+      _db: D1Database,
+      input: { slug: string; displayName: string; ownerUserId: string },
+    ) => {
+      repoState.createHouseholdCalls.push(input);
+      const household = {
+        id: "household-created",
+        slug: input.slug,
+        displayName: input.displayName,
+      };
+      repoState.households.push(household);
+      repoState.memberships.push({
+        householdId: household.id,
+        userId: input.ownerUserId,
+        role: "owner",
+      });
+      return household;
+    },
+    getHouseholdById: async (_db: D1Database, id: string) => getHouseholdByIdValue(id),
+    assertProvidersBelongToHousehold: async (
+      _db: D1Database,
+      householdId: string,
+      providerIds: string[],
+    ) =>
+      providerIds.every((providerId) =>
+        repoState.providers.some(
+          (provider) =>
+            provider.id === providerId && provider.household_id === householdId,
+        ),
+      ),
+  };
+});
+
+vi.mock("../src/server/db/repositories/member-access", () => ({
+  listMembers: async (_db: D1Database, householdId: string) =>
+    repoState.memberships
+      .filter((membership) => membership.householdId === householdId)
+      .map((membership) => {
+        const user = getUser(membership.userId);
+        return {
+          id: membership.userId,
+          householdRole: membership.role,
+          email: user?.email ?? `${membership.userId}@example.com`,
+          name: user?.name ?? membership.userId,
+          role: user?.role ?? "user",
+          createdAt: "2026-05-10T12:00:00.000Z",
+          updatedAt: "2026-05-10T12:00:00.000Z",
+        };
+      }),
+  listMemberProviderAccess: async (_db: D1Database, householdId: string) =>
+    repoState.memberships.flatMap((membership) => {
+      if (membership.householdId !== householdId) return [];
+      const user = getUser(membership.userId);
+      const accessRows = repoState.providerAccess.filter(
+        (entry) =>
+          entry.householdId === householdId && entry.userId === membership.userId,
+      );
+      if (accessRows.length === 0) {
+        return [
+          {
+            id: membership.userId,
+            household_role: membership.role,
+            email: user?.email ?? `${membership.userId}@example.com`,
+            name: user?.name ?? membership.userId,
+            role: user?.role ?? "user",
+            provider_key: null,
+            provider_display_name: null,
+          },
+        ];
+      }
+      return accessRows.map((entry) => {
+        const provider = repoState.providers.find(
+          (candidate) => candidate.id === entry.providerId,
+        );
+        return {
+          id: membership.userId,
+          household_role: membership.role,
+          email: user?.email ?? `${membership.userId}@example.com`,
+          name: user?.name ?? membership.userId,
+          role: user?.role ?? "user",
+          provider_key: provider?.provider_key ?? null,
+          provider_display_name: provider?.display_name ?? null,
+        };
+      });
+    }),
+  listProviders: async (_db: D1Database, householdId: string) =>
+    repoState.providers.filter((provider) => provider.household_id === householdId),
+  grantProviderAccess: async (
+    _db: D1Database,
+    householdId: string,
+    userId: string,
+    providerId: string,
+  ) => {
+    repoState.grantAccessCalls.push({ householdId, userId, providerId });
+    repoState.providerAccess.push({ householdId, userId, providerId });
+  },
+  revokeProviderAccess: async (
+    _db: D1Database,
+    householdId: string,
+    userId: string,
+    providerId: string,
+  ) => {
+    repoState.providerAccess = repoState.providerAccess.filter(
+      (entry) =>
+        !(
+          entry.householdId === householdId &&
+          entry.userId === userId &&
+          entry.providerId === providerId
+        ),
+    );
+  },
+}));
+
+vi.mock("../src/server/db/repositories/provider-rules", () => ({
+  userHasProviderAccess: async (
+    _db: D1Database,
+    householdId: string,
+    userId: string,
+    providerKey: string,
+  ) => {
+    const provider = repoState.providers.find(
+      (candidate) =>
+        candidate.household_id === householdId &&
+        candidate.provider_key === providerKey,
+    );
+    if (!provider) return false;
+    return repoState.providerAccess.some(
+      (entry) =>
+        entry.householdId === householdId &&
+        entry.userId === userId &&
+        entry.providerId === provider.id,
+    );
+  },
+  getProviderByKey: async (
+    _db: D1Database,
+    householdId: string,
+    providerKey: string,
+  ) =>
+    repoState.providers.find(
+      (provider) =>
+        provider.household_id === householdId && provider.provider_key === providerKey,
+    ) ?? null,
+  getProviderById: async (
+    _db: D1Database,
+    householdId: string,
+    providerId: string,
+  ) =>
+    repoState.providers.find(
+      (provider) =>
+        provider.household_id === householdId && provider.id === providerId,
+    ) ?? null,
+  listProviderConfigurations: async (_db: D1Database, householdId: string) =>
+    repoState.providers
+      .filter((provider) => provider.household_id === householdId)
+      .map((provider) => ({ ...provider, rule_count: provider.rule_count ?? 0 })),
+  listSenderRules: async (_db: D1Database, householdId: string) =>
+    repoState.senderRules.filter((rule) => rule.household_id === householdId),
+  createProvider: async (
+    _db: D1Database,
+    householdId: string,
+    providerKey: string,
+    displayName: string,
+  ) => {
+    const provider = {
+      id: `provider-${repoState.providers.length + 1}`,
+      household_id: householdId,
+      provider_key: providerKey,
+      display_name: displayName,
+      created_at: "2026-05-10T12:00:00.000Z",
+      rule_count: 0,
+    };
+    repoState.providers.push(provider);
+    return provider;
+  },
+  createSenderRule: async (
+    _db: D1Database,
+    householdId: string,
+    providerId: string,
+    matchType: "exact" | "domain",
+    matchValue: string,
+  ) => {
+    const rule = {
+      id: `rule-${repoState.senderRules.length + 1}`,
+      household_id: householdId,
+      provider_id: providerId,
+      match_type: matchType,
+      match_value: matchValue,
+      created_at: "2026-05-10T12:00:00.000Z",
+    };
+    repoState.senderRules.push(rule);
+    return rule;
+  },
+  updateProvider: async () => {},
+  updateSenderRule: async () => {},
+  deleteProvider: async () => {},
+  deleteSenderRule: async () => {},
+  getSenderRuleById: async () => null,
+}));
+
+vi.mock("../src/server/db/repositories/messages", () => ({
+  listProviderSummariesForUser: async (
+    _db: D1Database,
+    householdId: string,
+    userId: string,
+  ) => {
+    const membership = getMembership(userId, householdId);
+    if (!membership) return [];
+    const visibleProviders = repoState.providers.filter((provider) => {
+      if (provider.household_id !== householdId) return false;
+      if (membership.role === "owner") return true;
+      return repoState.providerAccess.some(
+        (entry) => entry.householdId === householdId && entry.userId === userId && entry.providerId === provider.id,
+      );
+    });
+
+    return visibleProviders.map((provider) => {
+      const providerMessages = repoState.messages.filter(
+        (message) =>
+          message.householdId === householdId && message.provider_key === provider.provider_key,
+      );
+      return {
+        household_slug: getHouseholdByIdValue(householdId)?.slug ?? "unknown",
+        provider_key: provider.provider_key,
+        display_name: provider.display_name,
+        message_count: providerMessages.length,
+        new_count: providerMessages.filter((message) => message.status === "new").length,
+        latest_received_at: providerMessages[0]?.received_at ?? null,
+      };
+    });
+  },
+  listMessagesForProvider: async (
+    _db: D1Database,
+    householdId: string,
+    providerKey: string,
+  ) =>
+    repoState.messages.filter(
+      (message) =>
+        message.householdId === householdId && message.provider_key === providerKey,
+    ),
+  findMessageById: async (
+    _db: D1Database,
+    householdId: string,
+    messageId: string,
+  ) =>
+    repoState.messages.find(
+      (message) => message.householdId === householdId && message.id === messageId,
+    ) ?? null,
+  updateMessageStatus: async (
+    _db: D1Database,
+    householdId: string,
+    messageId: string,
+    status: "new" | "used" | "expired",
+  ) => {
+    const message = repoState.messages.find(
+      (candidate) => candidate.householdId === householdId && candidate.id === messageId,
+    );
+    if (!message) return null;
+    message.status = status;
+    return message;
+  },
+  listQuarantineMessages: async (_db: D1Database, householdId: string) =>
+    repoState.quarantine.filter(
+      (message) => message.householdId === householdId && !message.reviewed,
+    ),
+  reviewQuarantineMessage: async (
+    _db: D1Database,
+    householdId: string,
+    messageId: string,
+    input: { action: "dismiss" | "release"; providerId?: string },
+  ) => {
+    repoState.reviewCalls.push({ householdId, messageId, input });
+    const message = repoState.quarantine.find(
+      (candidate) => candidate.householdId === householdId && candidate.id === messageId,
+    );
+    if (!message) return null;
+    message.reviewed = true;
+    if (input.action === "release") {
+      const provider = repoState.providers.find(
+        (candidate) => candidate.id === input.providerId,
+      );
+      return {
+        reviewedAt: "2026-05-10T12:30:00.000Z",
+        releasedMessage: {
+          id: "released-1",
+          provider_key: provider?.provider_key ?? "unknown",
+          status: "new",
+        },
+      };
+    }
+    return {
+      reviewedAt: "2026-05-10T12:30:00.000Z",
+      dismissed: true,
+    };
+  },
 }));
 
 vi.mock("../src/server/db/repositories/invitations", async () => {
@@ -78,13 +590,90 @@ vi.mock("../src/server/db/repositories/invitations", async () => {
 
   return {
     ...actual,
-    createHouseholdInvitation: invitationsRepoState.createHouseholdInvitation,
-    getInvitationById: invitationsRepoState.getInvitationById,
-    getInvitationByTokenHash: invitationsRepoState.getInvitationByTokenHash,
-    listHouseholdInvitations: invitationsRepoState.listHouseholdInvitations,
-    refreshExpiredInvitations: invitationsRepoState.refreshExpiredInvitations,
-    cancelInvitation: invitationsRepoState.cancelInvitation,
-    acceptInvitation: invitationsRepoState.acceptInvitation,
+    createHouseholdInvitation: async (
+      _db: D1Database,
+      input: {
+        householdId: string;
+        email: string;
+        name: string;
+        role: "owner" | "member";
+        tokenHash: string;
+        invitedByUserId: string;
+        expiresAt: string;
+        providerIds: string[];
+      },
+    ) => {
+      repoState.createInvitationCalls.push(input);
+      const invitationId = `invite-${repoState.invitations.length + 1}`;
+      repoState.invitations.push({
+        id: invitationId,
+        householdId: input.householdId,
+        email: input.email,
+        name: input.name,
+        role: input.role,
+        status: "pending",
+        invitedByUserId: input.invitedByUserId,
+        acceptedByUserId: null,
+        expiresAt: input.expiresAt,
+        acceptedAt: null,
+        cancelledAt: null,
+        createdAt: "2026-05-10T12:00:00.000Z",
+        updatedAt: "2026-05-10T12:00:00.000Z",
+        tokenHash: input.tokenHash,
+        providerIds: input.providerIds,
+      });
+      return invitationId;
+    },
+    getInvitationById: async (_db: D1Database, invitationId: string) => {
+      const invitation = repoState.invitations.find(
+        (candidate) => candidate.id === invitationId,
+      );
+      return invitation ? invitationSummary(invitation) : null;
+    },
+    getInvitationByTokenHash: async (_db: D1Database, tokenHash: string) => {
+      const invitation = repoState.invitations.find(
+        (candidate) => candidate.tokenHash === tokenHash,
+      );
+      return invitation ? invitationSummary(invitation) : null;
+    },
+    listHouseholdInvitations: async (_db: D1Database, householdId?: string) =>
+      repoState.invitations
+        .filter((invitation) =>
+          householdId ? invitation.householdId === householdId : true,
+        )
+        .map(invitationSummary),
+    refreshExpiredInvitations: async () => {},
+    cancelInvitation: async (_db: D1Database, invitationId: string) => {
+      const invitation = repoState.invitations.find(
+        (candidate) => candidate.id === invitationId,
+      );
+      if (invitation) {
+        invitation.status = "cancelled";
+      }
+    },
+    acceptInvitation: async (
+      _db: D1Database,
+      input: {
+        invitationId: string;
+        householdId: string;
+        acceptedByUserId: string;
+        role: "owner" | "member";
+      },
+    ) => {
+      repoState.acceptInvitationCalls.push(input);
+      repoState.memberships.push({
+        householdId: input.householdId,
+        userId: input.acceptedByUserId,
+        role: input.role,
+      });
+      const invitation = repoState.invitations.find(
+        (candidate) => candidate.id === input.invitationId,
+      );
+      if (invitation) {
+        invitation.status = "accepted";
+        invitation.acceptedByUserId = input.acceptedByUserId;
+      }
+    },
   };
 });
 
@@ -93,44 +682,35 @@ vi.mock("../src/server/auth/auth", () => ({
     handler: () => new Response("auth"),
     api: {
       getSession: async () => sessionState.current,
-      createUser: async (input: unknown) => {
-        authApiState.createUserCalls.push(input);
-
-        return {
-          user: {
-            id: "created-user-1",
-            email: "new@example.com",
-            name: "New Person",
-            role: "member",
-          },
+    },
+  }),
+  provisioningAuthForEnv: () => ({
+    handler: () => new Response("auth"),
+    api: {
+      signUpEmail: async (input: unknown) => {
+        authApiState.signUpEmailCalls.push(input);
+        const body = (input as { body: { email: string; name: string } }).body;
+        const createdUser = {
+          id: "created-user-1",
+          email: body.email,
+          name: body.name,
+          role: "user",
         };
-      },
-      setRole: async (input: unknown) => {
-        authApiState.setRoleCalls.push(input);
-        return { ok: true };
-      },
-      listUsers: async (input: unknown) => {
-        authApiState.listUsersCalls.push(input);
-        return authApiState.listUsersResponse;
-      },
-      signInEmail: async (input: unknown) => {
-        authApiState.signInEmailCalls.push(input);
+        repoState.users.push(createdUser);
         return {
           response: {
+            user: createdUser,
             session: {
-              id: "setup-session-1",
-              userId: "created-user-1",
+              id: "session-created-1",
+              userId: createdUser.id,
             },
           },
-          headers: new Headers({
-            "set-cookie":
+          headers: {
+            getSetCookie: () => [
               "better-auth.session_token=test-token; Path=/; HttpOnly",
-          }),
+            ],
+          },
         };
-      },
-      setUserPassword: async (input: unknown) => {
-        authApiState.setPasswordCalls.push(input);
-        return { ok: true };
       },
     },
   }),
@@ -140,64 +720,22 @@ const { default: worker } = await import("../src/index");
 
 type WorkerFetch = NonNullable<typeof worker.fetch>;
 
-function createDbStub(resolve: DbResolver): D1Database {
-  function toResults(runner: DbRunner) {
-    return async () => {
-      if (runner.all) {
-        return (await runner.all()).results;
-      }
-
-      if (runner.run) {
-        return (await runner.run()).results;
-      }
-
-      const first = await runner.first?.();
-      return first === undefined ? [] : [first];
-    };
-  }
-
+function createDbStub(): D1Database {
   return {
-    prepare(sql: string) {
+    prepare() {
       return {
-        bind(...params: unknown[]) {
-          const runner = resolve(sql.trim(), params);
-          const raw = toResults(runner);
-
+        bind() {
           return {
-            all: async () => {
-              if (runner.all) {
-                return runner.all();
-              }
-
-              if (runner.run) {
-                return runner.run();
-              }
-
-              const first = await runner.first?.();
-              return { results: first === undefined ? [] : [first] };
-            },
-            first: async () => runner.first?.(),
-            raw,
-            run: async () => runner.run?.() ?? { results: [] },
+            all: async () => ({ results: [] }),
+            first: async () => null,
+            raw: async () => [],
+            run: async () => ({ results: [] }),
           };
         },
-        all: async () => {
-          const runner = resolve(sql.trim(), []);
-
-          if (runner.all) {
-            return runner.all();
-          }
-
-          if (runner.run) {
-            return runner.run();
-          }
-
-          const first = await runner.first?.();
-          return { results: first === undefined ? [] : [first] };
-        },
-        first: async () => resolve(sql.trim(), []).first?.(),
-        raw: async () => toResults(resolve(sql.trim(), []))(),
-        run: async () => resolve(sql.trim(), []).run?.() ?? { results: [] },
+        all: async () => ({ results: [] }),
+        first: async () => null,
+        raw: async () => [],
+        run: async () => ({ results: [] }),
       };
     },
     batch: async () => [],
@@ -221,6 +759,8 @@ function createEnv(db: D1Database, overrides?: Partial<Env>): Env {
     DB: db,
     EMAIL: email,
     ENVIRONMENT: "test",
+    OWNER_EMAIL: "owner@example.com",
+    SETUP_SECRET: "setup-secret",
     ...overrides,
   };
 }
@@ -237,108 +777,179 @@ function getWorkerFetch(): WorkerFetch {
   if (!worker.fetch) {
     throw new Error("Worker fetch handler is unavailable");
   }
-
   return worker.fetch;
 }
 
 async function invokeWorker(
   path: string,
-  options: RequestInit | undefined,
-  db: D1Database,
+  options?: RequestInit,
   envOverrides?: Partial<Env>,
 ) {
   const fetchHandler = getWorkerFetch();
-  const request = new Request(
-    `http://localhost:8787${path}`,
-    options,
-  ) as Parameters<WorkerFetch>[0];
-
-  return fetchHandler(
-    request,
-    createEnv(db, envOverrides),
-    createExecutionContext(),
-  );
+  const db = createDbStub();
+  const request = new Request(`http://localhost:8787${path}`, options) as Parameters<
+    WorkerFetch
+  >[0];
+  return fetchHandler(request, createEnv(db, envOverrides), createExecutionContext());
 }
 
 describe("worker routes", () => {
   beforeEach(() => {
     sessionState.current = null;
-    authApiState.createUserCalls = [];
-    authApiState.listUsersCalls = [];
-    authApiState.signInEmailCalls = [];
-    authApiState.setRoleCalls = [];
-    authApiState.setPasswordCalls = [];
-    authApiState.listUsersResponse = {
-      users: [],
-      total: 0,
-    };
+    authApiState.signUpEmailCalls = [];
     invitationEmailState.calls = [];
-    settingsRepoState.getUserProfile.mockReset();
-    settingsRepoState.listUserSessions.mockReset();
-    settingsRepoState.updateUserProfile.mockReset();
-    settingsRepoState.deleteOtherSessions.mockReset();
-    settingsRepoState.deleteSessionById.mockReset();
-    invitationsRepoState.createHouseholdInvitation.mockReset();
-    invitationsRepoState.getInvitationById.mockReset();
-    invitationsRepoState.getInvitationByTokenHash.mockReset();
-    invitationsRepoState.listHouseholdInvitations.mockReset();
-    invitationsRepoState.refreshExpiredInvitations.mockReset();
-    invitationsRepoState.cancelInvitation.mockReset();
-    invitationsRepoState.acceptInvitation.mockReset();
+    repoState.users = [
+      {
+        id: "owner-home",
+        email: "owner@example.com",
+        name: "Home Owner",
+        role: "user",
+      },
+      {
+        id: "member-home",
+        email: "member@example.com",
+        name: "Household Member",
+        role: "user",
+      },
+      {
+        id: "owner-away",
+        email: "away-owner@example.com",
+        name: "Away Owner",
+        role: "user",
+      },
+      {
+        id: "member-away",
+        email: "away-member@example.com",
+        name: "Away Member",
+        role: "user",
+      },
+    ];
+    repoState.households = [
+      { id: "household-home", slug: "home", displayName: "Home" },
+      { id: "household-away", slug: "away", displayName: "Away" },
+    ];
+    repoState.memberships = [
+      { householdId: "household-home", userId: "owner-home", role: "owner" },
+      { householdId: "household-home", userId: "member-home", role: "member" },
+      { householdId: "household-away", userId: "owner-away", role: "owner" },
+      { householdId: "household-away", userId: "member-away", role: "member" },
+    ];
+    repoState.providers = [
+      {
+        id: "provider-home-netflix",
+        household_id: "household-home",
+        provider_key: "netflix",
+        display_name: "Netflix",
+        created_at: "2026-05-10T12:00:00.000Z",
+        rule_count: 1,
+      },
+      {
+        id: "provider-away-hulu",
+        household_id: "household-away",
+        provider_key: "hulu",
+        display_name: "Hulu",
+        created_at: "2026-05-10T12:00:00.000Z",
+        rule_count: 0,
+      },
+    ];
+    repoState.providerAccess = [
+      {
+        householdId: "household-home",
+        userId: "member-home",
+        providerId: "provider-home-netflix",
+      },
+    ];
+    repoState.messages = [
+      {
+        id: "msg-home-1",
+        household_slug: "home",
+        householdId: "household-home",
+        provider_key: "netflix",
+        provider_display_name: "Netflix",
+        subject: "Your code",
+        from_header: "Netflix <no-reply@netflix.com>",
+        text_body: "Code 123456",
+        extracted_code: "123456",
+        status: "new",
+        received_at: "2026-05-10T12:00:00.000Z",
+      },
+    ];
+    repoState.quarantine = [
+      {
+        id: "quarantine-home-1",
+        household_slug: "home",
+        householdId: "household-home",
+        provider_key: "quarantine",
+        provider_display_name: "Quarantine",
+        subject: "Review this",
+        from_header: "Unknown <unknown@example.com>",
+        envelope_from: "unknown@example.com",
+        text_body: "Unclassified message",
+        extracted_code: null,
+        quarantine_reason: "unknown_sender",
+        received_at: "2026-05-10T12:10:00.000Z",
+        reviewed: false,
+      },
+    ];
+    repoState.invitations = [
+      {
+        id: "invite-existing",
+        householdId: "household-home",
+        email: "invitee@example.com",
+        name: "Invitee",
+        role: "member",
+        status: "pending",
+        invitedByUserId: "owner-home",
+        acceptedByUserId: null,
+        expiresAt: "2026-05-31T12:00:00.000Z",
+        acceptedAt: null,
+        cancelledAt: null,
+        createdAt: "2026-05-10T12:00:00.000Z",
+        updatedAt: "2026-05-10T12:00:00.000Z",
+        tokenHash: "hash:test-token",
+        providerIds: ["provider-home-netflix"],
+      },
+    ];
+    repoState.senderRules = [
+      {
+        id: "rule-home-1",
+        household_id: "household-home",
+        provider_id: "provider-home-netflix",
+        match_type: "domain",
+        match_value: "netflix.com",
+        created_at: "2026-05-10T12:00:00.000Z",
+      },
+    ];
+    repoState.createHouseholdCalls = [];
+    repoState.createInvitationCalls = [];
+    repoState.acceptInvitationCalls = [];
+    repoState.updateRoleCalls = [];
+    repoState.grantAccessCalls = [];
+    repoState.reviewCalls = [];
+    repoState.setupState = {
+      status: "pending",
+      owner_user_id: null,
+      owner_email: null,
+    };
+    repoState.beginSetupResult = true;
   });
 
-  it("returns liveness health", async () => {
-    const db = createDbStub((sql) => {
-      if (sql.includes("SELECT 1 AS ok")) {
-        return {
-          first: async () => ({ ok: 1 }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker("/api/health/live", undefined, db);
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ status: "ok" });
-  });
-
-  it("lists providers available to the signed-in user", async () => {
+  it("lists providers for a member in their own household", async () => {
     sessionState.current = {
-      user: { id: "user-1", email: "member@example.com", role: "member" },
-      session: { id: "session-1", userId: "user-1" },
+      user: { id: "member-home", email: "member@example.com", role: "user" },
+      session: { id: "session-1", userId: "member-home" },
     };
 
-    const db = createDbStub((sql) => {
-      if (sql.includes("GROUP BY providers.id")) {
-        return {
-          run: async () => ({
-            results: [
-              {
-                provider_key: "netflix",
-                display_name: "Netflix",
-                message_count: 2,
-                new_count: 1,
-                latest_received_at: "2026-05-10T12:00:00.000Z",
-              },
-            ],
-          }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker("/api/inbox/providers", undefined, db);
+    const response = await invokeWorker("/api/inbox/home/providers");
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       providers: [
         {
+          household_slug: "home",
           provider_key: "netflix",
           display_name: "Netflix",
-          message_count: 2,
+          message_count: 1,
           new_count: 1,
           latest_received_at: "2026-05-10T12:00:00.000Z",
         },
@@ -346,442 +957,102 @@ describe("worker routes", () => {
     });
   });
 
-  it("updates message status for a permitted provider member", async () => {
+  it("denies inbox access across household boundaries", async () => {
     sessionState.current = {
-      user: { id: "user-1", email: "member@example.com", role: "member" },
-      session: { id: "session-1", userId: "user-1" },
-    };
-
-    const db = createDbStub((sql, params) => {
-      if (sql.includes("WHERE messages.id = ?") && sql.includes("LIMIT 1")) {
-        return {
-          first: async () => ({
-            id: params[0],
-            provider_key: "netflix",
-            provider_display_name: "Netflix",
-            subject: "Your latest code",
-            from_header: "Netflix <login@netflix.example>",
-            text_body: "Use 123456 to continue",
-            extracted_code: "123456",
-            status: "used",
-            received_at: "2026-05-10T12:00:00.000Z",
-          }),
-        };
-      }
-
-      if (sql.includes("SELECT 1 AS allowed")) {
-        return {
-          first: async () => ({ allowed: 1 }),
-        };
-      }
-
-      if (sql.startsWith("UPDATE messages SET status = ?")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker(
-      "/api/inbox/messages/msg-1/status",
-      {
-        method: "PATCH",
-        body: JSON.stringify({ status: "used" }),
+      user: {
+        id: "owner-away",
+        email: "away-owner@example.com",
+        role: "user",
       },
-      db,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      message: {
-        id: "msg-1",
-        provider_key: "netflix",
-        provider_display_name: "Netflix",
-        subject: "Your latest code",
-        from_header: "Netflix <login@netflix.example>",
-        text_body: "Use 123456 to continue",
-        extracted_code: "123456",
-        status: "used",
-        received_at: "2026-05-10T12:00:00.000Z",
-      },
-    });
-  });
-
-  it("rejects invalid status payloads", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
+      session: { id: "session-1", userId: "owner-away" },
     };
 
-    const db = createDbStub((sql, params) => {
-      if (sql.includes("WHERE messages.id = ?") && sql.includes("LIMIT 1")) {
-        return {
-          first: async () => ({
-            id: params[0],
-            provider_key: "netflix",
-            provider_display_name: "Netflix",
-            subject: "Your latest code",
-            from_header: "Netflix <login@netflix.example>",
-            text_body: "Use 123456 to continue",
-            extracted_code: "123456",
-            status: "new",
-            received_at: "2026-05-10T12:00:00.000Z",
-          }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker(
-      "/api/inbox/messages/msg-1/status",
-      {
-        method: "PATCH",
-        body: JSON.stringify({ status: "archived" }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "Invalid message status",
-    });
-  });
-
-  it("allows an owner to release a quarantined message to a provider", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub((sql, params) => {
-      if (
-        sql.includes("FROM providers") &&
-        sql.includes("WHERE provider_key = ?")
-      ) {
-        return {
-          first: async () => ({
-            id: "provider-1",
-            provider_key: "netflix",
-            display_name: "Netflix",
-          }),
-        };
-      }
-
-      if (
-        sql.includes("FROM quarantine_messages") &&
-        sql.includes("WHERE id = ?")
-      ) {
-        return {
-          first: async () => ({
-            id: params[0],
-            message_id: "message-123",
-            envelope_from: "login@netflix.example",
-            envelope_to: "codes@example.com",
-            from_header: "Netflix <login@netflix.example>",
-            subject: "Netflix code",
-            text_body: "Use 123456",
-            extracted_code: "123456",
-            quarantine_reason: "No sender rule matched",
-            raw_size: 512,
-            received_at: "2026-05-10T12:00:00.000Z",
-            delete_after: "2026-06-09T12:00:00.000Z",
-            reviewed_at: null,
-          }),
-        };
-      }
-
-      if (sql.startsWith("INSERT INTO messages")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (sql.includes("WHERE messages.message_id = ?")) {
-        return {
-          first: async () => ({
-            id: "released-1",
-            provider_key: "netflix",
-            provider_display_name: "Netflix",
-            subject: "Netflix code",
-            from_header: "Netflix <login@netflix.example>",
-            text_body: "Use 123456",
-            extracted_code: "123456",
-            status: "new",
-            received_at: "2026-05-10T12:00:00.000Z",
-          }),
-        };
-      }
-
-      if (sql.startsWith("UPDATE quarantine_messages SET reviewed_at = ?")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker(
-      "/api/inbox/quarantine/quarantine-1/review",
-      {
-        method: "POST",
-        body: JSON.stringify({ action: "release", providerKey: "netflix" }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(200);
-
-    const payload = (await response.json()) as {
-      reviewedAt: string;
-      releasedMessage: { id: string; provider_key: string; status: string };
-    };
-
-    expect(payload.reviewedAt).toMatch(/T/);
-    expect(payload.releasedMessage).toMatchObject({
-      id: "released-1",
-      provider_key: "netflix",
-      status: "new",
-    });
-  });
-
-  it("keeps quarantine owner-only", async () => {
-    sessionState.current = {
-      user: { id: "user-1", email: "member@example.com", role: "member" },
-      session: { id: "session-1", userId: "user-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-
-    const response = await invokeWorker("/api/inbox/quarantine", undefined, db);
+    const response = await invokeWorker("/api/inbox/home/providers");
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
   });
 
-  it("bootstraps OWNER_EMAIL to admin via direct D1 update", async () => {
+  it("allows a permitted member to update message status in their household", async () => {
     sessionState.current = {
-      user: { id: "user-1", email: "owner@example.com", role: "member" },
-      session: { id: "session-1", userId: "user-1" },
+      user: { id: "member-home", email: "member@example.com", role: "user" },
+      session: { id: "session-1", userId: "member-home" },
     };
 
-    const dbCalls: Array<{ sql: string; params: unknown[] }> = [];
-
-    const db = createDbStub((sql, params) => {
-      dbCalls.push({ sql, params });
-
-      if (sql.includes("GROUP BY providers.id")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (sql.includes("UPDATE user SET role = 'admin' WHERE id = ?")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker("/api/inbox/providers", undefined, db, {
-      OWNER_EMAIL: "owner@example.com",
+    const response = await invokeWorker("/api/inbox/home/messages/msg-home-1/status", {
+      method: "PATCH",
+      body: JSON.stringify({ status: "used" }),
     });
 
     expect(response.status).toBe(200);
-
-    const roleUpdate = dbCalls.find((c) =>
-      c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
-    );
-    expect(roleUpdate).toBeDefined();
-    expect(roleUpdate?.params).toEqual(["user-1"]);
+    await expect(response.json()).resolves.toEqual({
+      message: expect.objectContaining({ id: "msg-home-1", status: "used" }),
+    });
   });
 
-  it("does NOT auto-promote when user is not the owner", async () => {
+  it("denies quarantine review to members in the same household", async () => {
     sessionState.current = {
-      user: { id: "user-2", email: "member@example.com", role: "member" },
-      session: { id: "session-2", userId: "user-2" },
+      user: { id: "member-home", email: "member@example.com", role: "user" },
+      session: { id: "session-1", userId: "member-home" },
     };
 
-    const dbCalls: Array<{ sql: string; params: unknown[] }> = [];
+    const response = await invokeWorker("/api/inbox/home/quarantine");
 
-    const db = createDbStub((sql, params) => {
-      dbCalls.push({ sql, params });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+  });
 
-      if (sql.includes("GROUP BY providers.id")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
+  it("allows an owner to review quarantine within their household", async () => {
+    sessionState.current = {
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
+    };
 
-      return {};
-    });
-
-    const response = await invokeWorker("/api/inbox/providers", undefined, db, {
-      OWNER_EMAIL: "owner@example.com",
-    });
+    const response = await invokeWorker(
+      "/api/inbox/home/quarantine/quarantine-home-1/review",
+      {
+        method: "POST",
+        body: JSON.stringify({ action: "release", providerKey: "netflix" }),
+      },
+    );
 
     expect(response.status).toBe(200);
-
-    const roleUpdate = dbCalls.find((c) =>
-      c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
-    );
-    expect(roleUpdate).toBeUndefined();
+    await expect(response.json()).resolves.toEqual({
+      reviewedAt: "2026-05-10T12:30:00.000Z",
+      releasedMessage: {
+        id: "released-1",
+        provider_key: "netflix",
+        status: "new",
+      },
+    });
   });
 
-  it("does NOT auto-promote when owner already has admin role", async () => {
+  it("allows an owner to list members in their household", async () => {
     sessionState.current = {
-      user: { id: "user-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "user-1" },
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
     };
 
-    const dbCalls: Array<{ sql: string; params: unknown[] }> = [];
-
-    const db = createDbStub((sql, params) => {
-      dbCalls.push({ sql, params });
-
-      if (sql.includes("GROUP BY providers.id")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker("/api/inbox/providers", undefined, db, {
-      OWNER_EMAIL: "owner@example.com",
-    });
-
-    expect(response.status).toBe(200);
-
-    const roleUpdate = dbCalls.find((c) =>
-      c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
-    );
-    expect(roleUpdate).toBeUndefined();
-  });
-
-  it("auto-promotes owner case-insensitively", async () => {
-    sessionState.current = {
-      user: { id: "user-1", email: "Owner@Example.COM", role: "member" },
-      session: { id: "session-1", userId: "user-1" },
-    };
-
-    const dbCalls: Array<{ sql: string; params: unknown[] }> = [];
-
-    const db = createDbStub((sql, params) => {
-      dbCalls.push({ sql, params });
-
-      if (sql.includes("GROUP BY providers.id")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (sql.includes("UPDATE user SET role = 'admin' WHERE id = ?")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker("/api/inbox/providers", undefined, db, {
-      OWNER_EMAIL: "owner@example.com",
-    });
-
-    expect(response.status).toBe(200);
-
-    const roleUpdate = dbCalls.find((c) =>
-      c.sql.includes("UPDATE user SET role = 'admin' WHERE id = ?"),
-    );
-    expect(roleUpdate).toBeDefined();
-    expect(roleUpdate?.params).toEqual(["user-1"]);
-  });
-
-  it("lists members and provider access for owners", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub((sql) => {
-      if (
-        sql.includes("SELECT id, email, name, role, createdAt, updatedAt") &&
-        sql.includes("FROM user") &&
-        sql.includes("ORDER BY createdAt ASC")
-      ) {
-        return {
-          run: async () => ({
-            results: [
-              {
-                id: "member-1",
-                email: "member@example.com",
-                name: "Family Member",
-                role: "member",
-                createdAt: "2026-05-10T12:00:00.000Z",
-                updatedAt: "2026-05-10T12:00:00.000Z",
-              },
-            ],
-          }),
-        };
-      }
-
-      if (
-        sql.includes("LEFT JOIN user_provider_access") &&
-        sql.includes("LEFT JOIN providers")
-      ) {
-        return {
-          run: async () => ({
-            results: [
-              {
-                id: "member-1",
-                email: "member@example.com",
-                name: "Family Member",
-                role: "member",
-                provider_key: "netflix",
-                provider_display_name: "Netflix",
-              },
-            ],
-          }),
-        };
-      }
-
-      if (
-        sql.includes("SELECT id, provider_key, display_name") &&
-        sql.includes("FROM providers") &&
-        sql.includes("ORDER BY display_name ASC")
-      ) {
-        return {
-          run: async () => ({
-            results: [
-              {
-                id: "provider-1",
-                provider_key: "netflix",
-                display_name: "Netflix",
-              },
-            ],
-          }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker("/api/admin/members", undefined, db);
+    const response = await invokeWorker("/api/admin/home/members");
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       members: [
         {
-          id: "member-1",
+          id: "owner-home",
+          email: "owner@example.com",
+          name: "Home Owner",
+          householdRole: "owner",
+          role: "admin",
+          createdAt: "2026-05-10T12:00:00.000Z",
+          updatedAt: "2026-05-10T12:00:00.000Z",
+          providerAccess: [],
+        },
+        {
+          id: "member-home",
           email: "member@example.com",
-          name: "Family Member",
+          name: "Household Member",
+          householdRole: "member",
           role: "member",
           createdAt: "2026-05-10T12:00:00.000Z",
           updatedAt: "2026-05-10T12:00:00.000Z",
@@ -794,970 +1065,199 @@ describe("worker routes", () => {
         },
       ],
       providers: [
-        {
-          id: "provider-1",
+        expect.objectContaining({
+          id: "provider-home-netflix",
           provider_key: "netflix",
           display_name: "Netflix",
-        },
-      ],
-    });
-  });
-
-  it("creates a household member from the admin route", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-
-    const response = await invokeWorker(
-      "/api/admin/members",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          email: "new@example.com",
-          name: "New Person",
-          password: "temporary-password-123",
-          role: "member",
         }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(201);
-    expect(authApiState.createUserCalls).toHaveLength(1);
-    expect(authApiState.createUserCalls[0]).toMatchObject({
-      body: {
-        email: "new@example.com",
-        name: "New Person",
-        password: "temporary-password-123",
-        role: "user",
-      },
-    });
-  });
-
-  it("returns settings profile and sessions for the authenticated user", async () => {
-    sessionState.current = {
-      user: { id: "user-1", email: "member@example.com", role: "member" },
-      session: { id: "session-1", userId: "user-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-    settingsRepoState.getUserProfile.mockResolvedValue({
-      id: "user-1",
-      email: "member@example.com",
-      name: "Member Person",
-      image: "https://example.com/avatar.png",
-      role: "user",
-      twoFactorEnabled: true,
-    });
-    settingsRepoState.listUserSessions.mockResolvedValue([
-      {
-        id: "session-1",
-        token: "token-1",
-        expiresAt: "2026-06-01T12:00:00.000Z",
-        ipAddress: "127.0.0.1",
-        userAgent: "Safari",
-        createdAt: "2026-05-01T12:00:00.000Z",
-        updatedAt: "2026-05-02T12:00:00.000Z",
-        impersonatedBy: null,
-      },
-    ]);
-
-    const response = await invokeWorker("/api/settings", undefined, db);
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      profile: {
-        id: "user-1",
-        email: "member@example.com",
-        name: "Member Person",
-        image: "https://example.com/avatar.png",
-        role: "user",
-        twoFactorEnabled: true,
-      },
-      sessions: [
-        {
-          id: "session-1",
-          token: "token-1",
-          expiresAt: "2026-06-01T12:00:00.000Z",
-          ipAddress: "127.0.0.1",
-          userAgent: "Safari",
-          createdAt: "2026-05-01T12:00:00.000Z",
-          updatedAt: "2026-05-02T12:00:00.000Z",
-          impersonatedBy: null,
-        },
-      ],
-    });
-    expect(settingsRepoState.getUserProfile).toHaveBeenCalledWith(db, "user-1");
-    expect(settingsRepoState.listUserSessions).toHaveBeenCalledWith(
-      db,
-      "user-1",
-    );
-  });
-
-  it("updates the authenticated user profile", async () => {
-    sessionState.current = {
-      user: { id: "user-1", email: "member@example.com", role: "member" },
-      session: { id: "session-1", userId: "user-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-    settingsRepoState.updateUserProfile.mockResolvedValue({
-      id: "user-1",
-      email: "member@example.com",
-      name: "Updated Member",
-      image: "https://example.com/new.png",
-      role: "user",
-      twoFactorEnabled: false,
-    });
-
-    const response = await invokeWorker(
-      "/api/settings/profile",
-      {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: "Updated Member",
-          image: "https://example.com/new.png",
-        }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      profile: {
-        id: "user-1",
-        email: "member@example.com",
-        name: "Updated Member",
-        image: "https://example.com/new.png",
-        role: "user",
-        twoFactorEnabled: false,
-      },
-    });
-    expect(settingsRepoState.updateUserProfile).toHaveBeenCalledWith(
-      db,
-      "user-1",
-      {
-        name: "Updated Member",
-        image: "https://example.com/new.png",
-      },
-    );
-  });
-
-  it("deletes all other sessions for the authenticated user", async () => {
-    sessionState.current = {
-      user: { id: "user-1", email: "member@example.com", role: "member" },
-      session: { id: "session-keep", userId: "user-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-
-    const response = await invokeWorker(
-      "/api/settings/sessions/others",
-      { method: "DELETE" },
-      db,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(settingsRepoState.deleteOtherSessions).toHaveBeenCalledWith(
-      db,
-      "user-1",
-      "session-keep",
-    );
-  });
-
-  it("creates an invitation and sends an invite email", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-    invitationsRepoState.createHouseholdInvitation.mockResolvedValue(
-      "invite-1",
-    );
-    invitationsRepoState.getInvitationById.mockResolvedValue({
-      id: "invite-1",
-      email: "invitee@example.com",
-      name: "Invitee",
-      role: "member",
-      status: "pending",
-      invitedByUserId: "admin-1",
-      acceptedByUserId: null,
-      expiresAt: "2026-05-31T12:00:00.000Z",
-      acceptedAt: null,
-      cancelledAt: null,
-      createdAt: "2026-05-10T12:00:00.000Z",
-      updatedAt: "2026-05-10T12:00:00.000Z",
-      providers: [
-        {
-          id: "provider-1",
-          provider_key: "netflix",
-          display_name: "Netflix",
-        },
-      ],
-    });
-
-    const response = await invokeWorker(
-      "/api/admin/invitations",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          email: "invitee@example.com",
-          name: "Invitee",
-          role: "member",
-          providerIds: ["provider-1"],
-        }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(201);
-    const payload = (await response.json()) as { invitation: { id: string } };
-    expect(payload.invitation.id).toBe("invite-1");
-    expect(invitationEmailState.calls).toHaveLength(1);
-    expect(invitationsRepoState.createHouseholdInvitation).toHaveBeenCalled();
-    expect(invitationEmailState.calls[0]).toMatchObject({
-      input: expect.objectContaining({
-        to: "invitee@example.com",
-        inviteeName: "Invitee",
-        inviterEmail: "owner@example.com",
-        role: "member",
-      }),
-    });
-  });
-
-  it("lists invitations for owners", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-    invitationsRepoState.listHouseholdInvitations.mockResolvedValue([
-      {
-        id: "invite-1",
-        email: "invitee@example.com",
-        name: "Invitee",
-        role: "member",
-        status: "pending",
-        invitedByUserId: "admin-1",
-        acceptedByUserId: null,
-        expiresAt: "2026-05-31T12:00:00.000Z",
-        acceptedAt: null,
-        cancelledAt: null,
-        createdAt: "2026-05-10T12:00:00.000Z",
-        updatedAt: "2026-05-10T12:00:00.000Z",
-        providers: [
-          {
-            id: "provider-1",
-            provider_key: "netflix",
-            display_name: "Netflix",
-          },
-        ],
-      },
-    ]);
-
-    const response = await invokeWorker(
-      "/api/admin/invitations",
-      undefined,
-      db,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      invitations: [
-        {
-          id: "invite-1",
-          email: "invitee@example.com",
-          name: "Invitee",
-          role: "member",
-          status: "pending",
-          invitedByUserId: "admin-1",
-          acceptedByUserId: null,
-          expiresAt: "2026-05-31T12:00:00.000Z",
-          acceptedAt: null,
-          cancelledAt: null,
-          createdAt: "2026-05-10T12:00:00.000Z",
-          updatedAt: "2026-05-10T12:00:00.000Z",
-          providers: [
-            {
-              id: "provider-1",
-              provider_key: "netflix",
-              display_name: "Netflix",
-            },
-          ],
-        },
-      ],
-    });
-    expect(invitationsRepoState.listHouseholdInvitations).toHaveBeenCalledWith(
-      db,
-    );
-  });
-
-  it("accepts an invitation and signs the user in", async () => {
-    const db = createDbStub(() => ({}));
-    invitationsRepoState.getInvitationByTokenHash.mockResolvedValue({
-      id: "invite-1",
-      email: "invitee@example.com",
-      name: "Invitee",
-      role: "member",
-      status: "pending",
-      invitedByUserId: "admin-1",
-      acceptedByUserId: null,
-      expiresAt: "2026-05-31T12:00:00.000Z",
-      acceptedAt: null,
-      cancelledAt: null,
-      createdAt: "2026-05-10T12:00:00.000Z",
-      updatedAt: "2026-05-10T12:00:00.000Z",
-      providers: [
-        {
-          id: "provider-1",
-          provider_key: "netflix",
-          display_name: "Netflix",
-        },
-      ],
-    });
-    invitationsRepoState.acceptInvitation.mockResolvedValue(undefined);
-
-    const response = await invokeWorker(
-      "/api/invitations/test-token/accept",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          name: "Invited Person",
-          password: "super-secure-password",
-        }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(201);
-    expect(authApiState.createUserCalls.at(-1)).toMatchObject({
-      body: expect.objectContaining({
-        email: "invitee@example.com",
-        name: "Invited Person",
-        password: "super-secure-password",
-        role: "user",
-      }),
-    });
-    expect(authApiState.signInEmailCalls.at(-1)).toMatchObject({
-      body: {
-        email: "invitee@example.com",
-        password: "super-secure-password",
-      },
-    });
-    expect(response.headers.get("set-cookie")).toContain(
-      "better-auth.session_token=test-token",
-    );
-    expect(invitationsRepoState.acceptInvitation).toHaveBeenCalledWith(db, {
-      invitationId: "invite-1",
-      acceptedByUserId: "created-user-1",
-      providerIds: ["provider-1"],
-    });
-  });
-
-  it("lists provider configuration for owners", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub((sql) => {
-      if (sql.includes("COUNT(sender_rules.id) AS rule_count")) {
-        return {
-          run: async () => ({
-            results: [
-              {
-                id: "provider-1",
-                provider_key: "netflix",
-                display_name: "Netflix",
-                created_at: "2026-05-10T12:00:00.000Z",
-                rule_count: 2,
-              },
-            ],
-          }),
-        };
-      }
-
-      if (
-        sql.includes(
-          "SELECT id, provider_id, match_type, match_value, created_at",
-        ) &&
-        sql.includes("FROM sender_rules")
-      ) {
-        return {
-          run: async () => ({
-            results: [
-              {
-                id: "rule-1",
-                provider_id: "provider-1",
-                match_type: "domain",
-                match_value: "netflix.com",
-                created_at: "2026-05-10T12:00:00.000Z",
-              },
-            ],
-          }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker("/api/admin/providers", undefined, db);
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      providers: [
-        {
-          id: "provider-1",
-          provider_key: "netflix",
-          display_name: "Netflix",
-          created_at: "2026-05-10T12:00:00.000Z",
-          rule_count: 2,
-        },
-      ],
-      rules: [
-        {
-          id: "rule-1",
-          provider_id: "provider-1",
-          match_type: "domain",
-          match_value: "netflix.com",
-          created_at: "2026-05-10T12:00:00.000Z",
-        },
       ],
     });
   });
 
-  it("creates a provider from the admin route", async () => {
+  it("denies admin routes to members in the same household", async () => {
     sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
+      user: { id: "member-home", email: "member@example.com", role: "user" },
+      session: { id: "session-1", userId: "member-home" },
     };
 
-    let providerInserted = false;
-
-    const db = createDbStub((sql, params) => {
-      if (sql.includes("WHERE provider_key = ?") && sql.includes("LIMIT 1")) {
-        const providerKey = params[0];
-
-        if (providerKey === "hulu" && providerInserted) {
-          return {
-            first: async () => ({
-              id: "provider-1",
-              provider_key: "hulu",
-              display_name: "Hulu",
-              created_at: "2026-05-10T12:00:00.000Z",
-            }),
-          };
-        }
-
-        return {
-          first: async () => null,
-        };
-      }
-
-      if (sql.startsWith("INSERT INTO providers")) {
-        return {
-          run: async () => {
-            providerInserted = true;
-            return { results: [] };
-          },
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker(
-      "/api/admin/providers",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          providerKey: "hulu",
-          displayName: "Hulu",
-        }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({
-      provider: {
-        id: "provider-1",
-        provider_key: "hulu",
-        display_name: "Hulu",
-        created_at: "2026-05-10T12:00:00.000Z",
-      },
-    });
-  });
-
-  it("creates a sender rule from the admin route", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub((sql, params) => {
-      if (sql.includes("WHERE id = ?") && sql.includes("FROM providers")) {
-        return {
-          first: async () => ({
-            id: params[0],
-            provider_key: "netflix",
-            display_name: "Netflix",
-            created_at: "2026-05-10T12:00:00.000Z",
-          }),
-        };
-      }
-
-      if (sql.startsWith("INSERT INTO sender_rules")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (sql.includes("FROM sender_rules") && sql.includes("WHERE id = ?")) {
-        return {
-          first: async () => ({
-            id: params[0],
-            provider_id: "provider-1",
-            match_type: "domain",
-            match_value: "netflix.com",
-            created_at: "2026-05-10T12:00:00.000Z",
-          }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker(
-      "/api/admin/provider-rules",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          providerId: "provider-1",
-          matchType: "domain",
-          matchValue: "@Netflix.com",
-        }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({
-      rule: {
-        id: expect.any(String),
-        provider_id: "provider-1",
-        match_type: "domain",
-        match_value: "netflix.com",
-        created_at: "2026-05-10T12:00:00.000Z",
-      },
-    });
-  });
-
-  it("grants provider access from the admin route", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub((sql) => {
-      if (
-        sql.includes("FROM providers") &&
-        sql.includes("WHERE provider_key = ?")
-      ) {
-        return {
-          first: async () => ({
-            id: "provider-1",
-            provider_key: "netflix",
-            display_name: "Netflix",
-          }),
-        };
-      }
-
-      if (sql.startsWith("INSERT OR IGNORE INTO user_provider_access")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker(
-      "/api/admin/members/member-1/provider-access",
-      {
-        method: "POST",
-        body: JSON.stringify({ providerKey: "netflix" }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
-  });
-
-  it("keeps admin routes owner-only", async () => {
-    sessionState.current = {
-      user: { id: "user-1", email: "member@example.com", role: "member" },
-      session: { id: "session-1", userId: "user-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-
-    const response = await invokeWorker("/api/admin/members", undefined, db);
+    const response = await invokeWorker("/api/admin/home/members");
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
   });
 
-  it("changes another member's role to admin", async () => {
+  it("denies admin routes across household boundaries even for another owner", async () => {
     sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
+      user: {
+        id: "owner-away",
+        email: "away-owner@example.com",
+        role: "user",
+      },
+      session: { id: "session-1", userId: "owner-away" },
     };
 
-    const db = createDbStub(() => ({}));
-
-    const response = await invokeWorker(
-      "/api/admin/members/member-1/role",
-      {
-        method: "PATCH",
-        body: JSON.stringify({ role: "admin" }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(authApiState.setRoleCalls).toHaveLength(1);
-    expect(authApiState.setRoleCalls[0]).toMatchObject({
-      body: { userId: "member-1", role: "admin" },
-    });
-  });
-
-  it("changes another member's role to member", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-
-    const response = await invokeWorker(
-      "/api/admin/members/other-admin-2/role",
-      {
-        method: "PATCH",
-        body: JSON.stringify({ role: "member" }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(authApiState.setRoleCalls).toHaveLength(1);
-    expect(authApiState.setRoleCalls[0]).toMatchObject({
-      body: { userId: "other-admin-2", role: "user" },
-    });
-  });
-
-  it("prevents admin from changing their own role", async () => {
-    sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
-    };
-
-    const db = createDbStub(() => ({}));
-
-    const response = await invokeWorker(
-      "/api/admin/members/admin-1/role",
-      {
-        method: "PATCH",
-        body: JSON.stringify({ role: "member" }),
-      },
-      db,
-    );
+    const response = await invokeWorker("/api/admin/home/members");
 
     expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
-      error: "Cannot change your own role. Ask another admin.",
-    });
-    expect(authApiState.setRoleCalls).toHaveLength(0);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
   });
 
-  it("rejects invalid role value", async () => {
+  it("creates an invitation instead of provisioning a passworded member account", async () => {
     sessionState.current = {
-      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
-      session: { id: "session-1", userId: "admin-1" },
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
     };
 
-    const db = createDbStub(() => ({}));
-
-    const response = await invokeWorker(
-      "/api/admin/members/member-1/role",
-      {
-        method: "PATCH",
-        body: JSON.stringify({ role: "superuser" }),
-      },
-      db,
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "role must be admin or member",
+    const response = await invokeWorker("/api/admin/home/members", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "new@example.com",
+        name: "New Person",
+        role: "member",
+      }),
     });
-  });
-
-  it("reports that first-run setup is still needed", async () => {
-    const db = createDbStub((sql) => {
-      if (sql.startsWith("INSERT INTO app_installation")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (sql.includes("FROM app_installation")) {
-        return {
-          first: async () => ({
-            id: 1,
-            status: "pending",
-            owner_user_id: null,
-            owner_email: null,
-            completed_at: null,
-            created_at: "2026-05-10T12:00:00.000Z",
-            updated_at: "2026-05-10T12:00:00.000Z",
-          }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker("/api/setup/status", undefined, db, {
-      OWNER_EMAIL: "owner@example.com",
-      SETUP_SECRET: "setup-secret",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      needsSetup: true,
-      setupLocked: false,
-      isConfigured: true,
-      status: "pending",
-      ownerEmail: null,
-    });
-  });
-
-  it("creates the initial owner through the one-time setup flow", async () => {
-    const db = createDbStub((sql) => {
-      if (sql.startsWith("INSERT INTO app_installation")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (
-        sql.startsWith("UPDATE app_installation") &&
-        sql.includes("status = 'in_progress'")
-      ) {
-        return {
-          run: async () => ({
-            results: [],
-            meta: { changes: 1 },
-          }),
-        };
-      }
-
-      if (
-        sql.startsWith("UPDATE app_installation") &&
-        sql.includes("status = 'complete'")
-      ) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (sql.includes("FROM app_installation")) {
-        return {
-          first: async () => ({
-            id: 1,
-            status: "pending",
-            owner_user_id: null,
-            owner_email: null,
-            completed_at: null,
-            created_at: "2026-05-10T12:00:00.000Z",
-            updated_at: "2026-05-10T12:00:00.000Z",
-          }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker(
-      "/api/setup/complete",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          email: "owner@example.com",
-          name: "Owner Person",
-          password: "super-secure-password",
-          setupSecret: "setup-secret",
-        }),
-      },
-      db,
-      {
-        OWNER_EMAIL: "owner@example.com",
-        SETUP_SECRET: "setup-secret",
-      },
-    );
 
     expect(response.status).toBe(201);
-    expect(authApiState.createUserCalls).toHaveLength(1);
-    expect(authApiState.createUserCalls[0]).toMatchObject({
-      body: {
-        email: "owner@example.com",
-        name: "Owner Person",
-        password: "super-secure-password",
-        role: "admin",
-      },
+    expect(authApiState.signUpEmailCalls).toHaveLength(0);
+    expect(repoState.createInvitationCalls).toHaveLength(1);
+    expect(repoState.createInvitationCalls[0]).toMatchObject({
+      householdId: "household-home",
+      email: "new@example.com",
+      name: "New Person",
+      role: "member",
     });
-    expect(authApiState.signInEmailCalls).toHaveLength(1);
-    expect(authApiState.signInEmailCalls[0]).toMatchObject({
-      body: {
-        email: "owner@example.com",
-        password: "super-secure-password",
-      },
+    expect(invitationEmailState.calls).toHaveLength(1);
+    await expect(response.json()).resolves.toEqual({
+      invitation: expect.objectContaining({
+        email: "new@example.com",
+        role: "member",
+        status: "pending",
+      }),
+    });
+  });
+
+  it("rejects role changes for a user outside the active household", async () => {
+    sessionState.current = {
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
+    };
+
+    const response = await invokeWorker("/api/admin/home/members/member-away/role", {
+      method: "PATCH",
+      body: JSON.stringify({ role: "admin" }),
     });
 
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Member not found" });
+  });
+
+  it("rejects provider-access changes for a user outside the active household", async () => {
+    sessionState.current = {
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
+    };
+
+    const response = await invokeWorker(
+      "/api/admin/home/members/member-away/provider-access",
+      {
+        method: "POST",
+        body: JSON.stringify({ providerKey: "netflix" }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Member not found" });
+  });
+
+  it("accepts an invitation via provisioning signup and attaches the user to the invited household", async () => {
+    const response = await invokeWorker("/api/invitations/test-token/accept", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Invited Person",
+        password: "super-secure-password",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(authApiState.signUpEmailCalls).toHaveLength(1);
+    expect(authApiState.signUpEmailCalls[0]).toMatchObject({
+      body: {
+        email: "invitee@example.com",
+        name: "Invited Person",
+        password: "super-secure-password",
+      },
+    });
+    expect(repoState.acceptInvitationCalls).toEqual([
+      {
+        invitationId: "invite-existing",
+        householdId: "household-home",
+        acceptedByUserId: "created-user-1",
+        role: "member",
+      },
+    ]);
+
     const payload = (await response.json()) as {
-      member: { email: string; role: string };
+      member: { id: string; email: string; role: string };
+      household: { slug: string };
       session: { session: { userId: string } };
     };
 
     expect(payload.member).toEqual({
       id: "created-user-1",
-      email: "new@example.com",
-      name: "New Person",
-      role: "admin",
+      email: "invitee@example.com",
+      name: "Invited Person",
+      role: "member",
     });
+    expect(payload.household.slug).toBe("home");
     expect(payload.session.session.userId).toBe("created-user-1");
     expect(response.headers.get("set-cookie")).toContain(
-      "better-auth.session_token",
+      "better-auth.session_token=test-token",
     );
   });
 
-  it("rejects setup when the secret is wrong", async () => {
-    const db = createDbStub((sql) => {
-      if (sql.startsWith("INSERT INTO app_installation")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (sql.includes("FROM app_installation")) {
-        return {
-          first: async () => ({
-            id: 1,
-            status: "pending",
-            owner_user_id: null,
-            owner_email: null,
-            completed_at: null,
-            created_at: "2026-05-10T12:00:00.000Z",
-            updated_at: "2026-05-10T12:00:00.000Z",
-          }),
-        };
-      }
-
-      return {};
+  it("creates the initial owner through the provisioning signup flow", async () => {
+    const response = await invokeWorker("/api/setup/complete", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "owner@example.com",
+        name: "Owner Person",
+        password: "super-secure-password",
+        householdName: "Home",
+        householdSlug: "home-setup",
+        setupSecret: "setup-secret",
+      }),
     });
 
-    const response = await invokeWorker(
-      "/api/setup/complete",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          email: "owner@example.com",
-          name: "Owner Person",
-          password: "super-secure-password",
-          setupSecret: "wrong-secret",
-        }),
+    expect(response.status).toBe(201);
+    expect(authApiState.signUpEmailCalls).toHaveLength(1);
+    expect(authApiState.signUpEmailCalls[0]).toMatchObject({
+      body: {
+        email: "owner@example.com",
+        name: "Owner Person",
+        password: "super-secure-password",
       },
-      db,
-      {
-        OWNER_EMAIL: "owner@example.com",
-        SETUP_SECRET: "setup-secret",
-      },
-    );
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
-      error: "Invalid setup secret",
     });
-  });
-
-  it("keeps setup closed after completion", async () => {
-    const db = createDbStub((sql) => {
-      if (sql.startsWith("INSERT INTO app_installation")) {
-        return {
-          run: async () => ({ results: [] }),
-        };
-      }
-
-      if (sql.includes("FROM app_installation")) {
-        return {
-          first: async () => ({
-            id: 1,
-            status: "complete",
-            owner_user_id: "owner-1",
-            owner_email: "owner@example.com",
-            completed_at: "2026-05-10T12:30:00.000Z",
-            created_at: "2026-05-10T12:00:00.000Z",
-            updated_at: "2026-05-10T12:30:00.000Z",
-          }),
-        };
-      }
-
-      if (
-        sql.startsWith("UPDATE app_installation") &&
-        sql.includes("status = 'in_progress'")
-      ) {
-        return {
-          run: async () => ({
-            results: [],
-            meta: { changes: 0 },
-          }),
-        };
-      }
-
-      return {};
-    });
-
-    const response = await invokeWorker(
-      "/api/setup/complete",
+    expect(repoState.createHouseholdCalls).toEqual([
       {
-        method: "POST",
-        body: JSON.stringify({
-          email: "owner@example.com",
-          name: "Owner Person",
-          password: "super-secure-password",
-          setupSecret: "setup-secret",
-        }),
+        slug: "home-setup",
+        displayName: "Home",
+        ownerUserId: "created-user-1",
       },
-      db,
-      {
-        OWNER_EMAIL: "owner@example.com",
-        SETUP_SECRET: "setup-secret",
-      },
-    );
+    ]);
 
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
-      error: "Setup has already been completed",
+    const payload = (await response.json()) as {
+      member: { role: string; email: string };
+      household: { slug: string };
+      session: { session: { userId: string } };
+    };
+
+    expect(payload.member).toEqual({
+      id: "created-user-1",
+      email: "owner@example.com",
+      name: "Owner Person",
+      role: "owner",
     });
+    expect(payload.household.slug).toBe("home-setup");
+    expect(payload.session.session.userId).toBe("created-user-1");
   });
 });
