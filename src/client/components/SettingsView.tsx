@@ -15,12 +15,13 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { type FormEvent, Fragment } from "react";
+import { type FormEvent, Fragment, useState } from "react";
 import type {
   AccountProfile,
   AccountSession,
   AccountSettingsFormState,
 } from "../types";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface SettingsViewProps {
   profile: AccountProfile | null;
@@ -33,10 +34,10 @@ interface SettingsViewProps {
   onChangePassword: (e: FormEvent<HTMLFormElement>) => void;
   onRequestPasswordReset: (e: FormEvent<HTMLFormElement>) => void;
   onEnable2FA: (e: FormEvent<HTMLFormElement>) => void;
-  onDisable2FA: () => void;
+  onDisable2FA: () => Promise<boolean>;
   onAddPasskey: (e: FormEvent<HTMLFormElement>) => void;
-  onRevokeSession: (sessionId: string) => void;
-  onRevokeOtherSessions: () => void;
+  onRevokeSession: (sessionId: string) => Promise<boolean>;
+  onRevokeOtherSessions: () => Promise<boolean>;
   isSaving: boolean;
 }
 
@@ -57,6 +58,12 @@ export function SettingsView({
   onRevokeOtherSessions,
   isSaving,
 }: SettingsViewProps) {
+  const [sessionToRevoke, setSessionToRevoke] = useState<AccountSession | null>(
+    null,
+  );
+  const [isRevokeOthersOpen, setIsRevokeOthersOpen] = useState(false);
+  const [isDisable2FAOpen, setIsDisable2FAOpen] = useState(false);
+
   if (isLoading && !profile) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
@@ -68,6 +75,34 @@ export function SettingsView({
   if (!profile) {
     return <Alert severity="error">{error || "Unable to load profile"}</Alert>;
   }
+
+  const handleDisable2FAConfirm = async () => {
+    const didDisable = await onDisable2FA();
+
+    if (didDisable) {
+      setIsDisable2FAOpen(false);
+    }
+  };
+
+  const handleRevokeSessionConfirm = async () => {
+    if (!sessionToRevoke) {
+      return;
+    }
+
+    const didRevoke = await onRevokeSession(sessionToRevoke.id);
+
+    if (didRevoke) {
+      setSessionToRevoke(null);
+    }
+  };
+
+  const handleRevokeOthersConfirm = async () => {
+    const didRevoke = await onRevokeOtherSessions();
+
+    if (didRevoke) {
+      setIsRevokeOthersOpen(false);
+    }
+  };
 
   return (
     <Container maxWidth="md" disableGutters>
@@ -250,10 +285,11 @@ export function SettingsView({
                 </Box>
                 <Box>
                   <Button
-                    type="submit"
+                    type="button"
                     variant="outlined"
                     color="error"
                     disabled={isSaving || !formState.twoFactorPassword}
+                    onClick={() => setIsDisable2FAOpen(true)}
                   >
                     Disable 2FA
                   </Button>
@@ -338,7 +374,7 @@ export function SettingsView({
             <Button
               color="error"
               disabled={isSaving || sessions.length <= 1}
-              onClick={onRevokeOtherSessions}
+              onClick={() => setIsRevokeOthersOpen(true)}
             >
               Revoke Others
             </Button>
@@ -354,7 +390,7 @@ export function SettingsView({
                   <Button
                     color="error"
                     size="small"
-                    onClick={() => onRevokeSession(session.id)}
+                    onClick={() => setSessionToRevoke(session)}
                     disabled={isSaving}
                   >
                     Revoke
@@ -383,6 +419,66 @@ export function SettingsView({
           )}
         </List>
       </Card>
+
+      <ConfirmDialog
+        open={isDisable2FAOpen}
+        title="Disable two-factor authentication?"
+        description={
+          <Stack spacing={1}>
+            <Typography variant="body2" color="text.secondary">
+              This will remove the extra verification step from your account.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Your current password is still required to confirm the change.
+            </Typography>
+          </Stack>
+        }
+        confirmLabel="Disable 2FA"
+        confirmColor="error"
+        isLoading={isSaving}
+        confirmDisabled={!formState.twoFactorPassword}
+        onClose={() => setIsDisable2FAOpen(false)}
+        onConfirm={handleDisable2FAConfirm}
+      />
+
+      <ConfirmDialog
+        open={Boolean(sessionToRevoke)}
+        title="Revoke session?"
+        description={
+          sessionToRevoke ? (
+            <Stack spacing={1}>
+              <Typography variant="body2" color="text.secondary">
+                This will sign out
+                <strong>{` ${sessionToRevoke.userAgent || "this device"}`}</strong>
+                .
+              </Typography>
+              {sessionToRevoke.ipAddress && (
+                <Typography variant="body2" color="text.secondary">
+                  IP address: {sessionToRevoke.ipAddress}
+                </Typography>
+              )}
+            </Stack>
+          ) : (
+            ""
+          )
+        }
+        confirmLabel="Revoke session"
+        confirmColor="error"
+        isLoading={isSaving}
+        onClose={() => setSessionToRevoke(null)}
+        onConfirm={handleRevokeSessionConfirm}
+      />
+
+      <ConfirmDialog
+        open={isRevokeOthersOpen}
+        title="Revoke all other sessions?"
+        description="All other signed-in devices will be logged out immediately. Your current session will stay active."
+        confirmLabel="Revoke others"
+        confirmColor="error"
+        isLoading={isSaving}
+        onClose={() => setIsRevokeOthersOpen(false)}
+        onConfirm={handleRevokeOthersConfirm}
+      />
     </Container>
   );
 }

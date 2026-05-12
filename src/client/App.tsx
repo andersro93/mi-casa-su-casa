@@ -348,7 +348,7 @@ export function App() {
     }
   }
 
-  async function handleDisable2FA() {
+  async function handleDisable2FA(): Promise<boolean> {
     setIsSavingSettings(true);
     setStatusMessage(null);
     setViewError(null);
@@ -363,10 +363,12 @@ export function App() {
       }
       setStatusMessage("Two-factor authentication disabled.");
       await refreshSettings();
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to disable 2FA",
       );
+      return false;
     } finally {
       setIsSavingSettings(false);
     }
@@ -398,7 +400,7 @@ export function App() {
     }
   }
 
-  async function handleRevokeSession(sessionId: string) {
+  async function handleRevokeSession(sessionId: string): Promise<boolean> {
     setIsSavingSettings(true);
     setStatusMessage(null);
     setViewError(null);
@@ -409,16 +411,18 @@ export function App() {
       });
       setStatusMessage("Session revoked.");
       await refreshSettings();
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to revoke session",
       );
+      return false;
     } finally {
       setIsSavingSettings(false);
     }
   }
 
-  async function handleRevokeOtherSessions() {
+  async function handleRevokeOtherSessions(): Promise<boolean> {
     setIsSavingSettings(true);
     setStatusMessage(null);
     setViewError(null);
@@ -427,10 +431,12 @@ export function App() {
       await fetchJson(`/api/settings/sessions/others`, { method: "DELETE" });
       setStatusMessage("Other sessions revoked.");
       await refreshSettings();
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to revoke sessions",
       );
+      return false;
     } finally {
       setIsSavingSettings(false);
     }
@@ -952,8 +958,10 @@ export function App() {
     }
   }
 
-  async function handleQuarantineReview(action: "dismiss" | "release") {
-    if (!selectedQuarantineId) return;
+  async function handleQuarantineReview(
+    action: "dismiss" | "release",
+  ): Promise<boolean> {
+    if (!selectedQuarantineId) return false;
 
     setIsReviewingQuarantine(true);
     setStatusMessage(null);
@@ -976,16 +984,20 @@ export function App() {
       );
 
       await Promise.all([refreshQuarantine(), refreshProviders()]);
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to review quarantine",
       );
+      return false;
     } finally {
       setIsReviewingQuarantine(false);
     }
   }
 
-  async function handleCreateMember(event: FormEvent<HTMLFormElement>) {
+  async function handleCreateMember(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<boolean> {
     event.preventDefault();
     setIsSavingMember(true);
     setStatusMessage(null);
@@ -1000,18 +1012,22 @@ export function App() {
       setMemberFormState(INITIAL_MEMBER_FORM_STATE);
       setStatusMessage("Household member created.");
       await refreshMembers();
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error
           ? error.message
           : "Unable to create household member",
       );
+      return false;
     } finally {
       setIsSavingMember(false);
     }
   }
 
-  async function handleCreateInvitation(event: FormEvent<HTMLFormElement>) {
+  async function handleCreateInvitation(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<boolean> {
     event.preventDefault();
     setIsSavingInvitation(true);
     setStatusMessage(null);
@@ -1029,10 +1045,12 @@ export function App() {
       setInvitationFormState(INITIAL_INVITATION_FORM_STATE);
       setStatusMessage("Invitation email sent.");
       await refreshInvitations();
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to create invitation",
       );
+      return false;
     } finally {
       setIsSavingInvitation(false);
     }
@@ -1062,7 +1080,9 @@ export function App() {
     }
   }
 
-  async function handleCancelInvitation(invitationId: string) {
+  async function handleCancelInvitation(
+    invitationId: string,
+  ): Promise<boolean> {
     setIsSavingInvitation(true);
     setStatusMessage(null);
     setViewError(null);
@@ -1074,10 +1094,12 @@ export function App() {
 
       setStatusMessage("Invitation cancelled.");
       await refreshInvitations();
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to cancel invitation",
       );
+      return false;
     } finally {
       setIsSavingInvitation(false);
     }
@@ -1141,7 +1163,9 @@ export function App() {
     }
   }
 
-  async function handleCreateProvider(event: FormEvent<HTMLFormElement>) {
+  async function handleCreateProvider(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<boolean> {
     event.preventDefault();
     setStatusMessage(null);
     setViewError(null);
@@ -1163,17 +1187,19 @@ export function App() {
         refreshProviders(),
         refreshMembers(),
       ]);
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to create provider",
       );
+      return false;
     } finally {
       setIsSavingProviderConfiguration(false);
     }
   }
 
-  async function handleUpdateProvider() {
-    if (!selectedProviderId) return;
+  async function handleUpdateProvider(): Promise<boolean> {
+    if (!selectedProviderId) return false;
 
     setStatusMessage(null);
     setViewError(null);
@@ -1194,17 +1220,19 @@ export function App() {
         refreshProviders(),
         refreshMembers(),
       ]);
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to update provider",
       );
+      return false;
     } finally {
       setIsSavingProviderConfiguration(false);
     }
   }
 
-  async function handleDeleteProvider() {
-    if (!selectedProviderId) return;
+  async function handleDeleteProvider(): Promise<boolean> {
+    if (!selectedProviderId) return false;
 
     setStatusMessage(null);
     setViewError(null);
@@ -1226,16 +1254,20 @@ export function App() {
         refreshProviders(),
         refreshMembers(),
       ]);
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to delete provider",
       );
+      return false;
     } finally {
       setIsSavingProviderConfiguration(false);
     }
   }
 
-  async function handleCreateRule(event: FormEvent<HTMLFormElement>) {
+  async function handleCreateRule(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<boolean> {
     event.preventDefault();
     setStatusMessage(null);
     setViewError(null);
@@ -1257,17 +1289,19 @@ export function App() {
         refreshProviders(),
         refreshMembers(),
       ]);
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to create sender rule",
       );
+      return false;
     } finally {
       setIsSavingProviderConfiguration(false);
     }
   }
 
-  async function handleUpdateRule() {
-    if (!selectedRuleId) return;
+  async function handleUpdateRule(): Promise<boolean> {
+    if (!selectedRuleId) return false;
 
     setStatusMessage(null);
     setViewError(null);
@@ -1288,17 +1322,19 @@ export function App() {
         refreshProviders(),
         refreshMembers(),
       ]);
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to update sender rule",
       );
+      return false;
     } finally {
       setIsSavingProviderConfiguration(false);
     }
   }
 
-  async function handleDeleteRule() {
-    if (!selectedRuleId) return;
+  async function handleDeleteRule(): Promise<boolean> {
+    if (!selectedRuleId) return false;
 
     setStatusMessage(null);
     setViewError(null);
@@ -1322,10 +1358,12 @@ export function App() {
         refreshProviders(),
         refreshMembers(),
       ]);
+      return true;
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to delete sender rule",
       );
+      return false;
     } finally {
       setIsSavingProviderConfiguration(false);
     }

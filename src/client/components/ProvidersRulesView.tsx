@@ -1,11 +1,11 @@
 import {
   AddCircleOutlined,
   AutoAwesomeOutlined,
+  CloseOutlined,
   DeleteOutlined,
   EditOutlined,
   LinkOutlined,
   RuleFolderOutlined,
-  SaveOutlined,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -13,12 +13,16 @@ import {
   Box,
   Button,
   Card,
-  CardActions,
   CardContent,
   CardHeader,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Paper,
@@ -34,7 +38,7 @@ import {
   type GridRowParams,
   type GridRowSelectionModel,
 } from "@mui/x-data-grid";
-import type { FormEvent } from "react";
+import { type FormEvent, useState } from "react";
 import type {
   ProviderConfiguration,
   ProviderFormState,
@@ -42,6 +46,7 @@ import type {
   SenderRuleFormState,
 } from "../types";
 import { formatTimestamp } from "../utils";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface ProvidersRulesViewProps {
   providers: ProviderConfiguration[];
@@ -55,12 +60,12 @@ interface ProvidersRulesViewProps {
   onSelectRule: (ruleId: string) => void;
   onProviderFormChange: (update: Partial<ProviderFormState>) => void;
   onRuleFormChange: (update: Partial<SenderRuleFormState>) => void;
-  onCreateProvider: (event: FormEvent<HTMLFormElement>) => void;
-  onUpdateProvider: () => void;
-  onDeleteProvider: () => void;
-  onCreateRule: (event: FormEvent<HTMLFormElement>) => void;
-  onUpdateRule: () => void;
-  onDeleteRule: () => void;
+  onCreateProvider: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+  onUpdateProvider: () => Promise<boolean>;
+  onDeleteProvider: () => Promise<boolean>;
+  onCreateRule: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+  onUpdateRule: () => Promise<boolean>;
+  onDeleteRule: () => Promise<boolean>;
 }
 
 export function ProvidersRulesView({
@@ -88,6 +93,104 @@ export function ProvidersRulesView({
   const providerRules = rules.filter(
     (rule) => rule.provider_id === selectedProviderId,
   );
+  const [providerDialogMode, setProviderDialogMode] = useState<
+    "create" | "edit" | null
+  >(null);
+  const [ruleDialogMode, setRuleDialogMode] = useState<
+    "create" | "edit" | null
+  >(null);
+  const [isDeleteProviderOpen, setIsDeleteProviderOpen] = useState(false);
+  const [isDeleteRuleOpen, setIsDeleteRuleOpen] = useState(false);
+
+  const resetProviderDraft = () => {
+    onProviderFormChange({
+      displayName: "",
+      providerKey: "",
+    });
+  };
+
+  const resetRuleDraft = () => {
+    onRuleFormChange({
+      providerId: selectedProviderId ?? "",
+      matchType: "domain",
+      matchValue: "",
+    });
+  };
+
+  const handleOpenCreateProvider = () => {
+    resetProviderDraft();
+    setProviderDialogMode("create");
+  };
+
+  const handleOpenEditProvider = () => {
+    if (!selectedProvider) {
+      return;
+    }
+
+    onProviderFormChange({
+      displayName: selectedProvider.display_name,
+      providerKey: selectedProvider.provider_key,
+    });
+    setProviderDialogMode("edit");
+  };
+
+  const handleOpenCreateRule = () => {
+    resetRuleDraft();
+    setRuleDialogMode("create");
+  };
+
+  const handleOpenEditRule = () => {
+    if (!selectedRule) {
+      return;
+    }
+
+    onRuleFormChange({
+      providerId: selectedRule.provider_id,
+      matchType: selectedRule.match_type,
+      matchValue: selectedRule.match_value,
+    });
+    setRuleDialogMode("edit");
+  };
+
+  const handleProviderSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    const didSave =
+      providerDialogMode === "edit"
+        ? await onUpdateProvider()
+        : await onCreateProvider(event);
+
+    if (didSave) {
+      setProviderDialogMode(null);
+    }
+  };
+
+  const handleRuleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    const didSave =
+      ruleDialogMode === "edit"
+        ? await onUpdateRule()
+        : await onCreateRule(event);
+
+    if (didSave) {
+      setRuleDialogMode(null);
+    }
+  };
+
+  const handleDeleteProviderConfirm = async () => {
+    const didDelete = await onDeleteProvider();
+
+    if (didDelete) {
+      setIsDeleteProviderOpen(false);
+      setProviderDialogMode(null);
+    }
+  };
+
+  const handleDeleteRuleConfirm = async () => {
+    const didDelete = await onDeleteRule();
+
+    if (didDelete) {
+      setIsDeleteRuleOpen(false);
+      setRuleDialogMode(null);
+    }
+  };
 
   const providerColumns: GridColDef<ProviderConfiguration>[] = [
     {
@@ -182,17 +285,36 @@ export function ProvidersRulesView({
             exact addresses or domains to those providers so inbound
             verification emails classify automatically.
           </Alert>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <Chip
-              label={`${providers.length} providers`}
-              color="primary"
-              variant="outlined"
-            />
-            <Chip
-              label={`${rules.length} sender rules`}
-              color="secondary"
-              variant="outlined"
-            />
+          <Stack spacing={2}>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <Chip
+                label={`${providers.length} providers`}
+                color="primary"
+                variant="outlined"
+              />
+              <Chip
+                label={`${rules.length} sender rules`}
+                color="secondary"
+                variant="outlined"
+              />
+            </Stack>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <Button
+                variant="contained"
+                startIcon={<AddCircleOutlined />}
+                onClick={handleOpenCreateProvider}
+              >
+                Create provider
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<RuleFolderOutlined />}
+                onClick={handleOpenCreateRule}
+                disabled={!providers.length}
+              >
+                Add rule
+              </Button>
+            </Stack>
           </Stack>
         </CardContent>
       </Card>
@@ -290,203 +412,336 @@ export function ProvidersRulesView({
 
         <Stack spacing={3}>
           <Card variant="outlined" sx={{ borderRadius: 2 }}>
-            <Box component="form" onSubmit={onCreateProvider}>
-              <CardHeader
-                avatar={
-                  <Avatar
-                    sx={{
-                      bgcolor: "secondary.light",
-                      color: "secondary.contrastText",
-                    }}
-                  >
-                    <AddCircleOutlined />
-                  </Avatar>
-                }
-                title="New provider"
-                subheader="Create or maintain a service bucket"
-                titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
-              />
-              <Divider />
-              <CardContent>
-                <Stack spacing={2}>
-                  <TextField
-                    label="Display name"
-                    size="small"
-                    value={providerFormState.displayName}
-                    onChange={(event) =>
-                      onProviderFormChange({ displayName: event.target.value })
-                    }
-                    required
-                    fullWidth
-                  />
-                  <TextField
-                    label="Provider key"
-                    size="small"
-                    helperText="Lowercase identifier used in routing and access control"
-                    value={providerFormState.providerKey}
-                    onChange={(event) =>
-                      onProviderFormChange({ providerKey: event.target.value })
-                    }
-                    required
-                    fullWidth
-                  />
-                </Stack>
-              </CardContent>
-              <CardActions
-                sx={{ justifyContent: "space-between", px: 3, pb: 3, pt: 0 }}
-              >
-                <Button
-                  startIcon={<EditOutlined />}
-                  onClick={onUpdateProvider}
-                  disabled={isSaving || !selectedProviderId}
+            <CardHeader
+              avatar={
+                <Avatar
+                  sx={{
+                    bgcolor: "secondary.light",
+                    color: "secondary.contrastText",
+                  }}
                 >
-                  Update selected
-                </Button>
-                <Box sx={{ display: "flex", gap: 1 }}>
+                  <AddCircleOutlined />
+                </Avatar>
+              }
+              title="Provider actions"
+              subheader="Open a dialog to create, update, or delete a selected provider"
+              titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+            />
+            <Divider />
+            <CardContent>
+              <Stack spacing={2}>
+                <Typography variant="body2" color="text.secondary">
+                  Select a provider from the inventory, then open the focused
+                  edit flow when you need to make changes.
+                </Typography>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddCircleOutlined />}
+                    onClick={handleOpenCreateProvider}
+                  >
+                    Create provider
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<EditOutlined />}
+                    onClick={handleOpenEditProvider}
+                    disabled={!selectedProviderId}
+                  >
+                    Edit selected
+                  </Button>
                   <Button
                     color="error"
+                    variant="text"
                     startIcon={<DeleteOutlined />}
-                    onClick={onDeleteProvider}
-                    disabled={isSaving || !selectedProviderId}
+                    onClick={() => setIsDeleteProviderOpen(true)}
+                    disabled={!selectedProviderId || isSaving}
                   >
                     Delete
                   </Button>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    startIcon={<SaveOutlined />}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? "Saving…" : "Create provider"}
-                  </Button>
-                </Box>
-              </CardActions>
-            </Box>
+                </Stack>
+              </Stack>
+            </CardContent>
           </Card>
 
           <Card variant="outlined" sx={{ borderRadius: 2 }}>
-            <Box component="form" onSubmit={onCreateRule}>
-              <CardHeader
-                avatar={
-                  <Avatar
-                    sx={{
-                      bgcolor: "warning.main",
-                      color: "warning.contrastText",
-                    }}
-                  >
-                    <RuleFolderOutlined />
-                  </Avatar>
-                }
-                title="Rule details"
-                subheader="Map incoming sender identities to the selected provider"
-                titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
-              />
-              <Divider />
-              <CardContent>
-                <Stack spacing={2}>
-                  <FormControl size="small" fullWidth>
-                    <InputLabel id="provider-rule-provider-label">
-                      Provider
-                    </InputLabel>
-                    <Select
-                      labelId="provider-rule-provider-label"
-                      label="Provider"
-                      value={ruleFormState.providerId}
-                      onChange={(event) =>
-                        onRuleFormChange({
-                          providerId: String(event.target.value),
-                        })
-                      }
-                    >
-                      {providers.map((provider) => (
-                        <MenuItem key={provider.id} value={provider.id}>
-                          {provider.display_name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl size="small" fullWidth>
-                    <InputLabel id="provider-rule-type-label">
-                      Match type
-                    </InputLabel>
-                    <Select
-                      labelId="provider-rule-type-label"
-                      label="Match type"
-                      value={ruleFormState.matchType}
-                      onChange={(event) =>
-                        onRuleFormChange({
-                          matchType: event.target
-                            .value as SenderRuleFormState["matchType"],
-                        })
-                      }
-                    >
-                      <MenuItem value="domain">Domain</MenuItem>
-                      <MenuItem value="exact">Exact sender</MenuItem>
-                    </Select>
-                  </FormControl>
-
-                  <TextField
-                    label={
-                      ruleFormState.matchType === "domain"
-                        ? "Domain"
-                        : "Exact sender address"
-                    }
-                    size="small"
-                    helperText={
-                      ruleFormState.matchType === "domain"
-                        ? "Example: netflix.com"
-                        : "Example: login@netflix.com"
-                    }
-                    value={ruleFormState.matchValue}
-                    onChange={(event) =>
-                      onRuleFormChange({ matchValue: event.target.value })
-                    }
-                    required
-                    fullWidth
-                  />
-
-                  {selectedRule && (
-                    <Alert severity="success" icon={<LinkOutlined />}>
-                      Editing existing rule{" "}
-                      <strong>{selectedRule.match_value}</strong>.
-                    </Alert>
-                  )}
-                </Stack>
-              </CardContent>
-              <CardActions
-                sx={{ justifyContent: "space-between", px: 3, pb: 3, pt: 0 }}
-              >
-                <Button
-                  startIcon={<EditOutlined />}
-                  onClick={onUpdateRule}
-                  disabled={isSaving || !selectedRuleId}
+            <CardHeader
+              avatar={
+                <Avatar
+                  sx={{
+                    bgcolor: "warning.main",
+                    color: "warning.contrastText",
+                  }}
                 >
-                  Update selected
-                </Button>
-                <Box sx={{ display: "flex", gap: 1 }}>
+                  <RuleFolderOutlined />
+                </Avatar>
+              }
+              title="Rule actions"
+              subheader="Create or refine sender mapping rules without losing grid context"
+              titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+            />
+            <Divider />
+            <CardContent>
+              <Stack spacing={2}>
+                <Typography variant="body2" color="text.secondary">
+                  Rules stay tied to the selected provider, but the editor opens
+                  separately so the inventory remains easy to scan.
+                </Typography>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <Button
+                    variant="contained"
+                    startIcon={<RuleFolderOutlined />}
+                    onClick={handleOpenCreateRule}
+                    disabled={!providers.length}
+                  >
+                    Add rule
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<EditOutlined />}
+                    onClick={handleOpenEditRule}
+                    disabled={!selectedRuleId}
+                  >
+                    Edit selected
+                  </Button>
                   <Button
                     color="error"
+                    variant="text"
                     startIcon={<DeleteOutlined />}
-                    onClick={onDeleteRule}
-                    disabled={isSaving || !selectedRuleId}
+                    onClick={() => setIsDeleteRuleOpen(true)}
+                    disabled={!selectedRuleId || isSaving}
                   >
                     Delete
                   </Button>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    startIcon={<SaveOutlined />}
-                    disabled={isSaving || !ruleFormState.providerId}
-                  >
-                    {isSaving ? "Saving…" : "Add rule"}
-                  </Button>
-                </Box>
-              </CardActions>
-            </Box>
+                </Stack>
+                {selectedRule && (
+                  <Alert severity="success" icon={<LinkOutlined />}>
+                    Selected rule <strong>{selectedRule.match_value}</strong> is
+                    ready to edit.
+                  </Alert>
+                )}
+              </Stack>
+            </CardContent>
           </Card>
         </Stack>
       </Box>
+
+      <Dialog
+        open={providerDialogMode !== null}
+        onClose={isSaving ? undefined : () => setProviderDialogMode(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <Box component="form" onSubmit={handleProviderSubmit}>
+          <DialogTitle sx={{ pr: 7 }}>
+            {providerDialogMode === "edit"
+              ? "Edit provider"
+              : "Create provider"}
+          </DialogTitle>
+          <IconButton
+            aria-label="Close provider dialog"
+            onClick={() => setProviderDialogMode(null)}
+            disabled={isSaving}
+            sx={{ position: "absolute", top: 12, right: 12 }}
+          >
+            <CloseOutlined />
+          </IconButton>
+          <DialogContent dividers>
+            <Stack spacing={3}>
+              <Alert severity="info" icon={<LinkOutlined />}>
+                Providers define the household service buckets used by inbox and
+                access controls.
+              </Alert>
+              <Stack spacing={2}>
+                <TextField
+                  label="Display name"
+                  size="small"
+                  value={providerFormState.displayName}
+                  onChange={(event) =>
+                    onProviderFormChange({ displayName: event.target.value })
+                  }
+                  required
+                  fullWidth
+                />
+                <TextField
+                  label="Provider key"
+                  size="small"
+                  helperText="Lowercase identifier used in routing and access control"
+                  value={providerFormState.providerKey}
+                  onChange={(event) =>
+                    onProviderFormChange({ providerKey: event.target.value })
+                  }
+                  required
+                  fullWidth
+                />
+              </Stack>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button
+              onClick={() => setProviderDialogMode(null)}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained" disabled={isSaving}>
+              {isSaving
+                ? "Saving…"
+                : providerDialogMode === "edit"
+                  ? "Save provider"
+                  : "Create provider"}
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      <Dialog
+        open={ruleDialogMode !== null}
+        onClose={isSaving ? undefined : () => setRuleDialogMode(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <Box component="form" onSubmit={handleRuleSubmit}>
+          <DialogTitle sx={{ pr: 7 }}>
+            {ruleDialogMode === "edit" ? "Edit sender rule" : "Add sender rule"}
+          </DialogTitle>
+          <IconButton
+            aria-label="Close rule dialog"
+            onClick={() => setRuleDialogMode(null)}
+            disabled={isSaving}
+            sx={{ position: "absolute", top: 12, right: 12 }}
+          >
+            <CloseOutlined />
+          </IconButton>
+          <DialogContent dividers>
+            <Stack spacing={3}>
+              <Alert severity="info" icon={<RuleFolderOutlined />}>
+                Match exact senders or domains to the provider that should own
+                incoming verification messages.
+              </Alert>
+              <Stack spacing={2}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="provider-rule-provider-label">
+                    Provider
+                  </InputLabel>
+                  <Select
+                    labelId="provider-rule-provider-label"
+                    label="Provider"
+                    value={ruleFormState.providerId}
+                    onChange={(event) =>
+                      onRuleFormChange({
+                        providerId: String(event.target.value),
+                      })
+                    }
+                  >
+                    {providers.map((provider) => (
+                      <MenuItem key={provider.id} value={provider.id}>
+                        {provider.display_name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="provider-rule-type-label">
+                    Match type
+                  </InputLabel>
+                  <Select
+                    labelId="provider-rule-type-label"
+                    label="Match type"
+                    value={ruleFormState.matchType}
+                    onChange={(event) =>
+                      onRuleFormChange({
+                        matchType: event.target
+                          .value as SenderRuleFormState["matchType"],
+                      })
+                    }
+                  >
+                    <MenuItem value="domain">Domain</MenuItem>
+                    <MenuItem value="exact">Exact sender</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  label={
+                    ruleFormState.matchType === "domain"
+                      ? "Domain"
+                      : "Exact sender address"
+                  }
+                  size="small"
+                  helperText={
+                    ruleFormState.matchType === "domain"
+                      ? "Example: netflix.com"
+                      : "Example: login@netflix.com"
+                  }
+                  value={ruleFormState.matchValue}
+                  onChange={(event) =>
+                    onRuleFormChange({ matchValue: event.target.value })
+                  }
+                  required
+                  fullWidth
+                />
+              </Stack>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => setRuleDialogMode(null)} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={isSaving || !ruleFormState.providerId}
+            >
+              {isSaving
+                ? "Saving…"
+                : ruleDialogMode === "edit"
+                  ? "Save rule"
+                  : "Add rule"}
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      <ConfirmDialog
+        open={isDeleteProviderOpen}
+        title="Delete provider?"
+        description={
+          selectedProvider ? (
+            <Typography variant="body2" color="text.secondary">
+              <strong>{selectedProvider.display_name}</strong> and its sender
+              rules will be removed from routing and member access management.
+            </Typography>
+          ) : (
+            ""
+          )
+        }
+        confirmLabel="Delete provider"
+        confirmColor="error"
+        isLoading={isSaving}
+        onClose={() => setIsDeleteProviderOpen(false)}
+        onConfirm={handleDeleteProviderConfirm}
+      />
+
+      <ConfirmDialog
+        open={isDeleteRuleOpen}
+        title="Delete sender rule?"
+        description={
+          selectedRule ? (
+            <Typography variant="body2" color="text.secondary">
+              Rule <strong>{selectedRule.match_value}</strong> will stop routing
+              senders to this provider.
+            </Typography>
+          ) : (
+            ""
+          )
+        }
+        confirmLabel="Delete rule"
+        confirmColor="error"
+        isLoading={isSaving}
+        onClose={() => setIsDeleteRuleOpen(false)}
+        onConfirm={handleDeleteRuleConfirm}
+      />
     </Box>
   );
 }

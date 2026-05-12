@@ -67,10 +67,11 @@ describe("ProvidersRulesView", () => {
     expect(html).toContain("Provider and rule setup");
     expect(html).toContain("Connected providers");
     expect(html).toContain("Sender rules");
-    expect(html).toContain("New provider");
-    expect(html).toContain("Rule details");
+    expect(html).toContain("Provider actions");
+    expect(html).toContain("Rule actions");
     expect(html).toContain("Create provider");
     expect(html).toContain("Add rule");
+    expect(html).toContain("Edit selected");
     expect(html).toContain("Match value");
   });
 });

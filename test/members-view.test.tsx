@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MembersView } from "../src/client/components/MembersView";
 
 describe("MembersView", () => {
-  it("renders direct member creation and invitation management controls", () => {
+  it("renders member action triggers and invitation management controls", () => {
     const html = renderToStaticMarkup(
       <MembersView
         members={[
@@ -81,9 +81,9 @@ describe("MembersView", () => {
       />,
     );
 
-    expect(html).toContain("Create a household member");
-    expect(html).toContain("Invite a household member");
-    expect(html).toContain("Send invitation");
+    expect(html).toContain("Household member actions");
+    expect(html).toContain("Create member");
+    expect(html).toContain("Invite member");
     expect(html).toContain("Pending and recent invitations");
     expect(html).toContain("Resend");
     expect(html).toContain("Cancel");
