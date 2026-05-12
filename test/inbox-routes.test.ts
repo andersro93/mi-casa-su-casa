@@ -33,6 +33,61 @@ const authApiState = vi.hoisted(() => ({
   },
 }));
 
+const invitationEmailState = vi.hoisted(() => ({
+  calls: [] as unknown[],
+}));
+
+const settingsRepoState = vi.hoisted(() => ({
+  getUserProfile: vi.fn(),
+  listUserSessions: vi.fn(),
+  updateUserProfile: vi.fn(),
+  deleteOtherSessions: vi.fn(),
+  deleteSessionById: vi.fn(),
+}));
+
+const invitationsRepoState = vi.hoisted(() => ({
+  createHouseholdInvitation: vi.fn(),
+  getInvitationById: vi.fn(),
+  getInvitationByTokenHash: vi.fn(),
+  listHouseholdInvitations: vi.fn(),
+  refreshExpiredInvitations: vi.fn(),
+  cancelInvitation: vi.fn(),
+  acceptInvitation: vi.fn(),
+}));
+
+vi.mock("../src/server/email/sender", () => ({
+  sendHouseholdInvitationEmail: async (env: unknown, input: unknown) => {
+    invitationEmailState.calls.push({ env, input });
+  },
+  sendPasswordResetEmail: async () => {},
+  sendTransactionalEmail: async () => {},
+}));
+
+vi.mock("../src/server/db/repositories/settings", () => ({
+  getUserProfile: settingsRepoState.getUserProfile,
+  listUserSessions: settingsRepoState.listUserSessions,
+  updateUserProfile: settingsRepoState.updateUserProfile,
+  deleteOtherSessions: settingsRepoState.deleteOtherSessions,
+  deleteSessionById: settingsRepoState.deleteSessionById,
+}));
+
+vi.mock("../src/server/db/repositories/invitations", async () => {
+  const actual = await vi.importActual<
+    typeof import("../src/server/db/repositories/invitations")
+  >("../src/server/db/repositories/invitations");
+
+  return {
+    ...actual,
+    createHouseholdInvitation: invitationsRepoState.createHouseholdInvitation,
+    getInvitationById: invitationsRepoState.getInvitationById,
+    getInvitationByTokenHash: invitationsRepoState.getInvitationByTokenHash,
+    listHouseholdInvitations: invitationsRepoState.listHouseholdInvitations,
+    refreshExpiredInvitations: invitationsRepoState.refreshExpiredInvitations,
+    cancelInvitation: invitationsRepoState.cancelInvitation,
+    acceptInvitation: invitationsRepoState.acceptInvitation,
+  };
+});
+
 vi.mock("../src/server/auth/auth", () => ({
   authForEnv: () => ({
     handler: () => new Response("auth"),
@@ -86,11 +141,27 @@ const { default: worker } = await import("../src/index");
 type WorkerFetch = NonNullable<typeof worker.fetch>;
 
 function createDbStub(resolve: DbResolver): D1Database {
+  function toResults(runner: DbRunner) {
+    return async () => {
+      if (runner.all) {
+        return (await runner.all()).results;
+      }
+
+      if (runner.run) {
+        return (await runner.run()).results;
+      }
+
+      const first = await runner.first?.();
+      return first === undefined ? [] : [first];
+    };
+  }
+
   return {
     prepare(sql: string) {
       return {
         bind(...params: unknown[]) {
           const runner = resolve(sql.trim(), params);
+          const raw = toResults(runner);
 
           return {
             all: async () => {
@@ -106,6 +177,7 @@ function createDbStub(resolve: DbResolver): D1Database {
               return { results: first === undefined ? [] : [first] };
             },
             first: async () => runner.first?.(),
+            raw,
             run: async () => runner.run?.() ?? { results: [] },
           };
         },
@@ -124,6 +196,7 @@ function createDbStub(resolve: DbResolver): D1Database {
           return { results: first === undefined ? [] : [first] };
         },
         first: async () => resolve(sql.trim(), []).first?.(),
+        raw: async () => toResults(resolve(sql.trim(), []))(),
         run: async () => resolve(sql.trim(), []).run?.() ?? { results: [] },
       };
     },
@@ -199,6 +272,19 @@ describe("worker routes", () => {
       users: [],
       total: 0,
     };
+    invitationEmailState.calls = [];
+    settingsRepoState.getUserProfile.mockReset();
+    settingsRepoState.listUserSessions.mockReset();
+    settingsRepoState.updateUserProfile.mockReset();
+    settingsRepoState.deleteOtherSessions.mockReset();
+    settingsRepoState.deleteSessionById.mockReset();
+    invitationsRepoState.createHouseholdInvitation.mockReset();
+    invitationsRepoState.getInvitationById.mockReset();
+    invitationsRepoState.getInvitationByTokenHash.mockReset();
+    invitationsRepoState.listHouseholdInvitations.mockReset();
+    invitationsRepoState.refreshExpiredInvitations.mockReset();
+    invitationsRepoState.cancelInvitation.mockReset();
+    invitationsRepoState.acceptInvitation.mockReset();
   });
 
   it("returns liveness health", async () => {
@@ -751,6 +837,329 @@ describe("worker routes", () => {
     });
   });
 
+  it("returns settings profile and sessions for the authenticated user", async () => {
+    sessionState.current = {
+      user: { id: "user-1", email: "member@example.com", role: "member" },
+      session: { id: "session-1", userId: "user-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+    settingsRepoState.getUserProfile.mockResolvedValue({
+      id: "user-1",
+      email: "member@example.com",
+      name: "Member Person",
+      image: "https://example.com/avatar.png",
+      role: "user",
+      twoFactorEnabled: true,
+    });
+    settingsRepoState.listUserSessions.mockResolvedValue([
+      {
+        id: "session-1",
+        token: "token-1",
+        expiresAt: "2026-06-01T12:00:00.000Z",
+        ipAddress: "127.0.0.1",
+        userAgent: "Safari",
+        createdAt: "2026-05-01T12:00:00.000Z",
+        updatedAt: "2026-05-02T12:00:00.000Z",
+        impersonatedBy: null,
+      },
+    ]);
+
+    const response = await invokeWorker("/api/settings", undefined, db);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      profile: {
+        id: "user-1",
+        email: "member@example.com",
+        name: "Member Person",
+        image: "https://example.com/avatar.png",
+        role: "user",
+        twoFactorEnabled: true,
+      },
+      sessions: [
+        {
+          id: "session-1",
+          token: "token-1",
+          expiresAt: "2026-06-01T12:00:00.000Z",
+          ipAddress: "127.0.0.1",
+          userAgent: "Safari",
+          createdAt: "2026-05-01T12:00:00.000Z",
+          updatedAt: "2026-05-02T12:00:00.000Z",
+          impersonatedBy: null,
+        },
+      ],
+    });
+    expect(settingsRepoState.getUserProfile).toHaveBeenCalledWith(db, "user-1");
+    expect(settingsRepoState.listUserSessions).toHaveBeenCalledWith(
+      db,
+      "user-1",
+    );
+  });
+
+  it("updates the authenticated user profile", async () => {
+    sessionState.current = {
+      user: { id: "user-1", email: "member@example.com", role: "member" },
+      session: { id: "session-1", userId: "user-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+    settingsRepoState.updateUserProfile.mockResolvedValue({
+      id: "user-1",
+      email: "member@example.com",
+      name: "Updated Member",
+      image: "https://example.com/new.png",
+      role: "user",
+      twoFactorEnabled: false,
+    });
+
+    const response = await invokeWorker(
+      "/api/settings/profile",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Updated Member",
+          image: "https://example.com/new.png",
+        }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      profile: {
+        id: "user-1",
+        email: "member@example.com",
+        name: "Updated Member",
+        image: "https://example.com/new.png",
+        role: "user",
+        twoFactorEnabled: false,
+      },
+    });
+    expect(settingsRepoState.updateUserProfile).toHaveBeenCalledWith(
+      db,
+      "user-1",
+      {
+        name: "Updated Member",
+        image: "https://example.com/new.png",
+      },
+    );
+  });
+
+  it("deletes all other sessions for the authenticated user", async () => {
+    sessionState.current = {
+      user: { id: "user-1", email: "member@example.com", role: "member" },
+      session: { id: "session-keep", userId: "user-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+
+    const response = await invokeWorker(
+      "/api/settings/sessions/others",
+      { method: "DELETE" },
+      db,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(settingsRepoState.deleteOtherSessions).toHaveBeenCalledWith(
+      db,
+      "user-1",
+      "session-keep",
+    );
+  });
+
+  it("creates an invitation and sends an invite email", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+    invitationsRepoState.createHouseholdInvitation.mockResolvedValue(
+      "invite-1",
+    );
+    invitationsRepoState.getInvitationById.mockResolvedValue({
+      id: "invite-1",
+      email: "invitee@example.com",
+      name: "Invitee",
+      role: "member",
+      status: "pending",
+      invitedByUserId: "admin-1",
+      acceptedByUserId: null,
+      expiresAt: "2026-05-31T12:00:00.000Z",
+      acceptedAt: null,
+      cancelledAt: null,
+      createdAt: "2026-05-10T12:00:00.000Z",
+      updatedAt: "2026-05-10T12:00:00.000Z",
+      providers: [
+        {
+          id: "provider-1",
+          provider_key: "netflix",
+          display_name: "Netflix",
+        },
+      ],
+    });
+
+    const response = await invokeWorker(
+      "/api/admin/invitations",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email: "invitee@example.com",
+          name: "Invitee",
+          role: "member",
+          providerIds: ["provider-1"],
+        }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(201);
+    const payload = (await response.json()) as { invitation: { id: string } };
+    expect(payload.invitation.id).toBe("invite-1");
+    expect(invitationEmailState.calls).toHaveLength(1);
+    expect(invitationsRepoState.createHouseholdInvitation).toHaveBeenCalled();
+    expect(invitationEmailState.calls[0]).toMatchObject({
+      input: expect.objectContaining({
+        to: "invitee@example.com",
+        inviteeName: "Invitee",
+        inviterEmail: "owner@example.com",
+        role: "member",
+      }),
+    });
+  });
+
+  it("lists invitations for owners", async () => {
+    sessionState.current = {
+      user: { id: "admin-1", email: "owner@example.com", role: "admin" },
+      session: { id: "session-1", userId: "admin-1" },
+    };
+
+    const db = createDbStub(() => ({}));
+    invitationsRepoState.listHouseholdInvitations.mockResolvedValue([
+      {
+        id: "invite-1",
+        email: "invitee@example.com",
+        name: "Invitee",
+        role: "member",
+        status: "pending",
+        invitedByUserId: "admin-1",
+        acceptedByUserId: null,
+        expiresAt: "2026-05-31T12:00:00.000Z",
+        acceptedAt: null,
+        cancelledAt: null,
+        createdAt: "2026-05-10T12:00:00.000Z",
+        updatedAt: "2026-05-10T12:00:00.000Z",
+        providers: [
+          {
+            id: "provider-1",
+            provider_key: "netflix",
+            display_name: "Netflix",
+          },
+        ],
+      },
+    ]);
+
+    const response = await invokeWorker(
+      "/api/admin/invitations",
+      undefined,
+      db,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      invitations: [
+        {
+          id: "invite-1",
+          email: "invitee@example.com",
+          name: "Invitee",
+          role: "member",
+          status: "pending",
+          invitedByUserId: "admin-1",
+          acceptedByUserId: null,
+          expiresAt: "2026-05-31T12:00:00.000Z",
+          acceptedAt: null,
+          cancelledAt: null,
+          createdAt: "2026-05-10T12:00:00.000Z",
+          updatedAt: "2026-05-10T12:00:00.000Z",
+          providers: [
+            {
+              id: "provider-1",
+              provider_key: "netflix",
+              display_name: "Netflix",
+            },
+          ],
+        },
+      ],
+    });
+    expect(invitationsRepoState.listHouseholdInvitations).toHaveBeenCalledWith(
+      db,
+    );
+  });
+
+  it("accepts an invitation and signs the user in", async () => {
+    const db = createDbStub(() => ({}));
+    invitationsRepoState.getInvitationByTokenHash.mockResolvedValue({
+      id: "invite-1",
+      email: "invitee@example.com",
+      name: "Invitee",
+      role: "member",
+      status: "pending",
+      invitedByUserId: "admin-1",
+      acceptedByUserId: null,
+      expiresAt: "2026-05-31T12:00:00.000Z",
+      acceptedAt: null,
+      cancelledAt: null,
+      createdAt: "2026-05-10T12:00:00.000Z",
+      updatedAt: "2026-05-10T12:00:00.000Z",
+      providers: [
+        {
+          id: "provider-1",
+          provider_key: "netflix",
+          display_name: "Netflix",
+        },
+      ],
+    });
+    invitationsRepoState.acceptInvitation.mockResolvedValue(undefined);
+
+    const response = await invokeWorker(
+      "/api/invitations/test-token/accept",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Invited Person",
+          password: "super-secure-password",
+        }),
+      },
+      db,
+    );
+
+    expect(response.status).toBe(201);
+    expect(authApiState.createUserCalls.at(-1)).toMatchObject({
+      body: expect.objectContaining({
+        email: "invitee@example.com",
+        name: "Invited Person",
+        password: "super-secure-password",
+        role: "user",
+      }),
+    });
+    expect(authApiState.signInEmailCalls.at(-1)).toMatchObject({
+      body: {
+        email: "invitee@example.com",
+        password: "super-secure-password",
+      },
+    });
+    expect(response.headers.get("set-cookie")).toContain(
+      "better-auth.session_token=test-token",
+    );
+    expect(invitationsRepoState.acceptInvitation).toHaveBeenCalledWith(db, {
+      invitationId: "invite-1",
+      acceptedByUserId: "created-user-1",
+      providerIds: ["provider-1"],
+    });
+  });
+
   it("lists provider configuration for owners", async () => {
     sessionState.current = {
       user: { id: "admin-1", email: "owner@example.com", role: "admin" },
@@ -775,7 +1184,9 @@ describe("worker routes", () => {
       }
 
       if (
-        sql.includes("SELECT id, provider_id, match_type, match_value, created_at") &&
+        sql.includes(
+          "SELECT id, provider_id, match_type, match_value, created_at",
+        ) &&
         sql.includes("FROM sender_rules")
       ) {
         return {
