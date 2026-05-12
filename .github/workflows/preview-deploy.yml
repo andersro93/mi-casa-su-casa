@@ -25,7 +25,42 @@ jobs:
       HAS_D1_DATABASE_ID_PREVIEW: ${{ secrets.D1_DATABASE_ID_PREVIEW != '' }}
 
     steps:
+      - name: Explain why preview deploy is skipped
+        if: env.HAS_CLOUDFLARE_API_TOKEN != 'true' || env.HAS_CLOUDFLARE_ACCOUNT_ID != 'true' || env.HAS_D1_DATABASE_ID_PREVIEW != 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const marker = '<!-- mcsc-preview-deploy -->';
+            const body = `${marker}\n⚠️ Preview deployment was skipped because the repository is missing one or more required secrets (\`CLOUDFLARE_API_TOKEN\`, \`CLOUDFLARE_ACCOUNT_ID\`, \`D1_DATABASE_ID_PREVIEW\`).`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
       - uses: actions/checkout@v6
+        if: env.HAS_CLOUDFLARE_API_TOKEN == 'true' && env.HAS_CLOUDFLARE_ACCOUNT_ID == 'true' && env.HAS_D1_DATABASE_ID_PREVIEW == 'true'
 
       - uses: actions/setup-node@v6
         if: env.HAS_CLOUDFLARE_API_TOKEN == 'true' && env.HAS_CLOUDFLARE_ACCOUNT_ID == 'true' && env.HAS_D1_DATABASE_ID_PREVIEW == 'true'
@@ -101,7 +136,7 @@ jobs:
             }
 
   preview-unavailable:
-    if: github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || secrets.CLOUDFLARE_API_TOKEN == '' || secrets.CLOUDFLARE_ACCOUNT_ID == '' || secrets.D1_DATABASE_ID_PREVIEW == '')
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
 
     steps:
