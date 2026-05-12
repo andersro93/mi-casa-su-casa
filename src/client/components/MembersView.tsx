@@ -28,6 +28,7 @@ import {
   ListItemText,
   MenuItem,
   Select,
+  Stack,
   Switch,
   Table,
   TableBody,
@@ -40,10 +41,17 @@ import {
   Typography,
 } from "@mui/material";
 import React, { type FormEvent } from "react";
-import type { MemberFormState, MemberSummary, ProviderOption } from "../types";
+import type {
+  InvitationFormState,
+  InvitationSummary,
+  MemberFormState,
+  MemberSummary,
+  ProviderOption,
+} from "../types";
 
 interface MembersViewProps {
   members: MemberSummary[];
+  invitations: InvitationSummary[];
   providerOptions: ProviderOption[];
   selectedMemberId: string | null;
   onSelectMember: (id: string) => void;
@@ -52,6 +60,12 @@ interface MembersViewProps {
   onMemberFormChange: (update: Partial<MemberFormState>) => void;
   onCreateMember: (e: FormEvent<HTMLFormElement>) => void;
   isSavingMember: boolean;
+  invitationFormState: InvitationFormState;
+  onInvitationFormChange: (update: Partial<InvitationFormState>) => void;
+  onCreateInvitation: (e: FormEvent<HTMLFormElement>) => void;
+  onResendInvitation: (invitationId: string) => void;
+  onCancelInvitation: (invitationId: string) => void;
+  isSavingInvitation: boolean;
   onRoleChange: (userId: string, role: MemberSummary["role"]) => void;
   onProviderAccessToggle: (
     userId: string,
@@ -97,6 +111,7 @@ function stringAvatar(name: string) {
 
 export function MembersView({
   members,
+  invitations,
   providerOptions,
   selectedMemberId,
   onSelectMember,
@@ -105,6 +120,12 @@ export function MembersView({
   onMemberFormChange,
   onCreateMember,
   isSavingMember,
+  invitationFormState,
+  onInvitationFormChange,
+  onCreateInvitation,
+  onResendInvitation,
+  onCancelInvitation,
+  isSavingInvitation,
   onRoleChange,
   onProviderAccessToggle,
 }: MembersViewProps) {
@@ -200,6 +221,252 @@ export function MembersView({
             </Button>
           </CardActions>
         </Box>
+      </Card>
+
+      <Card variant="outlined" sx={{ borderRadius: 2, borderColor: "divider" }}>
+        <Box component="form" onSubmit={onCreateInvitation}>
+          <CardHeader
+            avatar={
+              <Avatar
+                sx={{
+                  bgcolor: "secondary.light",
+                  color: "secondary.contrastText",
+                }}
+              >
+                <EmailOutlined />
+              </Avatar>
+            }
+            title="Invite a household member"
+            subheader="Send a secure invite link by email"
+            titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+          />
+          <Divider />
+          <CardContent>
+            <Alert severity="info" sx={{ mb: 3 }} icon={<PersonAddOutlined />}>
+              Invitations let members choose their own password and immediately
+              receive provider access once accepted.
+            </Alert>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: { xs: "column", md: "row" },
+                  gap: 2,
+                  alignItems: "flex-start",
+                }}
+              >
+                <TextField
+                  label="Name"
+                  size="small"
+                  value={invitationFormState.name}
+                  onChange={(e) =>
+                    onInvitationFormChange({ name: e.target.value })
+                  }
+                  required
+                  fullWidth
+                />
+                <TextField
+                  label="Email"
+                  type="email"
+                  size="small"
+                  value={invitationFormState.email}
+                  onChange={(e) =>
+                    onInvitationFormChange({ email: e.target.value })
+                  }
+                  required
+                  fullWidth
+                />
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="invite-role-select-label">Role</InputLabel>
+                  <Select
+                    labelId="invite-role-select-label"
+                    value={invitationFormState.role}
+                    label="Role"
+                    onChange={(e) =>
+                      onInvitationFormChange({
+                        role: e.target.value as "member" | "admin",
+                      })
+                    }
+                  >
+                    <MenuItem value="member">Member</MenuItem>
+                    <MenuItem value="admin">Owner</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
+              <FormControl size="small" fullWidth>
+                <InputLabel id="invite-providers-select-label">
+                  Provider Access
+                </InputLabel>
+                <Select
+                  labelId="invite-providers-select-label"
+                  multiple
+                  value={invitationFormState.providerIds}
+                  label="Provider Access"
+                  onChange={(e) =>
+                    onInvitationFormChange({
+                      providerIds: e.target.value as string[],
+                    })
+                  }
+                  renderValue={(selected) => {
+                    const providerIds = selected as string[];
+
+                    if (!providerIds.length) {
+                      return "No provider access yet";
+                    }
+
+                    return providerOptions
+                      .filter((provider) => providerIds.includes(provider.id))
+                      .map((provider) => provider.display_name)
+                      .join(", ");
+                  }}
+                >
+                  {providerOptions.map((provider) => (
+                    <MenuItem key={provider.id} value={provider.id}>
+                      {provider.display_name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          </CardContent>
+          <CardActions sx={{ justifyContent: "flex-end", px: 3, pb: 3, pt: 0 }}>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={
+                isSavingInvitation ||
+                !invitationFormState.name.trim() ||
+                !invitationFormState.email.trim()
+              }
+              sx={{ minWidth: 160 }}
+            >
+              {isSavingInvitation ? "Sending…" : "Send invitation"}
+            </Button>
+          </CardActions>
+        </Box>
+      </Card>
+
+      <Card variant="outlined" sx={{ borderRadius: 2, borderColor: "divider" }}>
+        <CardHeader
+          avatar={
+            <Avatar sx={{ bgcolor: "info.light", color: "info.contrastText" }}>
+              <EmailOutlined />
+            </Avatar>
+          }
+          title="Pending and recent invitations"
+          subheader="Track invitation status and resend or cancel pending links"
+          titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+        />
+        <Divider />
+        <CardContent>
+          {invitations.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No invitations yet.
+            </Typography>
+          ) : (
+            <Stack spacing={2}>
+              {invitations.map((invitation) => {
+                const isPending = invitation.status === "pending";
+
+                return (
+                  <Card
+                    key={invitation.id}
+                    variant="outlined"
+                    sx={{ borderRadius: 2 }}
+                  >
+                    <CardContent
+                      sx={{
+                        display: "flex",
+                        flexDirection: { xs: "column", md: "row" },
+                        gap: 2,
+                        justifyContent: "space-between",
+                        alignItems: { xs: "flex-start", md: "center" },
+                      }}
+                    >
+                      <Box>
+                        <Typography
+                          variant="subtitle1"
+                          sx={{ fontWeight: "bold" }}
+                        >
+                          {invitation.name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {invitation.email}
+                        </Typography>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            gap: 1,
+                            flexWrap: "wrap",
+                            mt: 1.5,
+                          }}
+                        >
+                          <Chip
+                            size="small"
+                            label={
+                              invitation.role === "admin" ? "Owner" : "Member"
+                            }
+                            color={
+                              invitation.role === "admin"
+                                ? "primary"
+                                : "default"
+                            }
+                          />
+                          <Chip
+                            size="small"
+                            label={invitation.status}
+                            variant="outlined"
+                          />
+                          <Chip
+                            size="small"
+                            label={`Expires ${new Date(invitation.expiresAt).toLocaleDateString()}`}
+                            variant="outlined"
+                          />
+                        </Box>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mt: 1.5 }}
+                        >
+                          Providers:{" "}
+                          {invitation.providers.length
+                            ? invitation.providers
+                                .map((provider) => provider.display_name)
+                                .join(", ")
+                            : "No provider access selected"}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                        <Button
+                          variant="outlined"
+                          disabled={!isPending || isSavingInvitation}
+                          onClick={() => onResendInvitation(invitation.id)}
+                        >
+                          Resend
+                        </Button>
+                        <Button
+                          color="error"
+                          variant="text"
+                          disabled={!isPending || isSavingInvitation}
+                          onClick={() => onCancelInvitation(invitation.id)}
+                        >
+                          Cancel
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Stack>
+          )}
+        </CardContent>
       </Card>
 
       <Box

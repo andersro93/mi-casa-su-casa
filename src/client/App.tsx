@@ -8,14 +8,21 @@ import {
 import { authClient } from "@server/auth/client";
 import { type FormEvent, useEffect, useState } from "react";
 import { InboxView } from "./components/InboxView";
+import { InvitePage } from "./components/InvitePage";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./components/LoginPage";
 import { MembersView } from "./components/MembersView";
 import { ProvidersRulesView } from "./components/ProvidersRulesView";
 import { QuarantineView } from "./components/QuarantineView";
+import { SettingsView } from "./components/SettingsView";
 import { SetupPage } from "./components/SetupPage";
 import type {
+  AccountProfile,
+  AccountSession,
+  AccountSettingsFormState,
   InboxMessage,
+  InvitationFormState,
+  InvitationSummary,
   MemberFormState,
   MemberSummary,
   ProviderConfiguration,
@@ -23,21 +30,40 @@ import type {
   ProviderFormState,
   ProviderMessagesResponse,
   ProviderOption,
-  SenderRule,
-  SenderRuleFormState,
   ProviderSummary,
   QuarantineMessage,
+  SenderRule,
+  SenderRuleFormState,
   SetupStatus,
 } from "./types";
 import { fetchJson } from "./utils";
 
-type ViewType = "inbox" | "quarantine" | "members" | "providers";
+type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
+
+const INITIAL_SETTINGS_FORM_STATE: AccountSettingsFormState = {
+  name: "",
+  image: "",
+  currentPassword: "",
+  newPassword: "",
+  forgotPasswordEmail: "",
+  twoFactorPassword: "",
+  twoFactorCode: "",
+  twoFactorBackupCode: "",
+  passkeyName: "",
+};
 
 const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
   email: "",
   name: "",
   password: "",
   role: "member",
+};
+
+const INITIAL_INVITATION_FORM_STATE: InvitationFormState = {
+  email: "",
+  name: "",
+  role: "member",
+  providerIds: [],
 };
 
 const INITIAL_PROVIDER_FORM_STATE: ProviderFormState = {
@@ -73,6 +99,23 @@ export function App() {
     null,
   );
   const [messages, setMessages] = useState<InboxMessage[]>([]);
+
+  const [inviteToken, setInviteToken] = useState<string | null>(
+    typeof window !== "undefined" &&
+      window.location.pathname.startsWith("/invite/")
+      ? window.location.pathname.split("/invite/")[1]
+      : null,
+  );
+
+  const [profile, setProfile] = useState<AccountProfile | null>(null);
+  const [settingsSessions, setSettingsSessions] = useState<AccountSession[]>(
+    [],
+  );
+  const [settingsFormState, setSettingsFormState] =
+    useState<AccountSettingsFormState>(INITIAL_SETTINGS_FORM_STATE);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
     null,
   );
@@ -91,6 +134,9 @@ export function App() {
   const [memberFormState, setMemberFormState] = useState<MemberFormState>(
     INITIAL_MEMBER_FORM_STATE,
   );
+  const [invitations, setInvitations] = useState<InvitationSummary[]>([]);
+  const [invitationFormState, setInvitationFormState] =
+    useState<InvitationFormState>(INITIAL_INVITATION_FORM_STATE);
   const [providerConfigurations, setProviderConfigurations] = useState<
     ProviderConfiguration[]
   >([]);
@@ -112,6 +158,7 @@ export function App() {
   const [isSavingMessage, setIsSavingMessage] = useState(false);
   const [isReviewingQuarantine, setIsReviewingQuarantine] = useState(false);
   const [isSavingMember, setIsSavingMember] = useState(false);
+  const [isSavingInvitation, setIsSavingInvitation] = useState(false);
   const [isSavingProviderConfiguration, setIsSavingProviderConfiguration] =
     useState(false);
 
@@ -125,6 +172,269 @@ export function App() {
     setStatusMessage(null);
     setViewError(null);
   };
+
+  useEffect(() => {
+    if (!isAuthenticated || activeView !== "settings") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSettings = async () => {
+      setIsLoadingSettings(true);
+
+      try {
+        const response = await fetchJson<{
+          profile: AccountProfile;
+          sessions: AccountSession[];
+        }>("/api/settings");
+
+        if (cancelled) return;
+
+        setProfile(response.profile);
+        setSettingsSessions(response.sessions);
+        setSettingsFormState((current) => ({
+          ...current,
+          name: response.profile.name,
+          image: response.profile.image || "",
+        }));
+      } catch (error) {
+        if (!cancelled) {
+          setViewError(
+            error instanceof Error ? error.message : "Unable to load settings",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSettings(false);
+        }
+      }
+    };
+
+    void loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, activeView]);
+
+  async function refreshSettings() {
+    if (!isAuthenticated) return;
+    const response = await fetchJson<{
+      profile: AccountProfile;
+      sessions: AccountSession[];
+    }>("/api/settings");
+    setProfile(response.profile);
+    setSettingsSessions(response.sessions);
+  }
+
+  async function handleUpdateProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<{ profile: AccountProfile }>("/api/settings/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: settingsFormState.name,
+          image: settingsFormState.image,
+        }),
+      });
+      setStatusMessage("Profile updated.");
+      await refreshSettings();
+      await refetch();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to update profile",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      const { error } = await authClient.changePassword({
+        newPassword: settingsFormState.newPassword,
+        currentPassword: settingsFormState.currentPassword,
+        revokeOtherSessions: false,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Failed to change password");
+      }
+
+      setSettingsFormState((current) => ({
+        ...current,
+        currentPassword: "",
+        newPassword: "",
+      }));
+      setStatusMessage("Password changed.");
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to change password",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  async function handleRequestPasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      const { error } = await authClient.requestPasswordReset({
+        email: settingsFormState.forgotPasswordEmail,
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Failed to send password reset email");
+      }
+
+      setSettingsFormState((current) => ({
+        ...current,
+        forgotPasswordEmail: "",
+      }));
+      setStatusMessage("Password reset email sent.");
+    } catch (error) {
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to send password reset email",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  async function handleEnable2FA(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      const { error } = await authClient.twoFactor.enable({
+        password: settingsFormState.twoFactorPassword,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Failed to enable 2FA");
+      }
+
+      setSettingsFormState((current) => ({
+        ...current,
+        twoFactorPassword: "",
+      }));
+      setStatusMessage("Two-factor authentication enabled.");
+      await refreshSettings();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to enable 2FA",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  async function handleDisable2FA() {
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      const { error } = await authClient.twoFactor.disable({
+        password: settingsFormState.twoFactorPassword,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Failed to disable 2FA");
+      }
+      setStatusMessage("Two-factor authentication disabled.");
+      await refreshSettings();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to disable 2FA",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  async function handleAddPasskey(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      const { error } = await authClient.passkey.addPasskey({
+        name: settingsFormState.passkeyName,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Failed to add passkey");
+      }
+
+      setSettingsFormState((current) => ({ ...current, passkeyName: "" }));
+      setStatusMessage("Passkey added.");
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to add passkey",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  async function handleRevokeSession(sessionId: string) {
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson(`/api/settings/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      setStatusMessage("Session revoked.");
+      await refreshSettings();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to revoke session",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  async function handleRevokeOtherSessions() {
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson(`/api/settings/sessions/others`, { method: "DELETE" });
+      setStatusMessage("Other sessions revoked.");
+      await refreshSettings();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to revoke sessions",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
 
   async function refreshSetupStatus() {
     if (typeof window === "undefined") {
@@ -213,6 +523,8 @@ export function App() {
       setSelectedRuleId(null);
       setReleaseProviderKey("");
       setMemberFormState(INITIAL_MEMBER_FORM_STATE);
+      setInvitations([]);
+      setInvitationFormState(INITIAL_INVITATION_FORM_STATE);
       setProviderConfigurations([]);
       setSenderRules([]);
       setProviderFormState(INITIAL_PROVIDER_FORM_STATE);
@@ -388,9 +700,11 @@ export function App() {
 
         const nextProviderId =
           selectedProviderId &&
-          response.providers.some((provider) => provider.id === selectedProviderId)
+          response.providers.some(
+            (provider) => provider.id === selectedProviderId,
+          )
             ? selectedProviderId
-            : response.providers[0]?.id ?? null;
+            : (response.providers[0]?.id ?? null);
 
         setSelectedProviderId(nextProviderId);
 
@@ -411,12 +725,15 @@ export function App() {
           selectedRuleId &&
           response.rules.some((rule) => rule.id === selectedRuleId)
             ? selectedRuleId
-            : response.rules.find((rule) => rule.provider_id === nextProviderId)?.id ??
-              null;
+            : (response.rules.find(
+                (rule) => rule.provider_id === nextProviderId,
+              )?.id ?? null);
 
         setSelectedRuleId(nextRuleId);
 
-        const selectedRule = response.rules.find((rule) => rule.id === nextRuleId);
+        const selectedRule = response.rules.find(
+          (rule) => rule.id === nextRuleId,
+        );
 
         setRuleFormState(
           selectedRule
@@ -446,7 +763,13 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, isOwner, activeView, selectedProviderId, selectedRuleId]);
+  }, [
+    isAuthenticated,
+    isOwner,
+    activeView,
+    selectedProviderId,
+    selectedRuleId,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || !isOwner || activeView !== "members") {
@@ -459,20 +782,29 @@ export function App() {
       setIsLoadingMembers(true);
 
       try {
-        const response = await fetchJson<{
-          members: MemberSummary[];
-          providers: ProviderOption[];
-        }>("/api/admin/members");
+        const [membersResponse, invitationsResponse] = await Promise.all([
+          fetchJson<{
+            members: MemberSummary[];
+            providers: ProviderOption[];
+          }>("/api/admin/members"),
+          fetchJson<{ invitations: InvitationSummary[] }>(
+            "/api/admin/invitations",
+          ),
+        ]);
 
         if (cancelled) return;
 
-        setMembers(response.members);
-        setProviderOptions(response.providers);
+        setMembers(membersResponse.members);
+        setProviderOptions(membersResponse.providers);
+        setInvitations(invitationsResponse.invitations);
         setSelectedMemberId((current) => {
-          if (current && response.members.some((m) => m.id === current)) {
+          if (
+            current &&
+            membersResponse.members.some((member) => member.id === current)
+          ) {
             return current;
           }
-          return response.members[0]?.id ?? null;
+          return membersResponse.members[0]?.id ?? null;
         });
       } catch (error) {
         if (!cancelled) {
@@ -541,6 +873,14 @@ export function App() {
     });
   }
 
+  async function refreshInvitations() {
+    if (!isAuthenticated || !isOwner) return;
+    const response = await fetchJson<{ invitations: InvitationSummary[] }>(
+      "/api/admin/invitations",
+    );
+    setInvitations(response.invitations);
+  }
+
   async function refreshProviderConfigurations() {
     if (!isAuthenticated || !isOwner) return;
 
@@ -552,7 +892,10 @@ export function App() {
     setSenderRules(response.rules);
 
     setSelectedProviderId((current) => {
-      if (current && response.providers.some((provider) => provider.id === current)) {
+      if (
+        current &&
+        response.providers.some((provider) => provider.id === current)
+      ) {
         return current;
       }
 
@@ -668,6 +1011,78 @@ export function App() {
     }
   }
 
+  async function handleCreateInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingInvitation(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<{ invitation: InvitationSummary }>(
+        "/api/admin/invitations",
+        {
+          method: "POST",
+          body: JSON.stringify(invitationFormState),
+        },
+      );
+
+      setInvitationFormState(INITIAL_INVITATION_FORM_STATE);
+      setStatusMessage("Invitation email sent.");
+      await refreshInvitations();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to create invitation",
+      );
+    } finally {
+      setIsSavingInvitation(false);
+    }
+  }
+
+  async function handleResendInvitation(invitationId: string) {
+    setIsSavingInvitation(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<{ invitation: InvitationSummary }>(
+        `/api/admin/invitations/${invitationId}/resend`,
+        {
+          method: "POST",
+        },
+      );
+
+      setStatusMessage("Invitation resent.");
+      await refreshInvitations();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to resend invitation",
+      );
+    } finally {
+      setIsSavingInvitation(false);
+    }
+  }
+
+  async function handleCancelInvitation(invitationId: string) {
+    setIsSavingInvitation(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson(`/api/admin/invitations/${invitationId}`, {
+        method: "DELETE",
+      });
+
+      setStatusMessage("Invitation cancelled.");
+      await refreshInvitations();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to cancel invitation",
+      );
+    } finally {
+      setIsSavingInvitation(false);
+    }
+  }
+
   async function handleMemberRoleChange(
     userId: string,
     role: MemberSummary["role"],
@@ -733,14 +1148,21 @@ export function App() {
     setIsSavingProviderConfiguration(true);
 
     try {
-      await fetchJson<{ provider: ProviderConfiguration }>("/api/admin/providers", {
-        method: "POST",
-        body: JSON.stringify(providerFormState),
-      });
+      await fetchJson<{ provider: ProviderConfiguration }>(
+        "/api/admin/providers",
+        {
+          method: "POST",
+          body: JSON.stringify(providerFormState),
+        },
+      );
 
       setProviderFormState(INITIAL_PROVIDER_FORM_STATE);
       setStatusMessage("Provider created.");
-      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+      await Promise.all([
+        refreshProviderConfigurations(),
+        refreshProviders(),
+        refreshMembers(),
+      ]);
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to create provider",
@@ -767,7 +1189,11 @@ export function App() {
       );
 
       setStatusMessage("Provider updated.");
-      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+      await Promise.all([
+        refreshProviderConfigurations(),
+        refreshProviders(),
+        refreshMembers(),
+      ]);
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to update provider",
@@ -785,7 +1211,8 @@ export function App() {
     setIsSavingProviderConfiguration(true);
 
     try {
-      await fetchJson<{ ok: boolean }>(`/api/admin/providers/${selectedProviderId}`,
+      await fetchJson<{ ok: boolean }>(
+        `/api/admin/providers/${selectedProviderId}`,
         {
           method: "DELETE",
         },
@@ -794,7 +1221,11 @@ export function App() {
       setProviderFormState(INITIAL_PROVIDER_FORM_STATE);
       setRuleFormState(INITIAL_RULE_FORM_STATE);
       setStatusMessage("Provider deleted.");
-      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+      await Promise.all([
+        refreshProviderConfigurations(),
+        refreshProviders(),
+        refreshMembers(),
+      ]);
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to delete provider",
@@ -821,7 +1252,11 @@ export function App() {
         providerId: current.providerId,
       }));
       setStatusMessage("Sender rule created.");
-      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+      await Promise.all([
+        refreshProviderConfigurations(),
+        refreshProviders(),
+        refreshMembers(),
+      ]);
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to create sender rule",
@@ -848,7 +1283,11 @@ export function App() {
       );
 
       setStatusMessage("Sender rule updated.");
-      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+      await Promise.all([
+        refreshProviderConfigurations(),
+        refreshProviders(),
+        refreshMembers(),
+      ]);
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to update sender rule",
@@ -866,16 +1305,23 @@ export function App() {
     setIsSavingProviderConfiguration(true);
 
     try {
-      await fetchJson<{ ok: boolean }>(`/api/admin/provider-rules/${selectedRuleId}`, {
-        method: "DELETE",
-      });
+      await fetchJson<{ ok: boolean }>(
+        `/api/admin/provider-rules/${selectedRuleId}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       setRuleFormState((current) => ({
         ...INITIAL_RULE_FORM_STATE,
         providerId: current.providerId,
       }));
       setStatusMessage("Sender rule deleted.");
-      await Promise.all([refreshProviderConfigurations(), refreshProviders(), refreshMembers()]);
+      await Promise.all([
+        refreshProviderConfigurations(),
+        refreshProviders(),
+        refreshMembers(),
+      ]);
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to delete sender rule",
@@ -904,6 +1350,19 @@ export function App() {
           Checking the current session and preparing the latest messages.
         </Typography>
       </Box>
+    );
+  }
+
+  if (inviteToken) {
+    return (
+      <InvitePage
+        token={inviteToken}
+        onAcceptSuccess={() => {
+          window.history.replaceState({}, "", "/");
+          setInviteToken(null);
+          void refetch();
+        }}
+      />
     );
   }
 
@@ -952,6 +1411,28 @@ export function App() {
         />
       )}
 
+      {activeView === "settings" && (
+        <SettingsView
+          profile={profile}
+          sessions={settingsSessions}
+          isLoading={isLoadingSettings}
+          error={viewError}
+          formState={settingsFormState}
+          onFormChange={(update) =>
+            setSettingsFormState((current) => ({ ...current, ...update }))
+          }
+          onUpdateProfile={handleUpdateProfile}
+          onChangePassword={handleChangePassword}
+          onRequestPasswordReset={handleRequestPasswordReset}
+          onEnable2FA={handleEnable2FA}
+          onDisable2FA={handleDisable2FA}
+          onAddPasskey={handleAddPasskey}
+          onRevokeSession={handleRevokeSession}
+          onRevokeOtherSessions={handleRevokeOtherSessions}
+          isSaving={isSavingSettings}
+        />
+      )}
+
       {activeView === "quarantine" && isOwner && (
         <QuarantineView
           quarantineMessages={quarantineMessages}
@@ -969,6 +1450,7 @@ export function App() {
       {activeView === "members" && isOwner && (
         <MembersView
           members={members}
+          invitations={invitations}
           providerOptions={providerOptions}
           selectedMemberId={selectedMemberId}
           onSelectMember={setSelectedMemberId}
@@ -979,6 +1461,14 @@ export function App() {
           }
           onCreateMember={handleCreateMember}
           isSavingMember={isSavingMember}
+          invitationFormState={invitationFormState}
+          onInvitationFormChange={(update) =>
+            setInvitationFormState((current) => ({ ...current, ...update }))
+          }
+          onCreateInvitation={handleCreateInvitation}
+          onResendInvitation={handleResendInvitation}
+          onCancelInvitation={handleCancelInvitation}
+          isSavingInvitation={isSavingInvitation}
           onRoleChange={handleMemberRoleChange}
           onProviderAccessToggle={handleProviderAccessToggle}
         />
@@ -995,7 +1485,9 @@ export function App() {
           isSaving={isSavingProviderConfiguration}
           onSelectProvider={(providerId) => {
             setSelectedProviderId(providerId);
-            const provider = providerConfigurations.find((item) => item.id === providerId);
+            const provider = providerConfigurations.find(
+              (item) => item.id === providerId,
+            );
 
             setProviderFormState(
               provider
@@ -1006,7 +1498,9 @@ export function App() {
                 : INITIAL_PROVIDER_FORM_STATE,
             );
 
-            const firstRule = senderRules.find((rule) => rule.provider_id === providerId) ?? null;
+            const firstRule =
+              senderRules.find((rule) => rule.provider_id === providerId) ??
+              null;
             setSelectedRuleId(firstRule?.id ?? null);
             setRuleFormState(
               firstRule
