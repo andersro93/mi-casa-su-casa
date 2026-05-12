@@ -1,5 +1,20 @@
 import type { SessionData } from "./types";
 
+export function getProviderAccessToggleRequest(shouldHaveAccess: boolean): {
+  method: "POST" | "DELETE";
+  statusMessage: string;
+} {
+  return shouldHaveAccess
+    ? {
+        method: "POST",
+        statusMessage: "Provider access granted.",
+      }
+    : {
+        method: "DELETE",
+        statusMessage: "Provider access revoked.",
+      };
+}
+
 export async function fetchJson<T>(
   input: RequestInfo,
   init?: RequestInit,

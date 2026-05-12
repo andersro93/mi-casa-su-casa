@@ -44,7 +44,7 @@ import type {
   SenderRuleFormState,
   SetupStatus,
 } from "./types";
-import { fetchJson } from "./utils";
+import { fetchJson, getProviderAccessToggleRequest } from "./utils";
 
 type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
 
@@ -1149,23 +1149,24 @@ export function App() {
   async function handleProviderAccessToggle(
     userId: string,
     providerKey: string,
-    hasAccess: boolean,
+    shouldHaveAccess: boolean,
   ) {
     setStatusMessage(null);
     setViewError(null);
 
     try {
+      const { method, statusMessage } =
+        getProviderAccessToggleRequest(shouldHaveAccess);
+
       await fetchJson<{ ok: boolean }>(
         `/api/admin/members/${userId}/provider-access`,
         {
-          method: hasAccess ? "DELETE" : "POST",
+          method,
           body: JSON.stringify({ providerKey }),
         },
       );
 
-      setStatusMessage(
-        hasAccess ? "Provider access revoked." : "Provider access granted.",
-      );
+      setStatusMessage(statusMessage);
       await refreshMembers();
       await refreshProviders();
     } catch (error) {
