@@ -4,6 +4,7 @@ import {
   HubOutlined,
   Inbox as InboxIcon,
   Logout as LogoutIcon,
+  ManageAccounts as ManageAccountsIcon,
   Menu as MenuIcon,
   People as PeopleIcon,
   Security as SecurityIcon,
@@ -32,7 +33,7 @@ import { getDisplayName } from "../utils";
 
 const DRAWER_WIDTH = 280;
 
-type ViewType = "inbox" | "quarantine" | "members" | "providers";
+type ViewType = "inbox" | "settings" | "quarantine" | "members" | "providers";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -109,6 +110,31 @@ export function Layout({
                   }}
                 >
                   Inbox
+                </Typography>
+              }
+            />
+          </ListItemButton>
+        </ListItem>
+
+        <ListItem disablePadding sx={{ mb: 1 }}>
+          <ListItemButton
+            selected={activeView === "settings"}
+            onClick={() => handleNavClick("settings")}
+            sx={{ borderRadius: 2 }}
+          >
+            <ListItemIcon>
+              <ManageAccountsIcon
+                color={activeView === "settings" ? "primary" : "inherit"}
+              />
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                <Typography
+                  sx={{
+                    fontWeight: activeView === "settings" ? "bold" : "normal",
+                  }}
+                >
+                  Settings
                 </Typography>
               }
             />

@@ -1,8 +1,13 @@
 export type SessionData = {
   user?: {
+    id?: string;
     email?: string | null;
     name?: string | null;
+    image?: string | null;
     role?: string | null;
+  };
+  session?: {
+    id?: string;
   };
 };
 
@@ -96,6 +101,71 @@ export type MemberFormState = {
   name: string;
   password: string;
   role: "member" | "admin";
+};
+
+export type InvitationFormState = {
+  email: string;
+  name: string;
+  role: "member" | "admin";
+  providerIds: string[];
+};
+
+export type InvitationSummary = {
+  id: string;
+  email: string;
+  name: string;
+  role: "member" | "admin";
+  status: "pending" | "accepted" | "cancelled" | "expired";
+  invitedByUserId: string;
+  acceptedByUserId: string | null;
+  expiresAt: string;
+  acceptedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  providers: ProviderOption[];
+};
+
+export type AccountSession = {
+  id: string;
+  token: string;
+  expiresAt: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  impersonatedBy: string | null;
+};
+
+export type AccountProfile = {
+  id: string;
+  email: string;
+  name: string;
+  image: string | null;
+  role: string | null;
+  twoFactorEnabled: boolean;
+};
+
+export type AccountSettingsResponse = {
+  profile: AccountProfile;
+  sessions: AccountSession[];
+};
+
+export type AccountSettingsFormState = {
+  name: string;
+  image: string;
+  currentPassword: string;
+  newPassword: string;
+  forgotPasswordEmail: string;
+  twoFactorPassword: string;
+  twoFactorCode: string;
+  twoFactorBackupCode: string;
+  passkeyName: string;
+};
+
+export type InvitationAcceptanceState = {
+  name: string;
+  password: string;
 };
 
 export type ProviderMessagesResponse = {
