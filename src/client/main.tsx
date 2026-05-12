@@ -2,8 +2,6 @@ import { CssBaseline, ThemeProvider, useMediaQuery } from "@mui/material";
 import { StrictMode, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { BrowserRouter } from "react-router-dom";
-
 import { App } from "./App";
 import { ColorModeContext, getTheme } from "./theme";
 
@@ -25,14 +23,12 @@ function AppWrapper() {
   const theme = useMemo(() => getTheme(mode), [mode]);
 
   return (
-    <BrowserRouter>
-      <ColorModeContext.Provider value={colorMode}>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <App />
-        </ThemeProvider>
-      </ColorModeContext.Provider>
-    </BrowserRouter>
+    <ColorModeContext.Provider value={colorMode}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <App />
+      </ThemeProvider>
+    </ColorModeContext.Provider>
   );
 }
 

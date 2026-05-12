@@ -7,14 +7,6 @@ import {
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
 import { type FormEvent, useEffect, useState } from "react";
-import {
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-  useParams,
-} from "react-router-dom";
 import { InboxView } from "./components/InboxView";
 import { InvitePage } from "./components/InvitePage";
 import { Layout } from "./components/Layout";
@@ -97,24 +89,23 @@ export function App() {
   const [isCheckingSetup, setIsCheckingSetup] = useState(
     typeof window !== "undefined",
   );
-  const navigate = useNavigate();
-  const location = useLocation();
-  const isSetupPath = location.pathname === "/setup";
+  const [isSetupPath, setIsSetupPath] = useState(
+    typeof window !== "undefined" && window.location.pathname === "/setup",
+  );
 
-  const activeView: ViewType = 
-    location.pathname.startsWith("/settings") ? "settings" :
-    location.pathname.startsWith("/quarantine") ? "quarantine" :
-    location.pathname.startsWith("/members") ? "members" :
-    location.pathname.startsWith("/providers") ? "providers" :
-    "inbox";
+  const [activeView, setActiveView] = useState<ViewType>("inbox");
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(
     null,
   );
   const [messages, setMessages] = useState<InboxMessage[]>([]);
 
-  const isInvitePath = location.pathname.startsWith("/invite/");
-  const inviteToken = isInvitePath ? location.pathname.split("/invite/")[1] : null;
+  const [inviteToken, setInviteToken] = useState<string | null>(
+    typeof window !== "undefined" &&
+      window.location.pathname.startsWith("/invite/")
+      ? window.location.pathname.split("/invite/")[1]
+      : null,
+  );
 
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [settingsSessions, setSettingsSessions] = useState<AccountSession[]>(
@@ -181,24 +172,6 @@ export function App() {
     setStatusMessage(null);
     setViewError(null);
   };
-
-  function InviteRoute() {
-    const { token } = useParams<{ token: string }>();
-
-    if (!token) {
-      return <Navigate to="/login" replace />;
-    }
-
-    return (
-      <InvitePage
-        token={token}
-        onAcceptSuccess={() => {
-          navigate("/inbox", { replace: true });
-          void refetch();
-        }}
-      />
-    );
-  }
 
   useEffect(() => {
     if (!isAuthenticated || activeView !== "settings") {
@@ -471,15 +444,19 @@ export function App() {
     const status = await fetchJson<SetupStatus>("/api/setup/status");
     setSetupStatus(status);
 
-    if (status.needsSetup && location.pathname !== "/setup") {
-      navigate("/setup", { replace: true });
+    if (status.needsSetup && window.location.pathname !== "/setup") {
+      window.history.replaceState({}, "", "/setup");
+      setIsSetupPath(true);
       return;
     }
 
-    if (!status.needsSetup && location.pathname === "/setup") {
-      navigate("/inbox", { replace: true });
+    if (!status.needsSetup && window.location.pathname === "/setup") {
+      window.history.replaceState({}, "", "/");
+      setIsSetupPath(false);
       return;
     }
+
+    setIsSetupPath(window.location.pathname === "/setup");
   }
 
   useEffect(() => {
@@ -497,10 +474,17 @@ export function App() {
 
         setSetupStatus(status);
 
-        if (status.needsSetup && location.pathname !== "/setup") {
-          navigate("/setup", { replace: true });
-        } else if (!status.needsSetup && location.pathname === "/setup") {
-          navigate("/inbox", { replace: true });
+        if (status.needsSetup && window.location.pathname !== "/setup") {
+          window.history.replaceState({}, "", "/setup");
+          setIsSetupPath(true);
+        } else if (
+          !status.needsSetup &&
+          window.location.pathname === "/setup"
+        ) {
+          window.history.replaceState({}, "", "/");
+          setIsSetupPath(false);
+        } else {
+          setIsSetupPath(window.location.pathname === "/setup");
         }
       } catch (error) {
         if (!cancelled) {
@@ -545,6 +529,7 @@ export function App() {
       setSenderRules([]);
       setProviderFormState(INITIAL_PROVIDER_FORM_STATE);
       setRuleFormState(INITIAL_RULE_FORM_STATE);
+      setActiveView("inbox");
       return;
     }
 
@@ -1368,47 +1353,39 @@ export function App() {
     );
   }
 
+  if (inviteToken) {
+    return (
+      <InvitePage
+        token={inviteToken}
+        onAcceptSuccess={() => {
+          window.history.replaceState({}, "", "/");
+          setInviteToken(null);
+          void refetch();
+        }}
+      />
+    );
+  }
+
+  if (!isAuthenticated && setupStatus?.needsSetup && isSetupPath) {
+    return (
+      <SetupPage
+        setupError={setupError}
+        onSetupError={setSetupError}
+        onSetupComplete={async () => {
+          setStatusMessage("Owner account created. You are now signed in.");
+          await Promise.all([refetch(), refreshSetupStatus()]);
+        }}
+      />
+    );
+  }
+
   if (!isAuthenticated) {
     return (
-      <Routes>
-        <Route path="/invite/:token" element={<InviteRoute />} />
-        <Route
-          path="/setup"
-          element={
-            setupStatus?.needsSetup ? (
-              <SetupPage
-                setupError={setupError}
-                onSetupError={setSetupError}
-                onSetupComplete={async () => {
-                  setStatusMessage("Owner account created. You are now signed in.");
-                  await Promise.all([refetch(), refreshSetupStatus()]);
-                }}
-              />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-        <Route
-          path="/login"
-          element={
-            <LoginPage
-              setupStatus={setupStatus}
-              setupError={setupError}
-              onLoginSuccess={() => refetch()}
-            />
-          }
-        />
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to={setupStatus?.needsSetup ? "/setup" : "/login"}
-              replace
-            />
-          }
-        />
-      </Routes>
+      <LoginPage
+        setupStatus={setupStatus}
+        setupError={setupError}
+        onLoginSuccess={() => refetch()}
+      />
     );
   }
 
@@ -1417,180 +1394,155 @@ export function App() {
       session={session}
       isOwner={isOwner}
       onLogout={handleLogout}
+      activeView={activeView}
+      onNavigate={setActiveView}
     >
-      <Routes>
-        <Route path="/" element={<Navigate to="/inbox" replace />} />
-        <Route
-          path="/inbox"
-          element={
-            <InboxView
-              providers={providers}
-              selectedProviderKey={selectedProviderKey}
-              onSelectProvider={setSelectedProviderKey}
-              messages={messages}
-              selectedMessageId={selectedMessageId}
-              onSelectMessage={setSelectedMessageId}
-              isLoadingInbox={isLoadingInbox}
-              isSavingMessage={isSavingMessage}
-              onStatusChange={handleStatusChange}
-            />
-          }
+      {activeView === "inbox" && (
+        <InboxView
+          providers={providers}
+          selectedProviderKey={selectedProviderKey}
+          onSelectProvider={setSelectedProviderKey}
+          messages={messages}
+          selectedMessageId={selectedMessageId}
+          onSelectMessage={setSelectedMessageId}
+          isLoadingInbox={isLoadingInbox}
+          isSavingMessage={isSavingMessage}
+          onStatusChange={handleStatusChange}
         />
-        <Route
-          path="/settings"
-          element={
-            <SettingsView
-              profile={profile}
-              sessions={settingsSessions}
-              isLoading={isLoadingSettings}
-              error={viewError}
-              formState={settingsFormState}
-              onFormChange={(update) =>
-                setSettingsFormState((current) => ({ ...current, ...update }))
-              }
-              onUpdateProfile={handleUpdateProfile}
-              onChangePassword={handleChangePassword}
-              onRequestPasswordReset={handleRequestPasswordReset}
-              onEnable2FA={handleEnable2FA}
-              onDisable2FA={handleDisable2FA}
-              onAddPasskey={handleAddPasskey}
-              onRevokeSession={handleRevokeSession}
-              onRevokeOtherSessions={handleRevokeOtherSessions}
-              isSaving={isSavingSettings}
-            />
-          }
-        />
-        <Route
-          path="/quarantine"
-          element={
-            isOwner ? (
-              <QuarantineView
-                quarantineMessages={quarantineMessages}
-                selectedQuarantineId={selectedQuarantineId}
-                onSelectMessage={setSelectedQuarantineId}
-                isLoadingQuarantine={isLoadingQuarantine}
-                providers={providers}
-                releaseProviderKey={releaseProviderKey}
-                onReleaseProviderKeyChange={setReleaseProviderKey}
-                isReviewingQuarantine={isReviewingQuarantine}
-                onQuarantineReview={handleQuarantineReview}
-              />
-            ) : (
-              <Navigate to="/inbox" replace />
-            )
-          }
-        />
-        <Route
-          path="/members"
-          element={
-            isOwner ? (
-              <MembersView
-                members={members}
-                invitations={invitations}
-                providerOptions={providerOptions}
-                selectedMemberId={selectedMemberId}
-                onSelectMember={setSelectedMemberId}
-                isLoadingMembers={isLoadingMembers}
-                memberFormState={memberFormState}
-                onMemberFormChange={(update) =>
-                  setMemberFormState((current) => ({ ...current, ...update }))
-                }
-                onCreateMember={handleCreateMember}
-                isSavingMember={isSavingMember}
-                invitationFormState={invitationFormState}
-                onInvitationFormChange={(update) =>
-                  setInvitationFormState((current) => ({ ...current, ...update }))
-                }
-                onCreateInvitation={handleCreateInvitation}
-                onResendInvitation={handleResendInvitation}
-                onCancelInvitation={handleCancelInvitation}
-                isSavingInvitation={isSavingInvitation}
-                onRoleChange={handleMemberRoleChange}
-                onProviderAccessToggle={handleProviderAccessToggle}
-              />
-            ) : (
-              <Navigate to="/inbox" replace />
-            )
-          }
-        />
-        <Route
-          path="/providers"
-          element={
-            isOwner ? (
-              <ProvidersRulesView
-                providers={providerConfigurations}
-                rules={senderRules}
-                selectedProviderId={selectedProviderId}
-                selectedRuleId={selectedRuleId}
-                providerFormState={providerFormState}
-                ruleFormState={ruleFormState}
-                isSaving={isSavingProviderConfiguration}
-                onSelectProvider={(providerId) => {
-                  setSelectedProviderId(providerId);
-                  const provider = providerConfigurations.find(
-                    (item) => item.id === providerId,
-                  );
+      )}
 
-                  setProviderFormState(
-                    provider
-                      ? {
-                          providerKey: provider.provider_key,
-                          displayName: provider.display_name,
-                        }
-                      : INITIAL_PROVIDER_FORM_STATE,
-                  );
+      {activeView === "settings" && (
+        <SettingsView
+          profile={profile}
+          sessions={settingsSessions}
+          isLoading={isLoadingSettings}
+          error={viewError}
+          formState={settingsFormState}
+          onFormChange={(update) =>
+            setSettingsFormState((current) => ({ ...current, ...update }))
+          }
+          onUpdateProfile={handleUpdateProfile}
+          onChangePassword={handleChangePassword}
+          onRequestPasswordReset={handleRequestPasswordReset}
+          onEnable2FA={handleEnable2FA}
+          onDisable2FA={handleDisable2FA}
+          onAddPasskey={handleAddPasskey}
+          onRevokeSession={handleRevokeSession}
+          onRevokeOtherSessions={handleRevokeOtherSessions}
+          isSaving={isSavingSettings}
+        />
+      )}
 
-                  const firstRule =
-                    senderRules.find((rule) => rule.provider_id === providerId) ??
-                    null;
-                  setSelectedRuleId(firstRule?.id ?? null);
-                  setRuleFormState(
-                    firstRule
-                      ? {
-                          providerId: firstRule.provider_id,
-                          matchType: firstRule.match_type,
-                          matchValue: firstRule.match_value,
-                        }
-                      : {
-                          ...INITIAL_RULE_FORM_STATE,
-                          providerId,
-                        },
-                  );
-                }}
-                onSelectRule={(ruleId) => {
-                  setSelectedRuleId(ruleId);
-                  const rule = senderRules.find((item) => item.id === ruleId);
+      {activeView === "quarantine" && isOwner && (
+        <QuarantineView
+          quarantineMessages={quarantineMessages}
+          selectedQuarantineId={selectedQuarantineId}
+          onSelectMessage={setSelectedQuarantineId}
+          isLoadingQuarantine={isLoadingQuarantine}
+          providers={providers}
+          releaseProviderKey={releaseProviderKey}
+          onReleaseProviderKeyChange={setReleaseProviderKey}
+          isReviewingQuarantine={isReviewingQuarantine}
+          onQuarantineReview={handleQuarantineReview}
+        />
+      )}
 
-                  if (!rule) {
-                    return;
+      {activeView === "members" && isOwner && (
+        <MembersView
+          members={members}
+          invitations={invitations}
+          providerOptions={providerOptions}
+          selectedMemberId={selectedMemberId}
+          onSelectMember={setSelectedMemberId}
+          isLoadingMembers={isLoadingMembers}
+          memberFormState={memberFormState}
+          onMemberFormChange={(update) =>
+            setMemberFormState((current) => ({ ...current, ...update }))
+          }
+          onCreateMember={handleCreateMember}
+          isSavingMember={isSavingMember}
+          invitationFormState={invitationFormState}
+          onInvitationFormChange={(update) =>
+            setInvitationFormState((current) => ({ ...current, ...update }))
+          }
+          onCreateInvitation={handleCreateInvitation}
+          onResendInvitation={handleResendInvitation}
+          onCancelInvitation={handleCancelInvitation}
+          isSavingInvitation={isSavingInvitation}
+          onRoleChange={handleMemberRoleChange}
+          onProviderAccessToggle={handleProviderAccessToggle}
+        />
+      )}
+
+      {activeView === "providers" && isOwner && (
+        <ProvidersRulesView
+          providers={providerConfigurations}
+          rules={senderRules}
+          selectedProviderId={selectedProviderId}
+          selectedRuleId={selectedRuleId}
+          providerFormState={providerFormState}
+          ruleFormState={ruleFormState}
+          isSaving={isSavingProviderConfiguration}
+          onSelectProvider={(providerId) => {
+            setSelectedProviderId(providerId);
+            const provider = providerConfigurations.find(
+              (item) => item.id === providerId,
+            );
+
+            setProviderFormState(
+              provider
+                ? {
+                    providerKey: provider.provider_key,
+                    displayName: provider.display_name,
                   }
+                : INITIAL_PROVIDER_FORM_STATE,
+            );
 
-                  setRuleFormState({
-                    providerId: rule.provider_id,
-                    matchType: rule.match_type,
-                    matchValue: rule.match_value,
-                  });
-                }}
-                onProviderFormChange={(update) =>
-                  setProviderFormState((current) => ({ ...current, ...update }))
-                }
-                onRuleFormChange={(update) =>
-                  setRuleFormState((current) => ({ ...current, ...update }))
-                }
-                onCreateProvider={handleCreateProvider}
-                onUpdateProvider={handleUpdateProvider}
-                onDeleteProvider={handleDeleteProvider}
-                onCreateRule={handleCreateRule}
-                onUpdateRule={handleUpdateRule}
-                onDeleteRule={handleDeleteRule}
-              />
-            ) : (
-              <Navigate to="/inbox" replace />
-            )
+            const firstRule =
+              senderRules.find((rule) => rule.provider_id === providerId) ??
+              null;
+            setSelectedRuleId(firstRule?.id ?? null);
+            setRuleFormState(
+              firstRule
+                ? {
+                    providerId: firstRule.provider_id,
+                    matchType: firstRule.match_type,
+                    matchValue: firstRule.match_value,
+                  }
+                : {
+                    ...INITIAL_RULE_FORM_STATE,
+                    providerId,
+                  },
+            );
+          }}
+          onSelectRule={(ruleId) => {
+            setSelectedRuleId(ruleId);
+            const rule = senderRules.find((item) => item.id === ruleId);
+
+            if (!rule) {
+              return;
+            }
+
+            setRuleFormState({
+              providerId: rule.provider_id,
+              matchType: rule.match_type,
+              matchValue: rule.match_value,
+            });
+          }}
+          onProviderFormChange={(update) =>
+            setProviderFormState((current) => ({ ...current, ...update }))
           }
+          onRuleFormChange={(update) =>
+            setRuleFormState((current) => ({ ...current, ...update }))
+          }
+          onCreateProvider={handleCreateProvider}
+          onUpdateProvider={handleUpdateProvider}
+          onDeleteProvider={handleDeleteProvider}
+          onCreateRule={handleCreateRule}
+          onUpdateRule={handleUpdateRule}
+          onDeleteRule={handleDeleteRule}
         />
-        <Route path="*" element={<Navigate to="/inbox" replace />} />
-      </Routes>
+      )}
 
       <Snackbar
         open={Boolean(statusMessage || viewError)}
