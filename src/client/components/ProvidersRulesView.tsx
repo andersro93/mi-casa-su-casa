@@ -82,9 +82,12 @@ export function ProvidersRulesView({
   onUpdateRule,
   onDeleteRule,
 }: ProvidersRulesViewProps) {
-  const selectedProvider = providers.find((provider) => provider.id === selectedProviderId) ?? null;
+  const selectedProvider =
+    providers.find((provider) => provider.id === selectedProviderId) ?? null;
   const selectedRule = rules.find((rule) => rule.id === selectedRuleId) ?? null;
-  const providerRules = rules.filter((rule) => rule.provider_id === selectedProviderId);
+  const providerRules = rules.filter(
+    (rule) => rule.provider_id === selectedProviderId,
+  );
 
   const providerColumns: GridColDef<ProviderConfiguration>[] = [
     {
@@ -156,11 +159,15 @@ export function ProvidersRulesView({
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 4, height: "100%" }}>
+    <Box
+      sx={{ display: "flex", flexDirection: "column", gap: 4, height: "100%" }}
+    >
       <Card variant="outlined" sx={{ borderRadius: 2, borderColor: "divider" }}>
         <CardHeader
           avatar={
-            <Avatar sx={{ bgcolor: "primary.light", color: "primary.contrastText" }}>
+            <Avatar
+              sx={{ bgcolor: "primary.light", color: "primary.contrastText" }}
+            >
               <AutoAwesomeOutlined />
             </Avatar>
           }
@@ -171,12 +178,21 @@ export function ProvidersRulesView({
         <Divider />
         <CardContent>
           <Alert severity="info" sx={{ mb: 3 }} icon={<LinkOutlined />}>
-            Providers define the household service buckets. Sender rules attach exact
-            addresses or domains to those providers so inbound verification emails classify automatically.
+            Providers define the household service buckets. Sender rules attach
+            exact addresses or domains to those providers so inbound
+            verification emails classify automatically.
           </Alert>
           <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <Chip label={`${providers.length} providers`} color="primary" variant="outlined" />
-            <Chip label={`${rules.length} sender rules`} color="secondary" variant="outlined" />
+            <Chip
+              label={`${providers.length} providers`}
+              color="primary"
+              variant="outlined"
+            />
+            <Chip
+              label={`${rules.length} sender rules`}
+              color="secondary"
+              variant="outlined"
+            />
           </Stack>
         </CardContent>
       </Card>
@@ -184,17 +200,28 @@ export function ProvidersRulesView({
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", xl: "minmax(0, 1.5fr) minmax(340px, 0.9fr)" },
+          gridTemplateColumns: {
+            xs: "1fr",
+            xl: "minmax(0, 1.5fr) minmax(340px, 0.9fr)",
+          },
           gap: 3,
           alignItems: "start",
         }}
       >
         <Stack spacing={3} sx={{ minWidth: 0 }}>
           <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
-            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold" }}>
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              sx={{ fontWeight: "bold" }}
+            >
               Provider inventory
             </Typography>
-            <Typography variant="h5" component="h2" sx={{ fontWeight: "bold", mb: 2 }}>
+            <Typography
+              variant="h5"
+              component="h2"
+              sx={{ fontWeight: "bold", mb: 2 }}
+            >
               Connected providers
             </Typography>
             <Box sx={{ height: 360, width: "100%" }}>
@@ -215,12 +242,29 @@ export function ProvidersRulesView({
           </Paper>
 
           <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
-            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: "bold" }}>
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              sx={{ fontWeight: "bold" }}
+            >
               Sender rules
             </Typography>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", mb: 2 }}>
-              <Typography variant="h5" component="h2" sx={{ fontWeight: "bold" }}>
-                {selectedProvider ? `${selectedProvider.display_name} rules` : "Choose a provider"}
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                mb: 2,
+              }}
+            >
+              <Typography
+                variant="h5"
+                component="h2"
+                sx={{ fontWeight: "bold" }}
+              >
+                {selectedProvider
+                  ? `${selectedProvider.display_name} rules`
+                  : "Choose a provider"}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {providerRules.length} configured
@@ -249,7 +293,12 @@ export function ProvidersRulesView({
             <Box component="form" onSubmit={onCreateProvider}>
               <CardHeader
                 avatar={
-                  <Avatar sx={{ bgcolor: "secondary.light", color: "secondary.contrastText" }}>
+                  <Avatar
+                    sx={{
+                      bgcolor: "secondary.light",
+                      color: "secondary.contrastText",
+                    }}
+                  >
                     <AddCircleOutlined />
                   </Avatar>
                 }
@@ -283,7 +332,9 @@ export function ProvidersRulesView({
                   />
                 </Stack>
               </CardContent>
-              <CardActions sx={{ justifyContent: "space-between", px: 3, pb: 3, pt: 0 }}>
+              <CardActions
+                sx={{ justifyContent: "space-between", px: 3, pb: 3, pt: 0 }}
+              >
                 <Button
                   startIcon={<EditOutlined />}
                   onClick={onUpdateProvider}
@@ -317,7 +368,12 @@ export function ProvidersRulesView({
             <Box component="form" onSubmit={onCreateRule}>
               <CardHeader
                 avatar={
-                  <Avatar sx={{ bgcolor: "warning.main", color: "warning.contrastText" }}>
+                  <Avatar
+                    sx={{
+                      bgcolor: "warning.main",
+                      color: "warning.contrastText",
+                    }}
+                  >
                     <RuleFolderOutlined />
                   </Avatar>
                 }
@@ -329,13 +385,17 @@ export function ProvidersRulesView({
               <CardContent>
                 <Stack spacing={2}>
                   <FormControl size="small" fullWidth>
-                    <InputLabel id="provider-rule-provider-label">Provider</InputLabel>
+                    <InputLabel id="provider-rule-provider-label">
+                      Provider
+                    </InputLabel>
                     <Select
                       labelId="provider-rule-provider-label"
                       label="Provider"
                       value={ruleFormState.providerId}
                       onChange={(event) =>
-                        onRuleFormChange({ providerId: String(event.target.value) })
+                        onRuleFormChange({
+                          providerId: String(event.target.value),
+                        })
                       }
                     >
                       {providers.map((provider) => (
@@ -347,14 +407,17 @@ export function ProvidersRulesView({
                   </FormControl>
 
                   <FormControl size="small" fullWidth>
-                    <InputLabel id="provider-rule-type-label">Match type</InputLabel>
+                    <InputLabel id="provider-rule-type-label">
+                      Match type
+                    </InputLabel>
                     <Select
                       labelId="provider-rule-type-label"
                       label="Match type"
                       value={ruleFormState.matchType}
                       onChange={(event) =>
                         onRuleFormChange({
-                          matchType: event.target.value as SenderRuleFormState["matchType"],
+                          matchType: event.target
+                            .value as SenderRuleFormState["matchType"],
                         })
                       }
                     >
@@ -364,7 +427,11 @@ export function ProvidersRulesView({
                   </FormControl>
 
                   <TextField
-                    label={ruleFormState.matchType === "domain" ? "Domain" : "Exact sender address"}
+                    label={
+                      ruleFormState.matchType === "domain"
+                        ? "Domain"
+                        : "Exact sender address"
+                    }
                     size="small"
                     helperText={
                       ruleFormState.matchType === "domain"
@@ -381,12 +448,15 @@ export function ProvidersRulesView({
 
                   {selectedRule && (
                     <Alert severity="success" icon={<LinkOutlined />}>
-                      Editing existing rule <strong>{selectedRule.match_value}</strong>.
+                      Editing existing rule{" "}
+                      <strong>{selectedRule.match_value}</strong>.
                     </Alert>
                   )}
                 </Stack>
               </CardContent>
-              <CardActions sx={{ justifyContent: "space-between", px: 3, pb: 3, pt: 0 }}>
+              <CardActions
+                sx={{ justifyContent: "space-between", px: 3, pb: 3, pt: 0 }}
+              >
                 <Button
                   startIcon={<EditOutlined />}
                   onClick={onUpdateRule}

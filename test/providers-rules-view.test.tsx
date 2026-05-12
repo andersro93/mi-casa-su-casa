@@ -4,7 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import { ProvidersRulesView } from "../src/client/components/ProvidersRulesView";
 
 vi.mock("@mui/x-data-grid", () => ({
-  DataGrid: ({ rows, columns }: { rows: unknown[]; columns: Array<{ headerName?: string }> }) => (
+  DataGrid: ({
+    rows,
+    columns,
+  }: {
+    rows: unknown[];
+    columns: Array<{ headerName?: string }>;
+  }) => (
     <div data-testid="mock-grid">
       <span>rows:{rows.length}</span>
       {columns.map((column) => (
