@@ -79,8 +79,8 @@ export function CreateHouseholdPage({ onCreated }: CreateHouseholdPageProps) {
               You need a household to continue.
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-              Pick the household name your members will see and the immutable slug
-              used in URLs and inbound email addresses.
+              Pick the household name your members will see and the immutable
+              slug used in URLs and inbound email addresses.
             </Typography>
 
             <Box component="form" onSubmit={handleSubmit} noValidate>
@@ -125,7 +125,9 @@ export function CreateHouseholdPage({ onCreated }: CreateHouseholdPageProps) {
                 variant="contained"
                 size="large"
                 disabled={
-                  isCreating || !formState.displayName.trim() || !formState.slug.trim()
+                  isCreating ||
+                  !formState.displayName.trim() ||
+                  !formState.slug.trim()
                 }
                 sx={{ py: 1.5 }}
               >
