@@ -99,22 +99,21 @@ export function App() {
   );
   const navigate = useNavigate();
   const location = useLocation();
-  const isSetupPath = location.pathname === "/setup";
 
-  const activeView: ViewType = 
-    location.pathname.startsWith("/settings") ? "settings" :
-    location.pathname.startsWith("/quarantine") ? "quarantine" :
-    location.pathname.startsWith("/members") ? "members" :
-    location.pathname.startsWith("/providers") ? "providers" :
-    "inbox";
+  const activeView: ViewType = location.pathname.startsWith("/settings")
+    ? "settings"
+    : location.pathname.startsWith("/quarantine")
+      ? "quarantine"
+      : location.pathname.startsWith("/members")
+        ? "members"
+        : location.pathname.startsWith("/providers")
+          ? "providers"
+          : "inbox";
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(
     null,
   );
   const [messages, setMessages] = useState<InboxMessage[]>([]);
-
-  const isInvitePath = location.pathname.startsWith("/invite/");
-  const inviteToken = isInvitePath ? location.pathname.split("/invite/")[1] : null;
 
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [settingsSessions, setSettingsSessions] = useState<AccountSession[]>(
@@ -528,7 +527,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -1418,7 +1417,9 @@ export function App() {
                 setupError={setupError}
                 onSetupError={setSetupError}
                 onSetupComplete={async () => {
-                  setStatusMessage("Owner account created. You are now signed in.");
+                  setStatusMessage(
+                    "Owner account created. You are now signed in.",
+                  );
                   await Promise.all([refetch(), refreshSetupStatus()]);
                 }}
               />
@@ -1451,11 +1452,7 @@ export function App() {
   }
 
   return (
-    <Layout
-      session={session}
-      isOwner={isOwner}
-      onLogout={handleLogout}
-    >
+    <Layout session={session} isOwner={isOwner} onLogout={handleLogout}>
       <Routes>
         <Route path="/" element={<Navigate to="/inbox" replace />} />
         <Route
@@ -1537,7 +1534,10 @@ export function App() {
                 isSavingMember={isSavingMember}
                 invitationFormState={invitationFormState}
                 onInvitationFormChange={(update) =>
-                  setInvitationFormState((current) => ({ ...current, ...update }))
+                  setInvitationFormState((current) => ({
+                    ...current,
+                    ...update,
+                  }))
                 }
                 onCreateInvitation={handleCreateInvitation}
                 onResendInvitation={handleResendInvitation}
@@ -1579,8 +1579,9 @@ export function App() {
                   );
 
                   const firstRule =
-                    senderRules.find((rule) => rule.provider_id === providerId) ??
-                    null;
+                    senderRules.find(
+                      (rule) => rule.provider_id === providerId,
+                    ) ?? null;
                   setSelectedRuleId(firstRule?.id ?? null);
                   setRuleFormState(
                     firstRule

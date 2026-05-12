@@ -26,15 +26,13 @@ import {
   useTheme,
 } from "@mui/material";
 import type React from "react";
-import { Link, useLocation } from "react-router-dom";
 import { useContext, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { ColorModeContext } from "../theme";
 import type { SessionData } from "../types";
 import { getDisplayName } from "../utils";
 
 const DRAWER_WIDTH = 280;
-
-type ViewType = "inbox" | "settings" | "quarantine" | "members" | "providers";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -43,18 +41,17 @@ interface LayoutProps {
   onLogout: () => void;
 }
 
-export function Layout({
-  children,
-  session,
-  isOwner,
-  onLogout,
-}: LayoutProps) {
+export function Layout({ children, session, isOwner, onLogout }: LayoutProps) {
   const location = useLocation();
-  const activeView = location.pathname.startsWith("/settings") ? "settings" :
-    location.pathname.startsWith("/quarantine") ? "quarantine" :
-    location.pathname.startsWith("/members") ? "members" :
-    location.pathname.startsWith("/providers") ? "providers" :
-    "inbox";
+  const activeView = location.pathname.startsWith("/settings")
+    ? "settings"
+    : location.pathname.startsWith("/quarantine")
+      ? "quarantine"
+      : location.pathname.startsWith("/members")
+        ? "members"
+        : location.pathname.startsWith("/providers")
+          ? "providers"
+          : "inbox";
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
@@ -96,7 +93,9 @@ export function Layout({
         <ListItem disablePadding sx={{ mb: 1 }}>
           <ListItemButton
             selected={activeView === "inbox"}
-            component={Link} to="/inbox" onClick={handleNavClick}
+            component={Link}
+            to="/inbox"
+            onClick={handleNavClick}
             sx={{ borderRadius: 2 }}
           >
             <ListItemIcon>
@@ -121,7 +120,9 @@ export function Layout({
         <ListItem disablePadding sx={{ mb: 1 }}>
           <ListItemButton
             selected={activeView === "settings"}
-            component={Link} to="/settings" onClick={handleNavClick}
+            component={Link}
+            to="/settings"
+            onClick={handleNavClick}
             sx={{ borderRadius: 2 }}
           >
             <ListItemIcon>
@@ -148,7 +149,9 @@ export function Layout({
             <ListItem disablePadding sx={{ mb: 1 }}>
               <ListItemButton
                 selected={activeView === "quarantine"}
-                component={Link} to="/quarantine" onClick={handleNavClick}
+                component={Link}
+                to="/quarantine"
+                onClick={handleNavClick}
                 sx={{ borderRadius: 2 }}
               >
                 <ListItemIcon>
@@ -174,7 +177,9 @@ export function Layout({
             <ListItem disablePadding>
               <ListItemButton
                 selected={activeView === "members"}
-                component={Link} to="/members" onClick={handleNavClick}
+                component={Link}
+                to="/members"
+                onClick={handleNavClick}
                 sx={{ borderRadius: 2 }}
               >
                 <ListItemIcon>
@@ -200,7 +205,9 @@ export function Layout({
             <ListItem disablePadding sx={{ mt: 1 }}>
               <ListItemButton
                 selected={activeView === "providers"}
-                component={Link} to="/providers" onClick={handleNavClick}
+                component={Link}
+                to="/providers"
+                onClick={handleNavClick}
                 sx={{ borderRadius: 2 }}
               >
                 <ListItemIcon>
