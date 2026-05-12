@@ -1,8 +1,8 @@
+import { getHouseholdBySlug } from "../db/repositories/households";
 import {
   insertMessage,
   insertQuarantineMessage,
 } from "../db/repositories/messages";
-import { getHouseholdBySlug } from "../db/repositories/households";
 import { classifyEmail } from "../domain/classify-email";
 import type { AppContext } from "../runtime/context";
 import { parseIncomingEmail } from "./parse";

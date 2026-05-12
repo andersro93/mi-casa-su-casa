@@ -1,6 +1,6 @@
+import { getHouseholdBySlug } from "../db/repositories/households";
 import { findProviderMatch } from "../db/repositories/provider-rules";
 import type { ClassificationResult, ParsedIncomingEmail } from "../db/types";
-import { getHouseholdBySlug } from "../db/repositories/households";
 import { extractVerificationCode } from "./extract-code";
 
 export async function classifyEmail(
@@ -36,7 +36,8 @@ export async function classifyEmail(
   if (!providerMatch) {
     return {
       kind: "quarantine",
-      reason: "No sender rule matched the inbound email within the addressed household.",
+      reason:
+        "No sender rule matched the inbound email within the addressed household.",
       code,
     };
   }

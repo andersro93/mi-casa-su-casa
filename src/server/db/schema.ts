@@ -124,21 +124,25 @@ export const passkey = sqliteTable(
   ],
 );
 
-export const providers = sqliteTable("providers", {
-  id: text("id").primaryKey(),
-  householdId: text("household_id")
-    .notNull()
-    .references(() => households.id, { onDelete: "cascade" }),
-  providerKey: text("provider_key").notNull(),
-  displayName: text("display_name").notNull(),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-}, (table) => [
-  uniqueIndex("providers_household_id_provider_key_unique").on(
-    table.householdId,
-    table.providerKey,
-  ),
-  index("providers_household_id_idx").on(table.householdId),
-]);
+export const providers = sqliteTable(
+  "providers",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    providerKey: text("provider_key").notNull(),
+    displayName: text("display_name").notNull(),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => [
+    uniqueIndex("providers_household_id_provider_key_unique").on(
+      table.householdId,
+      table.providerKey,
+    ),
+    index("providers_household_id_idx").on(table.householdId),
+  ],
+);
 
 export const households = sqliteTable(
   "households",
@@ -287,7 +291,10 @@ export const messages = sqliteTable(
       table.providerId,
       table.receivedAt,
     ),
-    index("idx_messages_household_received").on(table.householdId, table.receivedAt),
+    index("idx_messages_household_received").on(
+      table.householdId,
+      table.receivedAt,
+    ),
     index("idx_messages_delete_after").on(table.deleteAfter),
     check(
       "messages_status_check",
@@ -322,7 +329,10 @@ export const quarantineMessages = sqliteTable(
       table.householdId,
       table.messageId,
     ),
-    index("idx_quarantine_household_received").on(table.householdId, table.receivedAt),
+    index("idx_quarantine_household_received").on(
+      table.householdId,
+      table.receivedAt,
+    ),
     index("idx_quarantine_delete_after").on(table.deleteAfter),
   ],
 );

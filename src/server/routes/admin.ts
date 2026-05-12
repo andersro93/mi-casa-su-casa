@@ -6,6 +6,11 @@ import {
   requireOwner,
 } from "../auth/middleware";
 import {
+  assertProvidersBelongToHousehold,
+  getHouseholdMembership,
+  updateHouseholdMembershipRole,
+} from "../db/repositories/households";
+import {
   cancelInvitation,
   createHouseholdInvitation,
   getInvitationById,
@@ -13,12 +18,6 @@ import {
   listHouseholdInvitations,
   refreshExpiredInvitations,
 } from "../db/repositories/invitations";
-import {
-  addUserToHousehold,
-  assertProvidersBelongToHousehold,
-  getHouseholdMembership,
-  updateHouseholdMembershipRole,
-} from "../db/repositories/households";
 import {
   grantProviderAccess,
   listMemberProviderAccess,
@@ -237,7 +236,11 @@ adminRoutes.post("/:slug/provider-rules", async (c) => {
     return c.json({ error: "matchValue is required" }, 400);
   }
 
-  const provider = await getProviderById(c.env.DB, household.id, payload.providerId);
+  const provider = await getProviderById(
+    c.env.DB,
+    household.id,
+    payload.providerId,
+  );
 
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
@@ -352,9 +355,9 @@ adminRoutes.get("/:slug/members", async (c) => {
   return c.json({
     members: members.map((member) => ({
       ...member,
-        role: member.householdRole === "owner" ? "admin" : "member",
-        providerAccess: accessByUserId.get(member.id) ?? [],
-      })),
+      role: member.householdRole === "owner" ? "admin" : "member",
+      providerAccess: accessByUserId.get(member.id) ?? [],
+    })),
     providers,
   });
 });
@@ -381,9 +384,7 @@ adminRoutes.post("/:slug/invitations", async (c) => {
   const email = normalizeEmail(payload.email);
   const name = normalizeDisplayName(payload.name);
   const role: InvitationRole =
-    payload.role === "owner" || payload.role === "admin"
-      ? "owner"
-      : "member";
+    payload.role === "owner" || payload.role === "admin" ? "owner" : "member";
   const providerIds = Array.isArray(payload.providerIds)
     ? payload.providerIds.filter((providerId) => Boolean(providerId))
     : [];
@@ -399,7 +400,12 @@ adminRoutes.post("/:slug/invitations", async (c) => {
   );
 
   if (!providersBelong) {
-    return c.json({ error: "One or more selected providers do not belong to this household" }, 400);
+    return c.json(
+      {
+        error: "One or more selected providers do not belong to this household",
+      },
+      400,
+    );
   }
 
   const inviter = c.get("user");
@@ -602,7 +608,11 @@ adminRoutes.patch("/:slug/members/:userId/role", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const membership = await getHouseholdMembership(c.env.DB, userId, household.id);
+  const membership = await getHouseholdMembership(
+    c.env.DB,
+    userId,
+    household.id,
+  );
 
   if (!membership) {
     return c.json({ error: "Member not found" }, 404);
@@ -633,13 +643,21 @@ adminRoutes.post("/:slug/members/:userId/provider-access", async (c) => {
     return c.json({ error: "providerKey is required" }, 400);
   }
 
-  const provider = await getProviderByKey(c.env.DB, household.id, payload.providerKey);
+  const provider = await getProviderByKey(
+    c.env.DB,
+    household.id,
+    payload.providerKey,
+  );
 
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const membership = await getHouseholdMembership(c.env.DB, userId, household.id);
+  const membership = await getHouseholdMembership(
+    c.env.DB,
+    userId,
+    household.id,
+  );
 
   if (!membership) {
     return c.json({ error: "Member not found" }, 404);
@@ -665,13 +683,21 @@ adminRoutes.delete("/:slug/members/:userId/provider-access", async (c) => {
     return c.json({ error: "providerKey is required" }, 400);
   }
 
-  const provider = await getProviderByKey(c.env.DB, household.id, payload.providerKey);
+  const provider = await getProviderByKey(
+    c.env.DB,
+    household.id,
+    payload.providerKey,
+  );
 
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const membership = await getHouseholdMembership(c.env.DB, userId, household.id);
+  const membership = await getHouseholdMembership(
+    c.env.DB,
+    userId,
+    household.id,
+  );
 
   if (!membership) {
     return c.json({ error: "Member not found" }, 404);
