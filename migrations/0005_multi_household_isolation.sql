@@ -10,6 +10,14 @@ ALTER TABLE quarantine_messages RENAME TO quarantine_messages__legacy;
 ALTER TABLE household_invitations RENAME TO household_invitations__legacy;
 ALTER TABLE household_invitation_provider_access RENAME TO household_invitation_provider_access__legacy;
 
+DROP INDEX IF EXISTS idx_sender_rules_lookup;
+DROP INDEX IF EXISTS idx_messages_provider_received;
+DROP INDEX IF EXISTS idx_messages_delete_after;
+DROP INDEX IF EXISTS idx_quarantine_delete_after;
+DROP INDEX IF EXISTS idx_household_invitations_email;
+DROP INDEX IF EXISTS idx_household_invitations_status;
+DROP INDEX IF EXISTS idx_household_invitations_expires_at;
+
 CREATE TABLE households (
   id TEXT PRIMARY KEY NOT NULL,
   slug TEXT NOT NULL UNIQUE,
