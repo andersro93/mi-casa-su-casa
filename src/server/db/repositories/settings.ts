@@ -2,6 +2,7 @@ import { and, eq, ne, sql } from "drizzle-orm";
 
 import { dbForDatabase } from "../client";
 import { session, user } from "../schema";
+import { listHouseholdsForUser } from "./households";
 
 function normalizeTimestamp(value: Date | number | null | undefined) {
   if (!value) {
@@ -29,7 +30,16 @@ export async function getUserProfile(db: D1Database, userId: string) {
     .where(eq(user.id, userId))
     .limit(1);
 
-  return rows[0] ?? null;
+  const profile = rows[0] ?? null;
+
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    ...profile,
+    households: await listHouseholdsForUser(db, userId),
+  };
 }
 
 export async function updateUserProfile(

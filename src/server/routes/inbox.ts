@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
   type AppVariables,
   requireAuthenticatedUser,
+  requireHouseholdContext,
   requireOwner,
 } from "../auth/middleware";
 import {
@@ -32,48 +33,59 @@ export const inboxRoutes = new Hono<{
 }>();
 
 inboxRoutes.use("/providers", requireAuthenticatedUser);
-inboxRoutes.use("/providers/:providerKey", requireAuthenticatedUser);
-inboxRoutes.use("/messages/:messageId/status", requireAuthenticatedUser);
-inboxRoutes.use("/quarantine", requireOwner);
-inboxRoutes.use("/quarantine/:messageId/review", requireOwner);
+inboxRoutes.use("/:slug/*", requireAuthenticatedUser);
+inboxRoutes.use("/:slug/*", requireHouseholdContext);
+inboxRoutes.use("/:slug/quarantine", requireOwner);
+inboxRoutes.use("/:slug/quarantine/:messageId/review", requireOwner);
 
-inboxRoutes.get("/providers", async (c) => {
+inboxRoutes.get("/:slug/providers", async (c) => {
   const user = c.get("user");
+  const household = c.get("household");
 
-  if (!user) {
+  if (!user || !household) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
   const providers = await listProviderSummariesForUser(
     c.env.DB,
+    household.id,
     user.id,
-    user.role,
   );
   return c.json({ providers });
 });
 
-inboxRoutes.get("/providers/:providerKey", async (c) => {
+inboxRoutes.get("/:slug/providers/:providerKey", async (c) => {
   const providerKey = c.req.param("providerKey");
   const user = c.get("user");
+  const household = c.get("household");
 
-  if (!user) {
+  if (!user || !household) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  if (user.role !== "admin") {
-    const allowed = await userHasProviderAccess(c.env.DB, user.id, providerKey);
+  if (household.role !== "owner") {
+    const allowed = await userHasProviderAccess(
+      c.env.DB,
+      household.id,
+      user.id,
+      providerKey,
+    );
     if (!allowed) {
       return c.json({ error: "Forbidden" }, 403);
     }
   }
 
-  const provider = await getProviderByKey(c.env.DB, providerKey);
+  const provider = await getProviderByKey(c.env.DB, household.id, providerKey);
 
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const messages = await listMessagesForProvider(c.env.DB, providerKey);
+  const messages = await listMessagesForProvider(
+    c.env.DB,
+    household.id,
+    providerKey,
+  );
   return c.json({
     provider: {
       providerKey: provider.provider_key,
@@ -83,23 +95,29 @@ inboxRoutes.get("/providers/:providerKey", async (c) => {
   });
 });
 
-inboxRoutes.patch("/messages/:messageId/status", async (c) => {
+inboxRoutes.patch("/:slug/messages/:messageId/status", async (c) => {
   const user = c.get("user");
+  const household = c.get("household");
   const messageId = c.req.param("messageId");
 
-  if (!user) {
+  if (!user || !household) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const existingMessage = await findMessageById(c.env.DB, messageId);
+  const existingMessage = await findMessageById(
+    c.env.DB,
+    household.id,
+    messageId,
+  );
 
   if (!existingMessage) {
     return c.json({ error: "Message not found" }, 404);
   }
 
-  if (user.role !== "admin") {
+  if (household.role !== "owner") {
     const allowed = await userHasProviderAccess(
       c.env.DB,
+      household.id,
       user.id,
       existingMessage.provider_key,
     );
@@ -123,6 +141,7 @@ inboxRoutes.patch("/messages/:messageId/status", async (c) => {
 
   const message = await updateMessageStatus(
     c.env.DB,
+    household.id,
     messageId,
     payload.status,
   );
@@ -134,13 +153,24 @@ inboxRoutes.patch("/messages/:messageId/status", async (c) => {
   return c.json({ message });
 });
 
-inboxRoutes.get("/quarantine", async (c) => {
-  const messages = await listQuarantineMessages(c.env.DB);
+inboxRoutes.get("/:slug/quarantine", async (c) => {
+  const household = c.get("household");
+
+  if (!household) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const messages = await listQuarantineMessages(c.env.DB, household.id);
   return c.json({ messages });
 });
 
-inboxRoutes.post("/quarantine/:messageId/review", async (c) => {
+inboxRoutes.post("/:slug/quarantine/:messageId/review", async (c) => {
+  const household = c.get("household");
   const messageId = c.req.param("messageId");
+
+  if (!household) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
 
   let payload: { action?: "dismiss" | "release"; providerKey?: string };
 
@@ -167,7 +197,11 @@ inboxRoutes.post("/quarantine/:messageId/review", async (c) => {
       );
     }
 
-    const provider = await getProviderByKey(c.env.DB, payload.providerKey);
+    const provider = await getProviderByKey(
+      c.env.DB,
+      household.id,
+      payload.providerKey,
+    );
 
     if (!provider) {
       return c.json({ error: "Provider not found" }, 404);
@@ -176,10 +210,15 @@ inboxRoutes.post("/quarantine/:messageId/review", async (c) => {
     providerId = provider.id;
   }
 
-  const result = await reviewQuarantineMessage(c.env.DB, messageId, {
-    action: payload.action,
-    providerId,
-  });
+  const result = await reviewQuarantineMessage(
+    c.env.DB,
+    household.id,
+    messageId,
+    {
+      action: payload.action,
+      providerId,
+    },
+  );
 
   if (!result) {
     return c.json({ error: "Quarantine message not found" }, 404);

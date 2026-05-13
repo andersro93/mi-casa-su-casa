@@ -11,18 +11,30 @@ function normalizeTimestamp(value: number | string | null | undefined) {
   return value ?? new Date(0).toISOString();
 }
 
-export async function listMembers(db: D1Database): Promise<MemberRecord[]> {
+export async function listMembers(
+  db: D1Database,
+  householdId: string,
+): Promise<MemberRecord[]> {
   const result = await dbForDatabase(db).all<{
     id: string;
+    householdRole: "owner" | "member";
     email: string;
     name: string;
     role: string | null;
     createdAt: number | string;
     updatedAt: number | string;
   }>(sql`
-    SELECT id, email, name, role, createdAt, updatedAt
-    FROM user
-    ORDER BY createdAt ASC
+    SELECT user.id,
+           household_memberships.role AS householdRole,
+           user.email,
+           user.name,
+           user.role,
+           user.createdAt,
+           user.updatedAt
+    FROM household_memberships
+    INNER JOIN user ON user.id = household_memberships.user_id
+    WHERE household_memberships.household_id = ${householdId}
+    ORDER BY user.createdAt ASC
   `);
 
   return result.map((member) => ({
@@ -34,27 +46,36 @@ export async function listMembers(db: D1Database): Promise<MemberRecord[]> {
 
 export async function listMemberProviderAccess(
   db: D1Database,
+  householdId: string,
 ): Promise<MemberAccessRow[]> {
   const result = await dbForDatabase(db).all<MemberAccessRow>(sql`
     SELECT user.id,
+            household_memberships.role AS household_role,
             user.email,
             user.name,
             user.role,
             providers.provider_key,
             providers.display_name AS provider_display_name
-    FROM user
-    LEFT JOIN user_provider_access ON user_provider_access.user_id = user.id
-    LEFT JOIN providers ON providers.id = user_provider_access.provider_id
+    FROM household_memberships
+    INNER JOIN user ON user.id = household_memberships.user_id
+    LEFT JOIN household_member_provider_access
+      ON household_member_provider_access.household_membership_id = household_memberships.id
+    LEFT JOIN providers ON providers.id = household_member_provider_access.provider_id
+    WHERE household_memberships.household_id = ${householdId}
     ORDER BY user.createdAt ASC, providers.display_name ASC
   `);
 
   return result;
 }
 
-export async function listProviders(db: D1Database): Promise<ProviderRow[]> {
+export async function listProviders(
+  db: D1Database,
+  householdId: string,
+): Promise<ProviderRow[]> {
   const result = await dbForDatabase(db).all<ProviderRow>(sql`
-    SELECT id, provider_key, display_name
+    SELECT id, household_id, provider_key, display_name
     FROM providers
+    WHERE household_id = ${householdId}
     ORDER BY display_name ASC
   `);
 
@@ -63,22 +84,32 @@ export async function listProviders(db: D1Database): Promise<ProviderRow[]> {
 
 export async function grantProviderAccess(
   db: D1Database,
+  householdId: string,
   userId: string,
   providerId: string,
 ) {
   await dbForDatabase(db).run(sql`
-    INSERT OR IGNORE INTO user_provider_access (id, user_id, provider_id)
-    VALUES (${crypto.randomUUID()}, ${userId}, ${providerId})
+    INSERT OR IGNORE INTO household_member_provider_access (id, household_membership_id, provider_id)
+    SELECT ${crypto.randomUUID()}, household_memberships.id, ${providerId}
+    FROM household_memberships
+    WHERE household_memberships.household_id = ${householdId}
+      AND household_memberships.user_id = ${userId}
   `);
 }
 
 export async function revokeProviderAccess(
   db: D1Database,
+  householdId: string,
   userId: string,
   providerId: string,
 ) {
   await dbForDatabase(db).run(sql`
-    DELETE FROM user_provider_access
-    WHERE user_id = ${userId} AND provider_id = ${providerId}
+    DELETE FROM household_member_provider_access
+    WHERE provider_id = ${providerId}
+      AND household_membership_id IN (
+        SELECT id
+        FROM household_memberships
+        WHERE household_id = ${householdId} AND user_id = ${userId}
+      )
   `);
 }

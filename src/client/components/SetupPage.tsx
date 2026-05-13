@@ -27,6 +27,8 @@ export function SetupPage({
     email: "",
     name: "",
     password: "",
+    householdName: "",
+    householdSlug: "",
     setupSecret: "",
   });
   const [isCompletingSetup, setIsCompletingSetup] = useState(false);
@@ -45,6 +47,8 @@ export function SetupPage({
         email: "",
         name: "",
         password: "",
+        householdName: "",
+        householdSlug: "",
         setupSecret: "",
       });
 
@@ -119,6 +123,37 @@ export function SetupPage({
             </Alert>
 
             <Box component="form" onSubmit={handleSetupComplete} noValidate>
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="setup-household-name"
+                label="Household name"
+                name="setup-household-name"
+                value={setupFormState.householdName}
+                onChange={(e) =>
+                  setSetupFormState((current) => ({
+                    ...current,
+                    householdName: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="setup-household-slug"
+                label="Household slug"
+                name="setup-household-slug"
+                helperText="Lowercase letters, numbers, and hyphens only."
+                value={setupFormState.householdSlug}
+                onChange={(e) =>
+                  setSetupFormState((current) => ({
+                    ...current,
+                    householdSlug: e.target.value.toLowerCase(),
+                  }))
+                }
+              />
               <TextField
                 margin="normal"
                 required

@@ -1,8 +1,9 @@
 import { isAPIError } from "better-auth/api";
 import { Hono } from "hono";
 
-import { authForEnv } from "../auth/auth";
+import { provisioningAuthForEnv } from "../auth/auth";
 import { loadAuthSession, requireAuthenticatedUser } from "../auth/middleware";
+import { getHouseholdById } from "../db/repositories/households";
 import {
   acceptInvitation,
   getInvitationByTokenHash,
@@ -25,7 +26,10 @@ function withoutToken(
   return invitation;
 }
 
-export const invitationRoutes = new Hono<{ Bindings: Env }>();
+export const invitationRoutes = new Hono<{
+  Bindings: Env;
+  Variables: import("../auth/middleware").AppVariables;
+}>();
 
 invitationRoutes.use("*", loadAuthSession);
 
@@ -68,47 +72,80 @@ invitationRoutes.post("/:token/accept", async (c) => {
     return c.json({ error: "Invitation not found or no longer valid" }, 404);
   }
 
-  const auth = authForEnv(c.env);
+  const auth = provisioningAuthForEnv(c.env);
+  const currentUser = c.get("user");
 
-  try {
-    const created = await auth.api.createUser({
-      body: {
-        email: invitation.email,
-        name: payload.name.trim(),
-        password: payload.password,
-        role: invitation.role === "admin" ? "admin" : "user",
-      },
-    });
+  if (currentUser) {
+    if (currentUser.email.toLowerCase() !== invitation.email.toLowerCase()) {
+      return c.json(
+        {
+          error:
+            "You are signed in as a different account. Sign out and accept the invitation with the invited email address.",
+        },
+        403,
+      );
+    }
 
     await acceptInvitation(c.env.DB, {
       invitationId: invitation.id,
-      acceptedByUserId: created.user.id,
-      providerIds: invitation.providers.map((provider) => provider.id),
+      householdId: invitation.householdId,
+      acceptedByUserId: currentUser.id,
+      role: invitation.role,
     });
 
-    const signInResult = await auth.api.signInEmail({
+    const household = await getHouseholdById(c.env.DB, invitation.householdId);
+
+    return c.json(
+      {
+        member: {
+          id: currentUser.id,
+          email: currentUser.email,
+          name: payload.name.trim(),
+          role: invitation.role,
+        },
+        household,
+      },
+      200,
+    );
+  }
+
+  try {
+    const signUpResult = await auth.api.signUpEmail({
       body: {
         email: invitation.email,
+        name: payload.name.trim(),
         password: payload.password,
       },
       headers: new Headers(c.req.raw.headers),
       returnHeaders: true,
     });
 
+    const createdUser = signUpResult.response.user;
+
+    await acceptInvitation(c.env.DB, {
+      invitationId: invitation.id,
+      householdId: invitation.householdId,
+      acceptedByUserId: createdUser.id,
+      role: invitation.role,
+    });
+
+    const household = await getHouseholdById(c.env.DB, invitation.householdId);
+
     const response = c.json(
       {
         member: {
-          id: created.user.id,
-          email: created.user.email,
-          name: created.user.name,
+          id: createdUser.id,
+          email: createdUser.email,
+          name: createdUser.name,
           role: invitation.role,
         },
-        session: signInResult.response,
+        household,
+        session: signUpResult.response,
       },
       201,
     );
 
-    for (const cookie of signInResult.headers.getSetCookie()) {
+    for (const cookie of signUpResult.headers.getSetCookie()) {
       response.headers.append("set-cookie", cookie);
     }
 

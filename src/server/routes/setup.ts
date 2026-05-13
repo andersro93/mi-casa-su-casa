@@ -1,7 +1,8 @@
 import { isAPIError } from "better-auth/api";
 import { Hono } from "hono";
 
-import { authForEnv } from "../auth/auth";
+import { provisioningAuthForEnv } from "../auth/auth";
+import { createHousehold } from "../db/repositories/households";
 import {
   beginInstallationSetup,
   completeInstallationSetup,
@@ -13,6 +14,8 @@ type SetupPayload = {
   email?: string;
   name?: string;
   password?: string;
+  householdName?: string;
+  householdSlug?: string;
   setupSecret?: string;
 };
 
@@ -36,6 +39,10 @@ function mapInstallationStatus(
     status: row.status,
     ownerEmail: row.owner_email,
   };
+}
+
+function normalizeSlug(value: string | undefined) {
+  return value?.trim().toLowerCase() ?? "";
 }
 
 setupRoutes.get("/status", async (c) => {
@@ -66,10 +73,15 @@ setupRoutes.post("/complete", async (c) => {
     !payload.email ||
     !payload.name ||
     !payload.password ||
+    !payload.householdName ||
+    !payload.householdSlug ||
     !payload.setupSecret
   ) {
     return c.json(
-      { error: "email, name, password, and setupSecret are required" },
+      {
+        error:
+          "email, name, password, householdName, householdSlug, and setupSecret are required",
+      },
       400,
     );
   }
@@ -89,6 +101,18 @@ setupRoutes.post("/complete", async (c) => {
     return c.json({ error: "Password must be at least 12 characters" }, 400);
   }
 
+  const householdSlug = normalizeSlug(payload.householdSlug);
+
+  if (!/^[a-z0-9-]+$/.test(householdSlug)) {
+    return c.json(
+      {
+        error:
+          "householdSlug may only contain lowercase letters, numbers, and hyphens",
+      },
+      400,
+    );
+  }
+
   const state = await getInstallationState(c.env.DB);
 
   if (state.status === "complete") {
@@ -104,43 +128,44 @@ setupRoutes.post("/complete", async (c) => {
     );
   }
 
-  const auth = authForEnv(c.env);
+  const auth = provisioningAuthForEnv(c.env);
 
   try {
-    const created = await auth.api.createUser({
+    const signUpResult = await auth.api.signUpEmail({
       body: {
         email: requestedEmail,
         name: payload.name.trim(),
-        password: payload.password,
-        role: "admin",
-      },
-    });
-
-    await completeInstallationSetup(c.env.DB, created.user.id, requestedEmail);
-
-    const signInResult = await auth.api.signInEmail({
-      body: {
-        email: requestedEmail,
         password: payload.password,
       },
       headers: new Headers(c.req.raw.headers),
       returnHeaders: true,
     });
 
+    const createdUser = signUpResult.response.user;
+
+    const household = await createHousehold(c.env.DB, {
+      slug: householdSlug,
+      displayName: payload.householdName.trim(),
+      ownerUserId: createdUser.id,
+    });
+
+    await completeInstallationSetup(c.env.DB, createdUser.id, requestedEmail);
+
     const response = c.json(
       {
         member: {
-          id: created.user.id,
-          email: created.user.email,
-          name: created.user.name,
-          role: "admin",
+          id: createdUser.id,
+          email: createdUser.email,
+          name: createdUser.name,
+          role: "owner",
         },
-        session: signInResult.response,
+        household,
+        session: signUpResult.response,
       },
       201,
     );
 
-    for (const cookie of signInResult.headers.getSetCookie()) {
+    for (const cookie of signUpResult.headers.getSetCookie()) {
       response.headers.append("set-cookie", cookie);
     }
 

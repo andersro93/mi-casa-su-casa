@@ -1,7 +1,7 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
-import { admin, twoFactor } from "better-auth/plugins";
+import { twoFactor } from "better-auth/plugins";
 
 import { dbForEnv } from "../db/client";
 import * as schema from "../db/schema";
@@ -16,6 +16,14 @@ function getRpId(url: string) {
 }
 
 export function authForEnv(env: Env) {
+  return createAuth(env, { disableSignUp: true });
+}
+
+export function provisioningAuthForEnv(env: Env) {
+  return createAuth(env, { disableSignUp: false });
+}
+
+function createAuth(env: Env, options: { disableSignUp: boolean }) {
   return betterAuth({
     appName: "Mi Casa Su Casa",
     baseURL: env.APP_URL,
@@ -26,7 +34,7 @@ export function authForEnv(env: Env) {
     }),
     emailAndPassword: {
       enabled: true,
-      disableSignUp: true,
+      disableSignUp: options.disableSignUp,
       minPasswordLength: 12,
       maxPasswordLength: 128,
       sendResetPassword: async ({ user, url }) => {
@@ -53,10 +61,6 @@ export function authForEnv(env: Env) {
       },
     },
     plugins: [
-      admin({
-        adminRoles: ["admin"],
-        defaultRole: "user",
-      }),
       twoFactor(),
       passkey({
         rpID: getRpId(env.APP_URL),

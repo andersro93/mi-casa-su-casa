@@ -94,7 +94,7 @@ describe("email sender helpers", () => {
       inviterEmail: "morgan@example.com",
       inviteUrl: "https://example.com/invite/token-123",
       expiresAt: "2026-05-31T12:00:00.000Z",
-      role: "admin",
+      role: "owner",
     });
 
     expect(send).toHaveBeenCalledWith(

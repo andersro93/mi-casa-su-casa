@@ -1,3 +1,4 @@
+import { getHouseholdBySlug } from "../db/repositories/households";
 import {
   insertMessage,
   insertQuarantineMessage,
@@ -13,14 +14,34 @@ export async function handleIncomingEmail(
   const parsed = await parseIncomingEmail(message);
   const classification = await classifyEmail(appContext.env.DB, parsed);
 
+  if (!parsed.householdSlug) {
+    return;
+  }
+
   if (classification.kind === "quarantine") {
-    await insertQuarantineMessage(appContext.env.DB, parsed, classification);
+    const household = await getHouseholdBySlug(
+      appContext.env.DB,
+      parsed.householdSlug,
+    );
+    const householdId = household?.id ?? null;
+
+    if (!householdId) {
+      return;
+    }
+
+    await insertQuarantineMessage(
+      appContext.env.DB,
+      parsed,
+      householdId,
+      classification,
+    );
     return;
   }
 
   await insertMessage(
     appContext.env.DB,
     parsed,
+    classification.householdId,
     classification.providerId,
     classification,
   );

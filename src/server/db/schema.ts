@@ -124,17 +124,96 @@ export const passkey = sqliteTable(
   ],
 );
 
-export const providers = sqliteTable("providers", {
-  id: text("id").primaryKey(),
-  providerKey: text("provider_key").notNull().unique(),
-  displayName: text("display_name").notNull(),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+export const providers = sqliteTable(
+  "providers",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    providerKey: text("provider_key").notNull(),
+    displayName: text("display_name").notNull(),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => [
+    uniqueIndex("providers_household_id_provider_key_unique").on(
+      table.householdId,
+      table.providerKey,
+    ),
+    index("providers_household_id_idx").on(table.householdId),
+  ],
+);
+
+export const households = sqliteTable(
+  "households",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    displayName: text("display_name").notNull(),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => [index("households_slug_idx").on(table.slug)],
+);
+
+export const householdMemberships = sqliteTable(
+  "household_memberships",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: text("role").$type<"owner" | "member">().notNull(),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => [
+    uniqueIndex("household_memberships_household_user_unique").on(
+      table.householdId,
+      table.userId,
+    ),
+    index("household_memberships_household_id_idx").on(table.householdId),
+    index("household_memberships_user_id_idx").on(table.userId),
+    check(
+      "household_memberships_role_check",
+      sql`${table.role} in ('owner', 'member')`,
+    ),
+  ],
+);
+
+export const householdMemberProviderAccess = sqliteTable(
+  "household_member_provider_access",
+  {
+    id: text("id").primaryKey(),
+    householdMembershipId: text("household_membership_id")
+      .notNull()
+      .references(() => householdMemberships.id, { onDelete: "cascade" }),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => providers.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => [
+    uniqueIndex(
+      "household_member_provider_access_membership_provider_unique",
+    ).on(table.householdMembershipId, table.providerId),
+    index("household_member_provider_access_membership_idx").on(
+      table.householdMembershipId,
+    ),
+    index("household_member_provider_access_provider_idx").on(table.providerId),
+  ],
+);
 
 export const senderRules = sqliteTable(
   "sender_rules",
   {
     id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
     providerId: text("provider_id")
       .notNull()
       .references(() => providers.id, { onDelete: "cascade" }),
@@ -143,11 +222,16 @@ export const senderRules = sqliteTable(
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
-    uniqueIndex("sender_rules_match_type_match_value_unique").on(
+    uniqueIndex("sender_rules_household_match_type_match_value_unique").on(
+      table.householdId,
       table.matchType,
       table.matchValue,
     ),
-    index("idx_sender_rules_lookup").on(table.matchType, table.matchValue),
+    index("idx_sender_rules_lookup").on(
+      table.householdId,
+      table.matchType,
+      table.matchValue,
+    ),
     check(
       "sender_rules_match_type_check",
       sql`${table.matchType} in ('exact', 'domain')`,
@@ -178,6 +262,9 @@ export const messages = sqliteTable(
   {
     id: text("id").primaryKey(),
     messageId: text("message_id").notNull().unique(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
     providerId: text("provider_id")
       .notNull()
       .references(() => providers.id, { onDelete: "cascade" }),
@@ -195,8 +282,17 @@ export const messages = sqliteTable(
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
+    uniqueIndex("messages_household_id_message_id_unique").on(
+      table.householdId,
+      table.messageId,
+    ),
     index("idx_messages_provider_received").on(
+      table.householdId,
       table.providerId,
+      table.receivedAt,
+    ),
+    index("idx_messages_household_received").on(
+      table.householdId,
       table.receivedAt,
     ),
     index("idx_messages_delete_after").on(table.deleteAfter),
@@ -211,7 +307,10 @@ export const quarantineMessages = sqliteTable(
   "quarantine_messages",
   {
     id: text("id").primaryKey(),
-    messageId: text("message_id").notNull().unique(),
+    messageId: text("message_id").notNull(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
     envelopeFrom: text("envelope_from").notNull(),
     envelopeTo: text("envelope_to").notNull(),
     fromHeader: text("from_header"),
@@ -225,7 +324,17 @@ export const quarantineMessages = sqliteTable(
     reviewedAt: text("reviewed_at"),
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
-  (table) => [index("idx_quarantine_delete_after").on(table.deleteAfter)],
+  (table) => [
+    uniqueIndex("quarantine_messages_household_id_message_id_unique").on(
+      table.householdId,
+      table.messageId,
+    ),
+    index("idx_quarantine_household_received").on(
+      table.householdId,
+      table.receivedAt,
+    ),
+    index("idx_quarantine_delete_after").on(table.deleteAfter),
+  ],
 );
 
 export const auditEvents = sqliteTable("audit_events", {
@@ -264,9 +373,12 @@ export const householdInvitations = sqliteTable(
   "household_invitations",
   {
     id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     name: text("name").notNull(),
-    role: text("role").$type<"member" | "admin">().notNull(),
+    role: text("role").$type<"member" | "owner">().notNull(),
     tokenHash: text("token_hash").notNull().unique(),
     status: text("status")
       .$type<"pending" | "accepted" | "cancelled" | "expired">()
@@ -284,12 +396,13 @@ export const householdInvitations = sqliteTable(
     updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
+    index("idx_household_invitations_household_id").on(table.householdId),
     index("idx_household_invitations_email").on(table.email),
     index("idx_household_invitations_status").on(table.status),
     index("idx_household_invitations_expires_at").on(table.expiresAt),
     check(
       "household_invitations_role_check",
-      sql`${table.role} in ('member', 'admin')`,
+      sql`${table.role} in ('member', 'owner')`,
     ),
     check(
       "household_invitations_status_check",
