@@ -213,7 +213,6 @@ export function App() {
             household.slug,
             household.role === "owner" ? "/providers" : "/inbox",
           );
-        case "inbox":
         default:
           return buildHouseholdPath(household.slug, "/inbox");
       }

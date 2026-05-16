@@ -1,8 +1,8 @@
 import {
   Add,
-  ExpandMore,
   Brightness4,
   Brightness7,
+  ExpandMore,
   HubOutlined,
   Inbox as InboxIcon,
   Logout as LogoutIcon,
@@ -13,8 +13,8 @@ import {
 } from "@mui/icons-material";
 import {
   AppBar,
-  ButtonBase,
   Box,
+  ButtonBase,
   Divider,
   Drawer,
   IconButton,
@@ -33,8 +33,8 @@ import {
 import type React from "react";
 import { useContext, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import type { HouseholdSummary, SessionData } from "../types";
 import { ColorModeContext } from "../theme";
+import type { HouseholdSummary, SessionData } from "../types";
 import { buildHouseholdPath, getDisplayName } from "../utils";
 
 const DRAWER_WIDTH = 280;
@@ -78,7 +78,8 @@ export function Layout({
   const colorMode = useContext(ColorModeContext);
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [householdMenuAnchor, setHouseholdMenuAnchor] = useState<null | HTMLElement>(null);
+  const [householdMenuAnchor, setHouseholdMenuAnchor] =
+    useState<null | HTMLElement>(null);
 
   const activeHousehold =
     households.find((household) => household.slug === householdSlug) ?? null;
@@ -95,9 +96,7 @@ export function Layout({
     }
   };
 
-  const handleOpenHouseholdMenu = (
-    event: React.MouseEvent<HTMLElement>,
-  ) => {
+  const handleOpenHouseholdMenu = (event: React.MouseEvent<HTMLElement>) => {
     setHouseholdMenuAnchor(event.currentTarget);
   };
 
