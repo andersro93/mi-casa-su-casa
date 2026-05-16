@@ -17,6 +17,14 @@ export type HouseholdSummary = {
   role: HouseholdMembershipRole;
 };
 
+export type HouseholdSettings = {
+  id: string;
+  slug: string;
+  displayName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export async function listHouseholdsForUser(
   db: D1Database,
   userId: string,
@@ -92,6 +100,25 @@ export async function getHouseholdById(db: D1Database, id: string) {
   return rows[0] ?? null;
 }
 
+export async function getHouseholdSettings(
+  db: D1Database,
+  householdId: string,
+): Promise<HouseholdSettings | null> {
+  const rows = await dbForDatabase(db)
+    .select({
+      id: households.id,
+      slug: households.slug,
+      displayName: households.displayName,
+      createdAt: households.createdAt,
+      updatedAt: households.updatedAt,
+    })
+    .from(households)
+    .where(eq(households.id, householdId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 export async function createHousehold(
   db: D1Database,
   input: {
@@ -122,6 +149,22 @@ export async function createHousehold(
   });
 
   return getHouseholdBySlug(db, input.slug);
+}
+
+export async function updateHouseholdDisplayName(
+  db: D1Database,
+  householdId: string,
+  displayName: string,
+) {
+  await dbForDatabase(db)
+    .update(households)
+    .set({
+      displayName,
+      updatedAt: sql`CURRENT_TIMESTAMP`,
+    })
+    .where(eq(households.id, householdId));
+
+  return getHouseholdSettings(db, householdId);
 }
 
 export async function addUserToHousehold(
