@@ -193,6 +193,33 @@ export function App() {
     : null;
   const defaultHousehold = households[0] ?? null;
   const isOwner = currentHousehold?.role === "owner";
+  const getHouseholdDestination = useCallback(
+    (household: HouseholdSummary) => {
+      switch (activeView) {
+        case "settings":
+          return buildHouseholdPath(household.slug, "/settings");
+        case "quarantine":
+          return buildHouseholdPath(
+            household.slug,
+            household.role === "owner" ? "/quarantine" : "/inbox",
+          );
+        case "members":
+          return buildHouseholdPath(
+            household.slug,
+            household.role === "owner" ? "/members" : "/inbox",
+          );
+        case "providers":
+          return buildHouseholdPath(
+            household.slug,
+            household.role === "owner" ? "/providers" : "/inbox",
+          );
+        case "inbox":
+        default:
+          return buildHouseholdPath(household.slug, "/inbox");
+      }
+    },
+    [activeView],
+  );
   const householdApiPath = useCallback(
     (path: string) => {
       if (!currentHousehold) {
@@ -1524,6 +1551,19 @@ export function App() {
     }
   }
 
+  function handleSelectHousehold(household: HouseholdSummary) {
+    if (household.slug === currentHousehold?.slug) {
+      return;
+    }
+
+    navigate(getHouseholdDestination(household));
+  }
+
+  function handleCreateHousehold() {
+    setViewError(null);
+    setStatusMessage("Household creation walkthrough coming soon.");
+  }
+
   if (
     isSessionPending ||
     isCheckingSetup ||
@@ -1619,6 +1659,10 @@ export function App() {
       isOwner={isOwner}
       householdSlug={currentHousehold.slug}
       householdName={currentHousehold.displayName}
+      householdRole={currentHousehold.role}
+      households={households}
+      onSelectHousehold={handleSelectHousehold}
+      onCreateHousehold={handleCreateHousehold}
       onLogout={handleLogout}
     >
       <Routes>
