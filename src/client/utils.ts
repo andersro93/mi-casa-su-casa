@@ -95,3 +95,34 @@ export function getDisplayName(
 
   return session?.user?.email ?? "family member";
 }
+
+export function getUserInitials(
+  session: SessionData | null | undefined,
+): string {
+  const name = session?.user?.name?.trim();
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+
+    return `${parts[0][0] ?? ""}${parts.at(-1)?.[0] ?? ""}`.toUpperCase();
+  }
+
+  const email = session?.user?.email?.trim();
+  if (!email) {
+    return "FM";
+  }
+
+  const localPart = email.split("@")[0] ?? email;
+  const tokens = localPart.split(/[^A-Za-z0-9]+/).filter(Boolean);
+
+  if (tokens.length >= 2) {
+    return `${tokens[0][0] ?? ""}${tokens.at(-1)?.[0] ?? ""}`.toUpperCase();
+  }
+
+  const fallback = localPart.replace(/[^A-Za-z0-9]/g, "").slice(0, 2);
+
+  return (fallback || "FM").toUpperCase();
+}
