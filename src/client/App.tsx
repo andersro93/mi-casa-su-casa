@@ -108,19 +108,21 @@ export function App() {
   const location = useLocation();
   const routeSegments = location.pathname.split("/").filter(Boolean);
   const routeSlug =
-    routeSegments[0] && !["login", "setup", "invite"].includes(routeSegments[0])
+    routeSegments[0] &&
+    !["login", "setup", "invite", "settings"].includes(routeSegments[0])
       ? routeSegments[0]
       : null;
 
-  const activeView: ViewType = location.pathname.includes("/settings")
-    ? "settings"
-    : location.pathname.includes("/quarantine")
-      ? "quarantine"
-      : location.pathname.includes("/members")
-        ? "members"
-        : location.pathname.includes("/providers")
-          ? "providers"
-          : "inbox";
+  const activeView: ViewType =
+    location.pathname === "/settings"
+      ? "settings"
+      : location.pathname.includes("/quarantine")
+        ? "quarantine"
+        : location.pathname.includes("/members")
+          ? "members"
+          : location.pathname.includes("/providers")
+            ? "providers"
+            : "inbox";
   const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [isLoadingHouseholds, setIsLoadingHouseholds] = useState(false);
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
@@ -193,11 +195,13 @@ export function App() {
     : null;
   const defaultHousehold = households[0] ?? null;
   const isOwner = currentHousehold?.role === "owner";
+  const layoutHousehold = currentHousehold ?? defaultHousehold;
+  const layoutIsOwner = layoutHousehold?.role === "owner";
   const getHouseholdDestination = useCallback(
     (household: HouseholdSummary) => {
       switch (activeView) {
         case "settings":
-          return buildHouseholdPath(household.slug, "/settings");
+          return buildHouseholdPath(household.slug, "/inbox");
         case "quarantine":
           return buildHouseholdPath(
             household.slug,
@@ -301,6 +305,10 @@ export function App() {
       return;
     }
 
+    if (activeView === "settings") {
+      return;
+    }
+
     if (!routeSlug || !currentHousehold) {
       navigate(
         buildHouseholdPath(
@@ -320,6 +328,7 @@ export function App() {
     isLoadingHouseholds,
     navigate,
     routeSlug,
+    activeView,
   ]);
 
   useEffect(() => {
@@ -1562,6 +1571,7 @@ export function App() {
     setViewError(null);
     setStatusMessage("Household creation walkthrough coming soon.");
   }
+
   if (
     isSessionPending ||
     isCheckingSetup ||
@@ -1647,18 +1657,18 @@ export function App() {
     );
   }
 
-  if (!currentHousehold) {
+  if (!layoutHousehold) {
     return null;
   }
 
   return (
     <Layout
       session={session}
+      isOwner={layoutIsOwner}
+      householdSlug={layoutHousehold.slug}
+      householdName={layoutHousehold.displayName}
+      householdRole={layoutHousehold.role}
       households={households}
-      isOwner={isOwner}
-      householdSlug={currentHousehold.slug}
-      householdName={currentHousehold.displayName}
-      householdRole={currentHousehold.role}
       onSelectHousehold={handleSelectHousehold}
       onCreateHousehold={handleCreateHousehold}
       onLogout={handleLogout}
@@ -1668,7 +1678,7 @@ export function App() {
           path="/"
           element={
             <Navigate
-              to={buildHouseholdPath(currentHousehold.slug, "/inbox")}
+              to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
               replace
             />
           }
@@ -1690,7 +1700,7 @@ export function App() {
           }
         />
         <Route
-          path="/:slug/settings"
+          path="/settings"
           element={
             <SettingsView
               profile={profile}
@@ -1730,7 +1740,7 @@ export function App() {
               />
             ) : (
               <Navigate
-                to={buildHouseholdPath(currentHousehold.slug, "/inbox")}
+                to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
                 replace
               />
             )
@@ -1769,7 +1779,7 @@ export function App() {
               />
             ) : (
               <Navigate
-                to={buildHouseholdPath(currentHousehold.slug, "/inbox")}
+                to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
                 replace
               />
             )
@@ -1849,7 +1859,7 @@ export function App() {
               />
             ) : (
               <Navigate
-                to={buildHouseholdPath(currentHousehold.slug, "/inbox")}
+                to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
                 replace
               />
             )
@@ -1859,7 +1869,7 @@ export function App() {
           path="*"
           element={
             <Navigate
-              to={buildHouseholdPath(currentHousehold.slug, "/inbox")}
+              to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
               replace
             />
           }

@@ -55,7 +55,6 @@ interface LayoutProps {
 
 interface UserAccountMenuProps {
   session: SessionData | null | undefined;
-  householdSlug: string;
   mode: "light" | "dark";
   onSettingsClick: () => void;
   onToggleColorMode: () => void;
@@ -64,7 +63,6 @@ interface UserAccountMenuProps {
 
 export function UserAccountMenuContent({
   session,
-  householdSlug,
   mode,
   onSettingsClick,
   onToggleColorMode,
@@ -83,7 +81,7 @@ export function UserAccountMenuContent({
       <Divider />
       <MenuItem
         component={Link}
-        to={buildHouseholdPath(householdSlug, "/settings")}
+        to="/settings"
         onClick={onSettingsClick}
         sx={{ py: 1.25 }}
       >
@@ -173,15 +171,16 @@ export function Layout({
   onLogout,
 }: LayoutProps) {
   const location = useLocation();
-  const activeView = location.pathname.includes("/settings")
-    ? "settings"
-    : location.pathname.includes("/quarantine")
-      ? "quarantine"
-      : location.pathname.includes("/members")
-        ? "members"
-        : location.pathname.includes("/providers")
-          ? "providers"
-          : "inbox";
+  const activeView =
+    location.pathname === "/settings"
+      ? "settings"
+      : location.pathname.includes("/quarantine")
+        ? "quarantine"
+        : location.pathname.includes("/members")
+          ? "members"
+          : location.pathname.includes("/providers")
+            ? "providers"
+            : "inbox";
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
@@ -516,7 +515,6 @@ export function Layout({
           </IconButton>
           <UserAccountMenu
             session={session}
-            householdSlug={householdSlug}
             anchorEl={userMenuAnchor}
             open={isUserMenuOpen}
             mode={theme.palette.mode}

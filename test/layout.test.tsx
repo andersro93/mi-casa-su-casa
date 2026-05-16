@@ -68,7 +68,6 @@ describe("UserAccountMenuContent", () => {
                   email: "alex.member@example.com",
                 },
               }}
-              householdSlug="home"
               mode="dark"
               onSettingsClick={vi.fn()}
               onToggleColorMode={vi.fn()}
@@ -82,6 +81,7 @@ describe("UserAccountMenuContent", () => {
     expect(html).toContain("Alex Member");
     expect(html).toContain("alex.member@example.com");
     expect(html).toContain("Settings");
+    expect(html).toContain('href="/settings"');
     expect(html).toContain("Light mode");
     expect(html).toContain("Sign out");
   });
