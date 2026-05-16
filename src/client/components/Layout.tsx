@@ -288,17 +288,27 @@ export function Layout({
 
         {isOwner && (
           <>
+            <ListItem sx={{ px: 1, pt: 1, pb: 0.5 }}>
+              <Typography
+                variant="overline"
+                color="text.secondary"
+                sx={{ fontWeight: 700, letterSpacing: 1 }}
+              >
+                Settings
+              </Typography>
+            </ListItem>
+
             <ListItem disablePadding sx={{ mb: 1 }}>
               <ListItemButton
-                selected={activeView === "settings"}
+                selected={activeView === "members"}
                 component={Link}
-                to={buildHouseholdPath(householdSlug, "/settings")}
+                to={buildHouseholdPath(householdSlug, "/members")}
                 onClick={handleNavClick}
                 sx={{ borderRadius: 2 }}
               >
                 <ListItemIcon>
-                  <ManageAccountsIcon
-                    color={activeView === "settings" ? "primary" : "inherit"}
+                  <PeopleIcon
+                    color={activeView === "members" ? "primary" : "inherit"}
                   />
                 </ListItemIcon>
                 <ListItemText
@@ -306,10 +316,10 @@ export function Layout({
                     <Typography
                       sx={{
                         fontWeight:
-                          activeView === "settings" ? "bold" : "normal",
+                          activeView === "members" ? "bold" : "normal",
                       }}
                     >
-                      Household settings
+                      Members
                     </Typography>
                   }
                 />
@@ -346,34 +356,6 @@ export function Layout({
 
             <ListItem disablePadding sx={{ mb: 1 }}>
               <ListItemButton
-                selected={activeView === "members"}
-                component={Link}
-                to={buildHouseholdPath(householdSlug, "/members")}
-                onClick={handleNavClick}
-                sx={{ borderRadius: 2 }}
-              >
-                <ListItemIcon>
-                  <PeopleIcon
-                    color={activeView === "members" ? "primary" : "inherit"}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={
-                    <Typography
-                      sx={{
-                        fontWeight:
-                          activeView === "members" ? "bold" : "normal",
-                      }}
-                    >
-                      Members
-                    </Typography>
-                  }
-                />
-              </ListItemButton>
-            </ListItem>
-
-            <ListItem disablePadding>
-              <ListItemButton
                 selected={activeView === "providers"}
                 component={Link}
                 to={buildHouseholdPath(householdSlug, "/providers")}
@@ -394,6 +376,34 @@ export function Layout({
                       }}
                     >
                       Providers &amp; rules
+                    </Typography>
+                  }
+                />
+              </ListItemButton>
+            </ListItem>
+
+            <ListItem disablePadding>
+              <ListItemButton
+                selected={activeView === "settings"}
+                component={Link}
+                to={buildHouseholdPath(householdSlug, "/settings")}
+                onClick={handleNavClick}
+                sx={{ borderRadius: 2 }}
+              >
+                <ListItemIcon>
+                  <ManageAccountsIcon
+                    color={activeView === "settings" ? "primary" : "inherit"}
+                  />
+                </ListItemIcon>
+                <ListItemText
+                  primary={
+                    <Typography
+                      sx={{
+                        fontWeight:
+                          activeView === "settings" ? "bold" : "normal",
+                      }}
+                    >
+                      Household settings
                     </Typography>
                   }
                 />
