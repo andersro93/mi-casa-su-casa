@@ -7,6 +7,15 @@ export function buildHouseholdPath(slug: string, path: string = "") {
 
 export function buildHouseholdApiPath(slug: string, path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (normalizedPath.startsWith("/inbox/") || normalizedPath === "/inbox") {
+    return `/api/inbox/${slug}${normalizedPath.slice("/inbox".length)}`;
+  }
+
+  if (normalizedPath.startsWith("/admin/") || normalizedPath === "/admin") {
+    return `/api/admin/${slug}${normalizedPath.slice("/admin".length)}`;
+  }
+
   return `/api${buildHouseholdPath(slug, normalizedPath)}`;
 }
 
@@ -45,6 +54,14 @@ export async function fetchJson<T>(
 
     throw new Error(
       payload?.error ?? `Request failed with status ${response.status}`,
+    );
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    throw new Error(
+      `Expected JSON response but received ${contentType || "unknown content type"}: ${text.slice(0, 120)}`,
     );
   }
 
