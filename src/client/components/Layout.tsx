@@ -1,6 +1,8 @@
 import {
+  Add,
   Brightness4,
   Brightness7,
+  ExpandMore,
   HubOutlined,
   Inbox as InboxIcon,
   Logout as LogoutIcon,
@@ -12,6 +14,7 @@ import {
 import {
   AppBar,
   Box,
+  ButtonBase,
   Divider,
   Drawer,
   IconButton,
@@ -20,6 +23,8 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
   Toolbar,
   Typography,
   useMediaQuery,
@@ -29,7 +34,7 @@ import type React from "react";
 import { useContext, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ColorModeContext } from "../theme";
-import type { SessionData } from "../types";
+import type { HouseholdSummary, SessionData } from "../types";
 import { buildHouseholdPath, getDisplayName } from "../utils";
 
 const DRAWER_WIDTH = 280;
@@ -37,18 +42,26 @@ const DRAWER_WIDTH = 280;
 interface LayoutProps {
   children: React.ReactNode;
   session: SessionData | null | undefined;
+  households: HouseholdSummary[];
   isOwner: boolean;
   householdSlug: string;
   householdName: string;
+  householdRole: HouseholdSummary["role"];
+  onSelectHousehold: (household: HouseholdSummary) => void;
+  onCreateHousehold: () => void;
   onLogout: () => void;
 }
 
 export function Layout({
   children,
   session,
+  households,
   isOwner,
   householdSlug,
   householdName,
+  householdRole,
+  onSelectHousehold,
+  onCreateHousehold,
   onLogout,
 }: LayoutProps) {
   const location = useLocation();
@@ -65,6 +78,13 @@ export function Layout({
   const colorMode = useContext(ColorModeContext);
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [householdMenuAnchor, setHouseholdMenuAnchor] =
+    useState<null | HTMLElement>(null);
+
+  const activeHousehold =
+    households.find((household) => household.slug === householdSlug) ?? null;
+  const roleLabel = householdRole === "owner" ? "Owner" : "Member";
+  const isHouseholdMenuOpen = Boolean(householdMenuAnchor);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -76,8 +96,28 @@ export function Layout({
     }
   };
 
+  const handleOpenHouseholdMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setHouseholdMenuAnchor(event.currentTarget);
+  };
+
+  const handleCloseHouseholdMenu = () => {
+    setHouseholdMenuAnchor(null);
+  };
+
+  const handleHouseholdSelect = (household: HouseholdSummary) => {
+    handleCloseHouseholdMenu();
+    handleNavClick();
+    onSelectHousehold(household);
+  };
+
+  const handleCreateHouseholdClick = () => {
+    handleCloseHouseholdMenu();
+    handleNavClick();
+    onCreateHousehold();
+  };
+
   const drawerContent = (
-    <>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <Toolbar>
         <Typography
           variant="h6"
@@ -88,15 +128,6 @@ export function Layout({
           Mi Casa Su Casa
         </Typography>
       </Toolbar>
-      <Divider />
-      <Box sx={{ p: 2 }}>
-        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          {householdName} · {isOwner ? "Owner" : "Family member"}
-        </Typography>
-        <Typography variant="body2" noWrap title={session?.user?.email ?? ""}>
-          {session?.user?.email}
-        </Typography>
-      </Box>
       <Divider />
       <List sx={{ px: 2, pt: 2 }}>
         <ListItem disablePadding sx={{ mb: 1 }}>
@@ -241,7 +272,99 @@ export function Layout({
           </>
         )}
       </List>
-    </>
+      <Box sx={{ mt: "auto", px: 2, pb: 2, pt: 2 }}>
+        <Divider sx={{ mb: 2 }} />
+        <ButtonBase
+          onClick={handleOpenHouseholdMenu}
+          sx={{
+            width: "100%",
+            borderRadius: 3,
+            border: 1,
+            borderColor: "divider",
+            px: 2,
+            py: 1.5,
+            textAlign: "left",
+            justifyContent: "space-between",
+            alignItems: "center",
+            bgcolor: "background.paper",
+          }}
+        >
+          <Box sx={{ minWidth: 0, pr: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+              {getDisplayName(session)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {householdName}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {roleLabel}
+            </Typography>
+          </Box>
+          <ExpandMore color="action" />
+        </ButtonBase>
+        <Menu
+          anchorEl={householdMenuAnchor}
+          open={isHouseholdMenuOpen}
+          onClose={handleCloseHouseholdMenu}
+          anchorOrigin={{ vertical: "top", horizontal: "right" }}
+          transformOrigin={{ vertical: "bottom", horizontal: "right" }}
+          slotProps={{
+            paper: {
+              sx: {
+                width: 320,
+                maxWidth: "calc(100vw - 32px)",
+                borderRadius: 3,
+              },
+            },
+          }}
+        >
+          <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Switch household
+            </Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {session?.user?.email ?? ""}
+            </Typography>
+          </Box>
+          {households.map((household) => {
+            const selected = household.slug === activeHousehold?.slug;
+            return (
+              <MenuItem
+                key={household.id}
+                selected={selected}
+                onClick={() => handleHouseholdSelect(household)}
+                sx={{
+                  alignItems: "flex-start",
+                  py: 1.25,
+                }}
+              >
+                <ListItemText
+                  primary={
+                    <Typography sx={{ fontWeight: selected ? 700 : 500 }}>
+                      {household.displayName}
+                    </Typography>
+                  }
+                  secondary={household.role === "owner" ? "Owner" : "Member"}
+                />
+              </MenuItem>
+            );
+          })}
+          <Divider />
+          <MenuItem onClick={handleCreateHouseholdClick} sx={{ py: 1.25 }}>
+            <ListItemIcon>
+              <Add fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                <Typography sx={{ fontWeight: 600 }}>
+                  Create new household
+                </Typography>
+              }
+            />
+          </MenuItem>
+        </Menu>
+      </Box>
+    </Box>
   );
 
   return (
@@ -341,11 +464,14 @@ export function Layout({
         sx={{
           flexGrow: 1,
           p: { xs: 2, sm: 3, md: 4 },
+          minWidth: 0,
           width: { lg: `calc(100% - ${DRAWER_WIDTH}px)` },
           mt: "64px", // Toolbar height
         }}
       >
-        {children}
+        <Box sx={{ width: "100%", maxWidth: 1600, mx: "auto", minWidth: 0 }}>
+          {children}
+        </Box>
       </Box>
     </Box>
   );
