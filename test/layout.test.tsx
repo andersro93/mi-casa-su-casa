@@ -46,13 +46,25 @@ describe("Layout", () => {
       </MemoryRouter>,
     );
 
+    const settingsIndex = html.indexOf("Settings");
+    const membersIndex = html.indexOf("Members");
+    const quarantineIndex = html.indexOf("Quarantine");
+    const providersIndex = html.indexOf("Providers &amp; rules");
+    const householdSettingsIndex = html.indexOf("Household settings");
+
     expect(html).toContain("Inbox");
+    expect(html).toContain("Settings");
     expect(html).toContain("Household settings");
     expect(html).toContain("Quarantine");
     expect(html).toContain("Members");
     expect(html).toContain("Providers &amp; rules");
     expect(html).not.toContain('href="/settings"');
     expect(html).toContain("AM");
+    expect(settingsIndex).toBeGreaterThan(-1);
+    expect(membersIndex).toBeGreaterThan(settingsIndex);
+    expect(quarantineIndex).toBeGreaterThan(membersIndex);
+    expect(providersIndex).toBeGreaterThan(quarantineIndex);
+    expect(householdSettingsIndex).toBeGreaterThan(providersIndex);
   });
 
   it("hides household settings from members", () => {
