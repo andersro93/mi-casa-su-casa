@@ -60,6 +60,26 @@ import {
 
 type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
 
+function getActiveView(pathname: string): ViewType {
+  if (pathname === "/settings" || pathname.endsWith("/settings")) {
+    return "settings";
+  }
+
+  if (pathname.includes("/quarantine")) {
+    return "quarantine";
+  }
+
+  if (pathname.includes("/members")) {
+    return "members";
+  }
+
+  if (pathname.includes("/providers")) {
+    return "providers";
+  }
+
+  return "inbox";
+}
+
 const INITIAL_SETTINGS_FORM_STATE: AccountSettingsFormState = {
   name: "",
   image: "",
@@ -121,16 +141,7 @@ export function App() {
       ? routeSegments[0]
       : null;
 
-  const activeView: ViewType =
-    location.pathname === "/settings" || location.pathname.endsWith("/settings")
-      ? "settings"
-      : location.pathname.includes("/quarantine")
-        ? "quarantine"
-        : location.pathname.includes("/members")
-          ? "members"
-          : location.pathname.includes("/providers")
-            ? "providers"
-            : "inbox";
+  const activeView = getActiveView(location.pathname);
   const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [isLoadingHouseholds, setIsLoadingHouseholds] = useState(false);
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
@@ -217,7 +228,7 @@ export function App() {
     (household: HouseholdSummary) => {
       switch (activeView) {
         case "settings":
-          return buildHouseholdPath(household.slug, "/inbox");
+          return buildHouseholdPath(household.slug, "/settings");
         case "quarantine":
           return buildHouseholdPath(
             household.slug,
@@ -348,7 +359,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated || location.pathname !== "/settings") {
+    if (!isAuthenticated || activeView !== "settings") {
       return;
     }
 
@@ -389,7 +400,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, location.pathname]);
+  }, [activeView, isAuthenticated]);
 
   useEffect(() => {
     const isHouseholdSettingsRoute = Boolean(

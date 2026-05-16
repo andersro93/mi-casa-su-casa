@@ -2,10 +2,7 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   CircularProgress,
-  Container,
   TextField,
   Typography,
 } from "@mui/material";
@@ -13,6 +10,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { InvitationAcceptanceState, InvitationSummary } from "../types";
 import { fetchJson } from "../utils";
+import { PublicEntryShell } from "./PublicEntryShell";
 
 interface InvitePageProps {
   token: string;
@@ -121,34 +119,24 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
 
   if (error && !invitation) {
     return (
-      <Container component="main" maxWidth="sm">
-        <Box
-          sx={{
-            minHeight: "100vh",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            py: 4,
+      <PublicEntryShell
+        eyebrow="Mi Casa Su Casa"
+        title="This invitation is not available."
+        description="The invite may have expired, already been accepted, or the link may be invalid."
+      >
+        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+          {error}
+        </Alert>
+        <Button
+          variant="outlined"
+          fullWidth
+          onClick={() => {
+            navigate("/login", { replace: true });
           }}
         >
-          <Card elevation={3} sx={{ borderRadius: 3 }}>
-            <CardContent sx={{ p: 4 }}>
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {error}
-              </Alert>
-              <Button
-                variant="outlined"
-                fullWidth
-                onClick={() => {
-                  navigate("/login", { replace: true });
-                }}
-              >
-                Return to Login
-              </Button>
-            </CardContent>
-          </Card>
-        </Box>
-      </Container>
+          Return to Login
+        </Button>
+      </PublicEntryShell>
     );
   }
 
@@ -157,109 +145,81 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
   }
 
   return (
-    <Container component="main" maxWidth="sm">
-      <Box
-        sx={{
-          minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          py: 4,
-        }}
-      >
-        <Card elevation={3} sx={{ borderRadius: 3 }}>
-          <CardContent sx={{ p: 4 }}>
-            <Typography
-              variant="overline"
-              color="text.secondary"
-              sx={{ fontWeight: "bold", letterSpacing: 1 }}
-            >
-              Mi Casa Su Casa
-            </Typography>
-            <Typography
-              variant="h4"
-              component="h1"
-              gutterBottom
-              sx={{ mt: 1, fontWeight: "bold" }}
-            >
-              Accept Invitation
-            </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-              You have been invited to join as a{" "}
-              <strong>{invitation.role}</strong>. Please set up your account
-              details to continue.
-            </Typography>
+    <PublicEntryShell
+      eyebrow="Mi Casa Su Casa"
+      title="Accept invitation"
+      description={
+        <>
+          You have been invited to join as a <strong>{invitation.role}</strong>.
+          Set up your account details to continue.
+        </>
+      }
+    >
+      <Box component="form" onSubmit={handleAccept} noValidate>
+        <TextField
+          margin="normal"
+          required
+          fullWidth
+          label="Email Address"
+          value={invitation.email}
+          disabled
+        />
+        <TextField
+          margin="normal"
+          required
+          fullWidth
+          id="name"
+          label="Your Name"
+          name="name"
+          autoComplete="name"
+          autoFocus
+          value={formState.name}
+          onChange={(e) =>
+            setFormState((current) => ({
+              ...current,
+              name: e.target.value,
+            }))
+          }
+        />
+        <TextField
+          margin="normal"
+          required
+          fullWidth
+          name="password"
+          label="Password"
+          type="password"
+          id="password"
+          autoComplete="new-password"
+          helperText="Must be at least 12 characters."
+          value={formState.password}
+          onChange={(e) =>
+            setFormState((current) => ({
+              ...current,
+              password: e.target.value,
+            }))
+          }
+          sx={{ mb: 3 }}
+        />
 
-            <Box component="form" onSubmit={handleAccept} noValidate>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                label="Email Address"
-                value={invitation.email}
-                disabled
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                id="name"
-                label="Your Name"
-                name="name"
-                autoComplete="name"
-                autoFocus
-                value={formState.name}
-                onChange={(e) =>
-                  setFormState((current) => ({
-                    ...current,
-                    name: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="password"
-                label="Password"
-                type="password"
-                id="password"
-                autoComplete="new-password"
-                helperText="Must be at least 12 characters."
-                value={formState.password}
-                onChange={(e) =>
-                  setFormState((current) => ({
-                    ...current,
-                    password: e.target.value,
-                  }))
-                }
-                sx={{ mb: 3 }}
-              />
+        {error && (
+          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+            {error}
+          </Alert>
+        )}
 
-              {error && (
-                <Alert severity="error" sx={{ mb: 3 }}>
-                  {error}
-                </Alert>
-              )}
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                size="large"
-                disabled={
-                  isAccepting ||
-                  !formState.name ||
-                  formState.password.length < 12
-                }
-                sx={{ py: 1.5 }}
-              >
-                {isAccepting ? "Accepting..." : "Accept Invitation"}
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          size="large"
+          disabled={
+            isAccepting || !formState.name || formState.password.length < 12
+          }
+          sx={{ py: 1.5 }}
+        >
+          {isAccepting ? "Accepting…" : "Accept Invitation"}
+        </Button>
       </Box>
-    </Container>
+    </PublicEntryShell>
   );
 }

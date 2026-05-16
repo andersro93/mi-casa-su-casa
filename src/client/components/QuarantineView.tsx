@@ -127,12 +127,12 @@ export function QuarantineView({
     <Box
       sx={{
         display: "flex",
-        flexDirection: { xs: "column", md: "row" },
+        flexDirection: { xs: "column", lg: "row" },
         gap: 3,
         height: "100%",
       }}
     >
-      <Box sx={{ width: { xs: "100%", md: 360 }, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: "100%", lg: 360 }, flexShrink: 0, minWidth: 0 }}>
         <Typography
           variant="overline"
           color="text.secondary"
@@ -178,17 +178,21 @@ export function QuarantineView({
                             sx={{
                               display: "flex",
                               justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              gap: 1,
                               mb: 0.5,
                             }}
                           >
                             <Typography
                               variant="subtitle2"
                               sx={{
+                                flex: 1,
+                                minWidth: 0,
                                 fontWeight: isSelected ? "bold" : "medium",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
-                                pr: 1,
+                                pr: 0.5,
                               }}
                             >
                               {message.subject ?? "Untitled message"}
@@ -276,9 +280,11 @@ export function QuarantineView({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "flex-start",
+                flexDirection: { xs: "column", sm: "row" },
+                gap: 1.5,
               }}
             >
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="h5" sx={{ fontWeight: "bold", mb: 0.5 }}>
                   {selectedQuarantineMessage.subject ?? "Untitled message"}
                 </Typography>
@@ -315,6 +321,7 @@ export function QuarantineView({
                 <Box
                   sx={{
                     display: "inline-flex",
+                    flexDirection: { xs: "column", sm: "row" },
                     alignItems: "center",
                     gap: 2,
                     justifyContent: "center",
@@ -322,7 +329,12 @@ export function QuarantineView({
                 >
                   <Typography
                     variant="h3"
-                    sx={{ fontWeight: "bold", letterSpacing: 2 }}
+                    sx={{
+                      fontWeight: "bold",
+                      letterSpacing: { xs: 1, sm: 2 },
+                      fontSize: { xs: "2rem", sm: undefined },
+                      wordBreak: "break-word",
+                    }}
                   >
                     {selectedQuarantineMessage.extracted_code ??
                       "No code detected"}
@@ -388,7 +400,7 @@ export function QuarantineView({
                 alignItems: { xs: "stretch", sm: "flex-end" },
               }}
             >
-              <FormControl sx={{ minWidth: 200, flexGrow: 1 }}>
+              <FormControl sx={{ minWidth: { xs: 0, sm: 200 }, flexGrow: 1 }}>
                 <InputLabel id="release-provider-label">
                   Release to provider
                 </InputLabel>
@@ -409,14 +421,18 @@ export function QuarantineView({
                 </Select>
               </FormControl>
 
-              <Stack direction="row" spacing={2}>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={2}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
+              >
                 <Button
                   variant="contained"
                   color="primary"
                   startIcon={<MoveToInboxOutlined />}
                   disabled={isReviewingQuarantine || !releaseProviderKey}
                   onClick={() => setReviewAction("release")}
-                  sx={{ px: 4, py: 1.5 }}
+                  sx={{ px: 4, py: 1.5, width: { xs: "100%", sm: "auto" } }}
                 >
                   Release to inbox
                 </Button>
@@ -425,7 +441,7 @@ export function QuarantineView({
                   startIcon={<DeleteOutlined />}
                   disabled={isReviewingQuarantine}
                   onClick={() => setReviewAction("dismiss")}
-                  sx={{ px: 4, py: 1.5 }}
+                  sx={{ px: 4, py: 1.5, width: { xs: "100%", sm: "auto" } }}
                 >
                   Dismiss
                 </Button>

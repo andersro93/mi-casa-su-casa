@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  isSettingsPath,
   Layout,
   UserAccountMenuContent,
 } from "../src/client/components/Layout";
@@ -58,13 +59,55 @@ describe("Layout", () => {
     expect(html).toContain("Quarantine");
     expect(html).toContain("Members");
     expect(html).toContain("Providers &amp; rules");
-    expect(html).not.toContain('href="/settings"');
+    expect(html).toContain("Home");
+    expect(html).toContain("Owner");
     expect(html).toContain("AM");
     expect(settingsIndex).toBeGreaterThan(-1);
     expect(membersIndex).toBeGreaterThan(settingsIndex);
     expect(quarantineIndex).toBeGreaterThan(membersIndex);
     expect(providersIndex).toBeGreaterThan(quarantineIndex);
     expect(householdSettingsIndex).toBeGreaterThan(providersIndex);
+  });
+
+  it("treats household settings paths as settings views", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/home/settings"]}>
+        <ColorModeContext.Provider value={{ toggleColorMode: vi.fn() }}>
+          <ThemeProvider theme={getTheme("light")}>
+            <CssBaseline />
+            <Layout
+              session={{
+                user: {
+                  email: "alex.member@example.com",
+                },
+              }}
+              households={[
+                {
+                  id: "household-1",
+                  slug: "home",
+                  displayName: "Home",
+                  role: "owner",
+                },
+              ]}
+              isOwner={true}
+              householdSlug="home"
+              householdName="Home"
+              householdRole="owner"
+              onSelectHousehold={vi.fn()}
+              onCreateHousehold={vi.fn()}
+              onLogout={vi.fn()}
+            >
+              <div>Settings content</div>
+            </Layout>
+          </ThemeProvider>
+        </ColorModeContext.Provider>
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('href="/home/inbox"');
+    expect(isSettingsPath("/home/settings")).toBe(true);
+    expect(isSettingsPath("/settings")).toBe(true);
+    expect(isSettingsPath("/home/inbox")).toBe(false);
   });
 
   it("hides household settings from members", () => {
@@ -120,6 +163,7 @@ describe("UserAccountMenuContent", () => {
                 },
               }}
               mode="dark"
+              settingsPath="/home/settings"
               onSettingsClick={vi.fn()}
               onToggleColorMode={vi.fn()}
               onLogout={vi.fn()}
@@ -132,7 +176,7 @@ describe("UserAccountMenuContent", () => {
     expect(html).toContain("Alex Member");
     expect(html).toContain("alex.member@example.com");
     expect(html).toContain("Settings");
-    expect(html).toContain('href="/settings"');
+    expect(html).toContain('href="/home/settings"');
     expect(html).toContain("Light mode");
     expect(html).toContain("Sign out");
   });

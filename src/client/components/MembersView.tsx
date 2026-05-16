@@ -207,7 +207,9 @@ export function MembersView({
           }
           title="Household member actions"
           subheader="Open a focused flow when you need to add or invite someone"
-          titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+          slotProps={{
+            title: { variant: "h6", fontWeight: "bold" },
+          }}
         />
         <Divider />
         <CardContent>
@@ -461,7 +463,9 @@ export function MembersView({
           }
           title="Pending and recent invitations"
           subheader="Track invitation status and resend or cancel pending links"
-          titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+          slotProps={{
+            title: { variant: "h6", fontWeight: "bold" },
+          }}
         />
         <Divider />
         <CardContent>
@@ -571,26 +575,166 @@ export function MembersView({
       <Box
         sx={{
           display: "flex",
-          flexDirection: { xs: "column", md: "row" },
+          flexDirection: { xs: "column", lg: "row" },
           gap: 3,
           flexGrow: 1,
           minHeight: 0,
           alignItems: "flex-start",
         }}
       >
+        <Stack
+          spacing={2}
+          sx={{ display: { xs: "flex", md: "none" }, width: "100%" }}
+        >
+          {members.map((member) => {
+            const isSelected = member.id === selectedMemberId;
+
+            return (
+              <Card
+                key={member.id}
+                variant="outlined"
+                onClick={() => onSelectMember(member.id)}
+                sx={{
+                  width: "100%",
+                  borderRadius: 2,
+                  cursor: "pointer",
+                  borderColor: isSelected ? "primary.main" : "divider",
+                  boxShadow: isSelected ? 3 : undefined,
+                }}
+              >
+                <CardContent sx={{ p: 2.5 }}>
+                  <Stack spacing={2}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: 2,
+                      }}
+                    >
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 2 }}
+                      >
+                        <Badge
+                          overlap="circular"
+                          anchorOrigin={{
+                            vertical: "bottom",
+                            horizontal: "right",
+                          }}
+                          badgeContent={
+                            member.role === "admin" ? (
+                              <Tooltip title="Household Owner" placement="top">
+                                <AdminPanelSettingsOutlined
+                                  sx={{
+                                    fontSize: 16,
+                                    color: "primary.main",
+                                    bgcolor: "background.paper",
+                                    borderRadius: "50%",
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : null
+                          }
+                        >
+                          <Avatar {...stringAvatar(member.name)} />
+                        </Badge>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            variant="subtitle1"
+                            sx={{ fontWeight: "bold" }}
+                          >
+                            {member.name}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ wordBreak: "break-word" }}
+                          >
+                            {member.email}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <ChevronRightOutlined
+                        color={isSelected ? "primary" : "inherit"}
+                      />
+                    </Box>
+
+                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                      <Chip
+                        label={member.role === "admin" ? "Owner" : "Member"}
+                        color={member.role === "admin" ? "primary" : "default"}
+                        size="small"
+                        sx={{ fontWeight: "bold" }}
+                      />
+                      {member.providerAccess.length === 0 ? (
+                        <Chip
+                          label="No provider access"
+                          size="small"
+                          variant="outlined"
+                        />
+                      ) : (
+                        member.providerAccess.slice(0, 2).map((access) => {
+                          return (
+                            <Chip
+                              key={access.providerKey}
+                              label={access.displayName}
+                              size="small"
+                              variant="outlined"
+                            />
+                          );
+                        })
+                      )}
+                      {member.providerAccess.length > 2 && (
+                        <Chip
+                          label={`+${member.providerAccess.length - 2} more`}
+                          size="small"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {!members.length && !isLoadingMembers && (
+            <Card variant="outlined" sx={{ borderRadius: 2 }}>
+              <CardContent sx={{ py: 6, textAlign: "center" }}>
+                <GroupOutlined
+                  sx={{ fontSize: 48, color: "text.disabled", mb: 2 }}
+                />
+                <Typography
+                  variant="subtitle1"
+                  sx={{ fontWeight: "bold" }}
+                  gutterBottom
+                >
+                  No members yet
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Create the first invited household member to get started.
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
+        </Stack>
+
         <TableContainer
           component={Card}
           variant="outlined"
           sx={{
+            display: { xs: "none", md: "flex" },
             flexGrow: 1,
             borderRadius: 2,
             minWidth: 0,
             overflowX: "auto",
-            display: "flex",
             flexDirection: "column",
           }}
         >
-          <Table sx={{ minWidth: 500 }} aria-label="members table">
+          <Table
+            sx={{ width: "100%", tableLayout: "fixed" }}
+            aria-label="members table"
+          >
             <TableHead sx={{ bgcolor: "background.default" }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: "bold", color: "text.secondary" }}>
@@ -769,7 +913,8 @@ export function MembersView({
           <Card
             variant="outlined"
             sx={{
-              width: { xs: "100%", md: 400 },
+              width: { xs: "100%", lg: 400 },
+              maxWidth: { xs: "100%", lg: 400 },
               flexShrink: 0,
               borderRadius: 2,
               display: "flex",
@@ -802,10 +947,12 @@ export function MembersView({
                   {selectedMember.email}
                 </Box>
               }
-              titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
-              subheaderTypographyProps={{
-                variant: "body2",
-                color: "text.secondary",
+              slotProps={{
+                title: { variant: "h6", fontWeight: "bold" },
+                subheader: {
+                  variant: "body2",
+                  color: "text.secondary",
+                },
               }}
               action={
                 <Tooltip title="Send email">
