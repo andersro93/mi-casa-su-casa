@@ -1563,7 +1563,6 @@ export function App() {
     setViewError(null);
     setStatusMessage("Household creation walkthrough coming soon.");
   }
-
   if (
     isSessionPending ||
     isCheckingSetup ||
@@ -1656,11 +1655,11 @@ export function App() {
   return (
     <Layout
       session={session}
+      households={households}
       isOwner={isOwner}
       householdSlug={currentHousehold.slug}
       householdName={currentHousehold.displayName}
       householdRole={currentHousehold.role}
-      households={households}
       onSelectHousehold={handleSelectHousehold}
       onCreateHousehold={handleCreateHousehold}
       onLogout={handleLogout}
