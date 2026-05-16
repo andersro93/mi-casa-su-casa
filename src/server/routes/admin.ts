@@ -8,6 +8,8 @@ import {
 import {
   assertProvidersBelongToHousehold,
   getHouseholdMembership,
+  getHouseholdSettings,
+  updateHouseholdDisplayName,
   updateHouseholdMembershipRole,
 } from "../db/repositories/households";
 import {
@@ -69,6 +71,10 @@ type InvitationPayload = {
   providerIds?: string[];
 };
 
+type HouseholdSettingsPayload = {
+  displayName?: string;
+};
+
 export const adminRoutes = new Hono<{
   Bindings: Env;
   Variables: AppVariables;
@@ -104,6 +110,70 @@ function isValidMatchType(
 
 adminRoutes.use("/:slug/*", requireHouseholdContext);
 adminRoutes.use("/:slug/*", requireOwner);
+
+adminRoutes.get("/:slug/settings", async (c) => {
+  const household = c.get("household");
+
+  if (!household) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const settings = await getHouseholdSettings(c.env.DB, household.id);
+
+  if (!settings) {
+    return c.json({ error: "Household not found" }, 404);
+  }
+
+  return c.json({
+    household: {
+      slug: settings.slug,
+      emailAddress: `${settings.slug}@DOMAIN`,
+      displayName: settings.displayName,
+      subscriptionPlan: "Free Plan",
+    },
+  });
+});
+
+adminRoutes.patch("/:slug/settings", async (c) => {
+  const household = c.get("household");
+
+  if (!household) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  let payload: HouseholdSettingsPayload;
+
+  try {
+    payload = await c.req.json<HouseholdSettingsPayload>();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const displayName = normalizeDisplayName(payload.displayName);
+
+  if (!displayName) {
+    return c.json({ error: "displayName is required" }, 400);
+  }
+
+  const settings = await updateHouseholdDisplayName(
+    c.env.DB,
+    household.id,
+    displayName,
+  );
+
+  if (!settings) {
+    return c.json({ error: "Household not found" }, 404);
+  }
+
+  return c.json({
+    household: {
+      slug: settings.slug,
+      emailAddress: `${settings.slug}@DOMAIN`,
+      displayName: settings.displayName,
+      subscriptionPlan: "Free Plan",
+    },
+  });
+});
 
 adminRoutes.get("/:slug/providers", async (c) => {
   const household = c.get("household");

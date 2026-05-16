@@ -16,6 +16,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { CreateHouseholdPage } from "./components/CreateHouseholdPage";
+import { HouseholdSettingsView } from "./components/HouseholdSettingsView";
 import { InboxView } from "./components/InboxView";
 import { InvitePage } from "./components/InvitePage";
 import { Layout } from "./components/Layout";
@@ -30,6 +31,9 @@ import type {
   AccountSession,
   AccountSettingsFormState,
   AccountSettingsResponse,
+  HouseholdSettings,
+  HouseholdSettingsFormState,
+  HouseholdSettingsResponse,
   HouseholdSummary,
   InboxMessage,
   InvitationFormState,
@@ -66,6 +70,10 @@ const INITIAL_SETTINGS_FORM_STATE: AccountSettingsFormState = {
   twoFactorCode: "",
   twoFactorBackupCode: "",
   passkeyName: "",
+};
+
+const INITIAL_HOUSEHOLD_SETTINGS_FORM_STATE: HouseholdSettingsFormState = {
+  displayName: "",
 };
 
 const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
@@ -114,7 +122,7 @@ export function App() {
       : null;
 
   const activeView: ViewType =
-    location.pathname === "/settings"
+    location.pathname === "/settings" || location.pathname.endsWith("/settings")
       ? "settings"
       : location.pathname.includes("/quarantine")
         ? "quarantine"
@@ -139,6 +147,14 @@ export function App() {
     useState<AccountSettingsFormState>(INITIAL_SETTINGS_FORM_STATE);
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [householdSettings, setHouseholdSettings] =
+    useState<HouseholdSettings | null>(null);
+  const [householdSettingsFormState, setHouseholdSettingsFormState] =
+    useState<HouseholdSettingsFormState>(INITIAL_HOUSEHOLD_SETTINGS_FORM_STATE);
+  const [isLoadingHouseholdSettings, setIsLoadingHouseholdSettings] =
+    useState(false);
+  const [isSavingHouseholdSettings, setIsSavingHouseholdSettings] =
+    useState(false);
 
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
     null,
@@ -332,7 +348,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated || activeView !== "settings") {
+    if (!isAuthenticated || location.pathname !== "/settings") {
       return;
     }
 
@@ -373,7 +389,71 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, activeView]);
+  }, [isAuthenticated, location.pathname]);
+
+  useEffect(() => {
+    const isHouseholdSettingsRoute = Boolean(
+      currentHousehold &&
+        location.pathname ===
+          buildHouseholdPath(currentHousehold.slug, "/settings"),
+    );
+
+    if (
+      !isAuthenticated ||
+      !currentHousehold ||
+      !isOwner ||
+      !isHouseholdSettingsRoute
+    ) {
+      setHouseholdSettings(null);
+      setHouseholdSettingsFormState(INITIAL_HOUSEHOLD_SETTINGS_FORM_STATE);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadHouseholdSettings = async () => {
+      setIsLoadingHouseholdSettings(true);
+
+      try {
+        const response = await fetchJson<HouseholdSettingsResponse>(
+          householdApiPath("/admin/settings"),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setHouseholdSettings(response.household);
+        setHouseholdSettingsFormState({
+          displayName: response.household.displayName,
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setViewError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load household settings",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingHouseholdSettings(false);
+        }
+      }
+    };
+
+    void loadHouseholdSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentHousehold,
+    householdApiPath,
+    isAuthenticated,
+    isOwner,
+    location.pathname,
+  ]);
 
   async function refreshSettings() {
     if (!isAuthenticated) return;
@@ -594,6 +674,59 @@ export function App() {
       return false;
     } finally {
       setIsSavingSettings(false);
+    }
+  }
+
+  async function refreshHouseholdSettings() {
+    if (!isAuthenticated || !currentHousehold || !isOwner) {
+      return;
+    }
+
+    const response = await fetchJson<HouseholdSettingsResponse>(
+      householdApiPath("/admin/settings"),
+    );
+
+    setHouseholdSettings(response.household);
+    setHouseholdSettingsFormState({
+      displayName: response.household.displayName,
+    });
+    setHouseholds((current) =>
+      current.map((household) =>
+        household.id === currentHousehold.id
+          ? { ...household, displayName: response.household.displayName }
+          : household,
+      ),
+    );
+  }
+
+  async function handleUpdateHouseholdSettings(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    setIsSavingHouseholdSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<HouseholdSettingsResponse>(
+        householdApiPath("/admin/settings"),
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            displayName: householdSettingsFormState.displayName,
+          }),
+        },
+      );
+      setStatusMessage("Household name updated.");
+      await refreshHouseholdSettings();
+    } catch (error) {
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update household settings",
+      );
+    } finally {
+      setIsSavingHouseholdSettings(false);
     }
   }
 
@@ -1721,6 +1854,32 @@ export function App() {
               onRevokeOtherSessions={handleRevokeOtherSessions}
               isSaving={isSavingSettings}
             />
+          }
+        />
+        <Route
+          path="/:slug/settings"
+          element={
+            isOwner ? (
+              <HouseholdSettingsView
+                household={householdSettings}
+                isLoading={isLoadingHouseholdSettings}
+                error={viewError}
+                formState={householdSettingsFormState}
+                onFormChange={(update) =>
+                  setHouseholdSettingsFormState((current) => ({
+                    ...current,
+                    ...update,
+                  }))
+                }
+                onSave={handleUpdateHouseholdSettings}
+                isSaving={isSavingHouseholdSettings}
+              />
+            ) : (
+              <Navigate
+                to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
+                replace
+              />
+            )
           }
         />
         <Route

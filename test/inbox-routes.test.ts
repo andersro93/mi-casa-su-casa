@@ -315,6 +315,42 @@ vi.mock("../src/server/db/repositories/households", async () => {
     },
     getHouseholdById: async (_db: D1Database, id: string) =>
       getHouseholdByIdValue(id),
+    getHouseholdSettings: async (_db: D1Database, householdId: string) => {
+      const household = getHouseholdByIdValue(householdId);
+
+      if (!household) {
+        return null;
+      }
+
+      return {
+        id: household.id,
+        slug: household.slug,
+        displayName: household.displayName,
+        createdAt: "2026-05-10T12:00:00.000Z",
+        updatedAt: "2026-05-10T12:00:00.000Z",
+      };
+    },
+    updateHouseholdDisplayName: async (
+      _db: D1Database,
+      householdId: string,
+      displayName: string,
+    ) => {
+      const household = getHouseholdByIdValue(householdId);
+
+      if (!household) {
+        return null;
+      }
+
+      household.displayName = displayName;
+
+      return {
+        id: household.id,
+        slug: household.slug,
+        displayName: household.displayName,
+        createdAt: "2026-05-10T12:00:00.000Z",
+        updatedAt: "2026-05-10T12:00:00.000Z",
+      };
+    },
     assertProvidersBelongToHousehold: async (
       _db: D1Database,
       householdId: string,
@@ -1108,6 +1144,52 @@ describe("worker routes", () => {
     });
   });
 
+  it("allows an owner to read household settings for their household", async () => {
+    sessionState.current = {
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
+    };
+
+    const response = await invokeWorker("/api/admin/home/settings");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      household: {
+        slug: "home",
+        emailAddress: "home@DOMAIN",
+        displayName: "Home",
+        subscriptionPlan: "Free Plan",
+      },
+    });
+  });
+
+  it("allows an owner to update their household display name", async () => {
+    sessionState.current = {
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
+    };
+
+    const response = await invokeWorker("/api/admin/home/settings", {
+      method: "PATCH",
+      body: JSON.stringify({ displayName: "Renamed Home" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      household: {
+        slug: "home",
+        emailAddress: "home@DOMAIN",
+        displayName: "Renamed Home",
+        subscriptionPlan: "Free Plan",
+      },
+    });
+    expect(
+      repoState.households.find(
+        (household) => household.id === "household-home",
+      ),
+    ).toMatchObject({ displayName: "Renamed Home" });
+  });
+
   it("denies admin routes to members in the same household", async () => {
     sessionState.current = {
       user: { id: "member-home", email: "member@example.com", role: "user" },
@@ -1118,6 +1200,35 @@ describe("worker routes", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+  });
+
+  it("denies household settings routes to members in the same household", async () => {
+    sessionState.current = {
+      user: { id: "member-home", email: "member@example.com", role: "user" },
+      session: { id: "session-1", userId: "member-home" },
+    };
+
+    const response = await invokeWorker("/api/admin/home/settings");
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+  });
+
+  it("rejects blank household display names", async () => {
+    sessionState.current = {
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
+    };
+
+    const response = await invokeWorker("/api/admin/home/settings", {
+      method: "PATCH",
+      body: JSON.stringify({ displayName: "   " }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "displayName is required",
+    });
   });
 
   it("denies admin routes across household boundaries even for another owner", async () => {

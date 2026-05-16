@@ -11,7 +11,7 @@ import { ColorModeContext, getTheme } from "../src/client/theme";
 import { getUserInitials } from "../src/client/utils";
 
 describe("Layout", () => {
-  it("keeps settings out of the sidebar and shows avatar initials fallback", () => {
+  it("shows owner household settings in the sidebar and keeps account settings in the menu", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/home/inbox"]}>
         <ColorModeContext.Provider value={{ toggleColorMode: vi.fn() }}>
@@ -47,11 +47,50 @@ describe("Layout", () => {
     );
 
     expect(html).toContain("Inbox");
+    expect(html).toContain("Household settings");
     expect(html).toContain("Quarantine");
     expect(html).toContain("Members");
     expect(html).toContain("Providers &amp; rules");
-    expect(html).not.toContain(">Settings<");
+    expect(html).not.toContain('href="/settings"');
     expect(html).toContain("AM");
+  });
+
+  it("hides household settings from members", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/home/inbox"]}>
+        <ColorModeContext.Provider value={{ toggleColorMode: vi.fn() }}>
+          <ThemeProvider theme={getTheme("light")}>
+            <CssBaseline />
+            <Layout
+              session={{
+                user: {
+                  email: "alex.member@example.com",
+                },
+              }}
+              households={[
+                {
+                  id: "household-1",
+                  slug: "home",
+                  displayName: "Home",
+                  role: "member",
+                },
+              ]}
+              isOwner={false}
+              householdSlug="home"
+              householdName="Home"
+              householdRole="member"
+              onSelectHousehold={vi.fn()}
+              onCreateHousehold={vi.fn()}
+              onLogout={vi.fn()}
+            >
+              <div>Inbox content</div>
+            </Layout>
+          </ThemeProvider>
+        </ColorModeContext.Provider>
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain("Household settings");
   });
 });
 

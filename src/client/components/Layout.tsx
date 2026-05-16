@@ -290,6 +290,34 @@ export function Layout({
           <>
             <ListItem disablePadding sx={{ mb: 1 }}>
               <ListItemButton
+                selected={activeView === "settings"}
+                component={Link}
+                to={buildHouseholdPath(householdSlug, "/settings")}
+                onClick={handleNavClick}
+                sx={{ borderRadius: 2 }}
+              >
+                <ListItemIcon>
+                  <ManageAccountsIcon
+                    color={activeView === "settings" ? "primary" : "inherit"}
+                  />
+                </ListItemIcon>
+                <ListItemText
+                  primary={
+                    <Typography
+                      sx={{
+                        fontWeight:
+                          activeView === "settings" ? "bold" : "normal",
+                      }}
+                    >
+                      Household settings
+                    </Typography>
+                  }
+                />
+              </ListItemButton>
+            </ListItem>
+
+            <ListItem disablePadding sx={{ mb: 1 }}>
+              <ListItemButton
                 selected={activeView === "quarantine"}
                 component={Link}
                 to={buildHouseholdPath(householdSlug, "/quarantine")}
@@ -316,7 +344,7 @@ export function Layout({
               </ListItemButton>
             </ListItem>
 
-            <ListItem disablePadding>
+            <ListItem disablePadding sx={{ mb: 1 }}>
               <ListItemButton
                 selected={activeView === "members"}
                 component={Link}
@@ -344,7 +372,7 @@ export function Layout({
               </ListItemButton>
             </ListItem>
 
-            <ListItem disablePadding sx={{ mt: 1 }}>
+            <ListItem disablePadding>
               <ListItemButton
                 selected={activeView === "providers"}
                 component={Link}

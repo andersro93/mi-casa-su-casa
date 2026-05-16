@@ -170,6 +170,21 @@ export type AccountSettingsFormState = {
   passkeyName: string;
 };
 
+export type HouseholdSettings = {
+  slug: string;
+  emailAddress: string;
+  displayName: string;
+  subscriptionPlan: string;
+};
+
+export type HouseholdSettingsResponse = {
+  household: HouseholdSettings;
+};
+
+export type HouseholdSettingsFormState = {
+  displayName: string;
+};
+
 export type InvitationAcceptanceState = {
   name: string;
   password: string;
