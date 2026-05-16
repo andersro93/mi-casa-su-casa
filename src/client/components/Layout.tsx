@@ -13,6 +13,7 @@ import {
 } from "@mui/icons-material";
 import {
   AppBar,
+  Avatar,
   Box,
   ButtonBase,
   Divider,
@@ -35,7 +36,7 @@ import { useContext, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ColorModeContext } from "../theme";
 import type { HouseholdSummary, SessionData } from "../types";
-import { buildHouseholdPath, getDisplayName } from "../utils";
+import { buildHouseholdPath, getDisplayName, getUserInitials } from "../utils";
 
 const DRAWER_WIDTH = 280;
 
@@ -50,6 +51,113 @@ interface LayoutProps {
   onSelectHousehold: (household: HouseholdSummary) => void;
   onCreateHousehold: () => void;
   onLogout: () => void;
+}
+
+interface UserAccountMenuProps {
+  session: SessionData | null | undefined;
+  householdSlug: string;
+  mode: "light" | "dark";
+  onSettingsClick: () => void;
+  onToggleColorMode: () => void;
+  onLogout: () => void;
+}
+
+export function UserAccountMenuContent({
+  session,
+  householdSlug,
+  mode,
+  onSettingsClick,
+  onToggleColorMode,
+  onLogout,
+}: UserAccountMenuProps) {
+  return (
+    <>
+      <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
+          {getDisplayName(session)}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" noWrap>
+          {session?.user?.email ?? ""}
+        </Typography>
+      </Box>
+      <Divider />
+      <MenuItem
+        component={Link}
+        to={buildHouseholdPath(householdSlug, "/settings")}
+        onClick={onSettingsClick}
+        sx={{ py: 1.25 }}
+      >
+        <ListItemIcon>
+          <ManageAccountsIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText
+          primary={<Typography sx={{ fontWeight: 600 }}>Settings</Typography>}
+        />
+      </MenuItem>
+      <MenuItem onClick={onToggleColorMode} sx={{ py: 1.25 }}>
+        <ListItemIcon>
+          {mode === "dark" ? (
+            <Brightness7 fontSize="small" />
+          ) : (
+            <Brightness4 fontSize="small" />
+          )}
+        </ListItemIcon>
+        <ListItemText
+          primary={
+            <Typography sx={{ fontWeight: 600 }}>
+              {mode === "dark" ? "Light mode" : "Dark mode"}
+            </Typography>
+          }
+        />
+      </MenuItem>
+      <Divider />
+      <MenuItem onClick={onLogout} sx={{ py: 1.25 }}>
+        <ListItemIcon>
+          <LogoutIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText
+          primary={<Typography sx={{ fontWeight: 600 }}>Sign out</Typography>}
+        />
+      </MenuItem>
+    </>
+  );
+}
+
+interface UserAccountMenuWrapperProps
+  extends Omit<UserAccountMenuProps, "onSettingsClick"> {
+  anchorEl: HTMLElement | null;
+  open: boolean;
+  onClose: () => void;
+}
+
+function UserAccountMenu({
+  anchorEl,
+  open,
+  onClose,
+  ...contentProps
+}: UserAccountMenuWrapperProps) {
+  return (
+    <Menu
+      id="user-account-menu"
+      anchorEl={anchorEl}
+      open={open}
+      onClose={onClose}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      transformOrigin={{ vertical: "top", horizontal: "right" }}
+      slotProps={{
+        paper: {
+          sx: {
+            width: 280,
+            maxWidth: "calc(100vw - 32px)",
+            borderRadius: 3,
+            mt: 1,
+          },
+        },
+      }}
+    >
+      <UserAccountMenuContent {...contentProps} onSettingsClick={onClose} />
+    </Menu>
+  );
 }
 
 export function Layout({
@@ -80,11 +188,15 @@ export function Layout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [householdMenuAnchor, setHouseholdMenuAnchor] =
     useState<null | HTMLElement>(null);
+  const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(
+    null,
+  );
 
   const activeHousehold =
     households.find((household) => household.slug === householdSlug) ?? null;
   const roleLabel = householdRole === "owner" ? "Owner" : "Member";
   const isHouseholdMenuOpen = Boolean(householdMenuAnchor);
+  const isUserMenuOpen = Boolean(userMenuAnchor);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -114,6 +226,24 @@ export function Layout({
     handleCloseHouseholdMenu();
     handleNavClick();
     onCreateHousehold();
+  };
+
+  const handleOpenUserMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setUserMenuAnchor(event.currentTarget);
+  };
+
+  const handleCloseUserMenu = () => {
+    setUserMenuAnchor(null);
+  };
+
+  const handleToggleColorMode = () => {
+    handleCloseUserMenu();
+    colorMode.toggleColorMode();
+  };
+
+  const handleLogoutClick = () => {
+    handleCloseUserMenu();
+    onLogout();
   };
 
   const drawerContent = (
@@ -151,33 +281,6 @@ export function Layout({
                   }}
                 >
                   Inbox
-                </Typography>
-              }
-            />
-          </ListItemButton>
-        </ListItem>
-
-        <ListItem disablePadding sx={{ mb: 1 }}>
-          <ListItemButton
-            selected={activeView === "settings"}
-            component={Link}
-            to={buildHouseholdPath(householdSlug, "/settings")}
-            onClick={handleNavClick}
-            sx={{ borderRadius: 2 }}
-          >
-            <ListItemIcon>
-              <ManageAccountsIcon
-                color={activeView === "settings" ? "primary" : "inherit"}
-              />
-            </ListItemIcon>
-            <ListItemText
-              primary={
-                <Typography
-                  sx={{
-                    fontWeight: activeView === "settings" ? "bold" : "normal",
-                  }}
-                >
-                  Settings
                 </Typography>
               }
             />
@@ -394,28 +497,33 @@ export function Layout({
 
           <Box sx={{ flexGrow: 1 }} />
 
-          <Typography
-            variant="body2"
-            sx={{ mr: 2, display: { xs: "none", sm: "block" } }}
-          >
-            {getDisplayName(session)}
-          </Typography>
-
           <IconButton
-            sx={{ ml: 1 }}
-            onClick={colorMode.toggleColorMode}
+            onClick={handleOpenUserMenu}
             color="inherit"
+            aria-label="Open account menu"
+            aria-controls={isUserMenuOpen ? "user-account-menu" : undefined}
+            aria-expanded={isUserMenuOpen ? "true" : undefined}
+            aria-haspopup="true"
+            sx={{ p: 0.5 }}
           >
-            {theme.palette.mode === "dark" ? <Brightness7 /> : <Brightness4 />}
+            <Avatar
+              src={session?.user?.image ?? undefined}
+              alt={getDisplayName(session)}
+              sx={{ width: 36, height: 36, bgcolor: "primary.main" }}
+            >
+              {getUserInitials(session)}
+            </Avatar>
           </IconButton>
-          <IconButton
-            sx={{ ml: 1 }}
-            onClick={onLogout}
-            color="inherit"
-            title="Sign out"
-          >
-            <LogoutIcon />
-          </IconButton>
+          <UserAccountMenu
+            session={session}
+            householdSlug={householdSlug}
+            anchorEl={userMenuAnchor}
+            open={isUserMenuOpen}
+            mode={theme.palette.mode}
+            onClose={handleCloseUserMenu}
+            onToggleColorMode={handleToggleColorMode}
+            onLogout={handleLogoutClick}
+          />
         </Toolbar>
       </AppBar>
 
