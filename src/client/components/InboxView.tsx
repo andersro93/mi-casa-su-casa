@@ -122,13 +122,13 @@ export function InboxView({
     <Box
       sx={{
         display: "flex",
-        flexDirection: { xs: "column", md: "row" },
+        flexDirection: { xs: "column", lg: "row" },
         gap: 3,
         height: "100%",
       }}
     >
       {/* Providers Column */}
-      <Box sx={{ width: { xs: "100%", md: 320 }, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: "100%", lg: 320 }, flexShrink: 0, minWidth: 0 }}>
         <Typography
           variant="overline"
           color="text.secondary"
@@ -171,6 +171,7 @@ export function InboxView({
                               alignItems: "center",
                               gap: 2,
                               mb: 0.5,
+                              minWidth: 0,
                             }}
                           >
                             <Badge
@@ -200,6 +201,10 @@ export function InboxView({
                                 color: isSelected
                                   ? "primary.main"
                                   : "text.primary",
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
                               }}
                             >
                               {provider.display_name}
@@ -211,6 +216,8 @@ export function InboxView({
                             sx={{
                               display: "flex",
                               justifyContent: "space-between",
+                              gap: 1,
+                              flexWrap: "wrap",
                               color: "text.secondary",
                             }}
                           >
@@ -252,7 +259,7 @@ export function InboxView({
       </Box>
 
       {/* Messages Column */}
-      <Box sx={{ width: { xs: "100%", md: 360 }, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: "100%", lg: 360 }, flexShrink: 0, minWidth: 0 }}>
         <Typography
           variant="overline"
           color="text.secondary"
@@ -272,7 +279,11 @@ export function InboxView({
             {selectedProvider?.display_name ?? "Choose a provider"}
           </Typography>
           {selectedProvider && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ flexShrink: 0 }}
+            >
               {messages.length} messages
             </Typography>
           )}
@@ -298,17 +309,21 @@ export function InboxView({
                             sx={{
                               display: "flex",
                               justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              gap: 1,
                               mb: 0.5,
                             }}
                           >
                             <Typography
                               variant="subtitle2"
                               sx={{
+                                flex: 1,
+                                minWidth: 0,
                                 fontWeight: isSelected ? "bold" : "medium",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
-                                pr: 1,
+                                pr: 0.5,
                               }}
                             >
                               {message.subject ?? "Untitled message"}
@@ -403,9 +418,11 @@ export function InboxView({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "flex-start",
+                flexDirection: { xs: "column", sm: "row" },
+                gap: 1.5,
               }}
             >
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="h5" sx={{ fontWeight: "bold", mb: 0.5 }}>
                   {selectedMessage.subject ?? "Untitled message"}
                 </Typography>
@@ -416,6 +433,7 @@ export function InboxView({
               <Chip
                 label={selectedMessage.status}
                 color={getStatusColor(selectedMessage.status)}
+                size="small"
                 sx={{ textTransform: "capitalize", fontWeight: "bold" }}
               />
             </Box>
@@ -447,6 +465,7 @@ export function InboxView({
                 <Box
                   sx={{
                     display: "flex",
+                    flexDirection: { xs: "column", sm: "row" },
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 2,
@@ -454,7 +473,12 @@ export function InboxView({
                 >
                   <Typography
                     variant="h3"
-                    sx={{ fontWeight: "bold", letterSpacing: 2 }}
+                    sx={{
+                      fontWeight: "bold",
+                      letterSpacing: { xs: 1, sm: 2 },
+                      fontSize: { xs: "2rem", sm: undefined },
+                      wordBreak: "break-word",
+                    }}
                   >
                     {selectedMessage.extracted_code ?? "No code detected"}
                   </Typography>

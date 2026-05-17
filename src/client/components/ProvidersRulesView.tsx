@@ -276,7 +276,9 @@ export function ProvidersRulesView({
           }
           title="Provider and rule setup"
           subheader="Configure senders so codes route cleanly without owner intervention."
-          titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+          slotProps={{
+            title: { variant: "h6", fontWeight: "bold" },
+          }}
         />
         <Divider />
         <CardContent>
@@ -346,7 +348,70 @@ export function ProvidersRulesView({
             >
               Connected providers
             </Typography>
-            <Box sx={{ height: 360, width: "100%" }}>
+            <Stack spacing={1.5} sx={{ display: { xs: "flex", md: "none" } }}>
+              {providers.map((provider) => {
+                const isSelected = provider.id === selectedProviderId;
+
+                return (
+                  <Card
+                    key={provider.id}
+                    variant="outlined"
+                    onClick={() => onSelectProvider(provider.id)}
+                    sx={{
+                      cursor: "pointer",
+                      borderRadius: 2,
+                      borderColor: isSelected ? "primary.main" : "divider",
+                    }}
+                  >
+                    <CardContent sx={{ p: 2 }}>
+                      <Stack spacing={1.5}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 2,
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                              variant="subtitle1"
+                              sx={{ fontWeight: "bold" }}
+                            >
+                              {provider.display_name}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ wordBreak: "break-word" }}
+                            >
+                              {provider.provider_key}
+                            </Typography>
+                          </Box>
+                          <Chip
+                            label={`${provider.rule_count} rules`}
+                            size="small"
+                          />
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Created {formatTimestamp(provider.created_at)}
+                        </Typography>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {!providers.length && (
+                <Alert severity="info">No providers configured yet.</Alert>
+              )}
+            </Stack>
+            <Box
+              sx={{
+                height: 360,
+                width: "100%",
+                display: { xs: "none", md: "block" },
+              }}
+            >
               <DataGrid
                 rows={providers}
                 columns={providerColumns}
@@ -392,7 +457,81 @@ export function ProvidersRulesView({
                 {providerRules.length} configured
               </Typography>
             </Box>
-            <Box sx={{ height: 320, width: "100%" }}>
+            <Stack spacing={1.5} sx={{ display: { xs: "flex", md: "none" } }}>
+              {providerRules.map((rule) => {
+                const isSelected = rule.id === selectedRuleId;
+
+                return (
+                  <Card
+                    key={rule.id}
+                    variant="outlined"
+                    onClick={() => onSelectRule(rule.id)}
+                    sx={{
+                      cursor: "pointer",
+                      borderRadius: 2,
+                      borderColor: isSelected ? "primary.main" : "divider",
+                    }}
+                  >
+                    <CardContent sx={{ p: 2 }}>
+                      <Stack spacing={1.5}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 2,
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                              variant="subtitle1"
+                              sx={{
+                                fontWeight: "bold",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {rule.match_value}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Created {formatTimestamp(rule.created_at)}
+                            </Typography>
+                          </Box>
+                          <Chip
+                            size="small"
+                            label={
+                              rule.match_type === "domain" ? "Domain" : "Exact"
+                            }
+                            color={
+                              rule.match_type === "domain"
+                                ? "secondary"
+                                : "primary"
+                            }
+                            variant="outlined"
+                          />
+                        </Box>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {!providerRules.length && (
+                <Alert severity="info">
+                  {selectedProvider
+                    ? "No sender rules configured yet for this provider."
+                    : "Choose a provider to view its rules."}
+                </Alert>
+              )}
+            </Stack>
+            <Box
+              sx={{
+                height: 320,
+                width: "100%",
+                display: { xs: "none", md: "block" },
+              }}
+            >
               <DataGrid
                 rows={providerRules}
                 columns={ruleColumns}
@@ -425,7 +564,9 @@ export function ProvidersRulesView({
               }
               title="Provider actions"
               subheader="Open a dialog to create, update, or delete a selected provider"
-              titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+              slotProps={{
+                title: { variant: "h6", fontWeight: "bold" },
+              }}
             />
             <Divider />
             <CardContent>
@@ -478,7 +619,9 @@ export function ProvidersRulesView({
               }
               title="Rule actions"
               subheader="Create or refine sender mapping rules without losing grid context"
-              titleTypographyProps={{ variant: "h6", fontWeight: "bold" }}
+              slotProps={{
+                title: { variant: "h6", fontWeight: "bold" },
+              }}
             />
             <Divider />
             <CardContent>

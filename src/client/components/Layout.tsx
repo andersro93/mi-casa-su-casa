@@ -16,6 +16,7 @@ import {
   Avatar,
   Box,
   ButtonBase,
+  Chip,
   Divider,
   Drawer,
   IconButton,
@@ -53,9 +54,34 @@ interface LayoutProps {
   onLogout: () => void;
 }
 
+function getActiveView(pathname: string) {
+  if (pathname === "/settings" || pathname.endsWith("/settings")) {
+    return "settings";
+  }
+
+  if (pathname.includes("/quarantine")) {
+    return "quarantine";
+  }
+
+  if (pathname.includes("/members")) {
+    return "members";
+  }
+
+  if (pathname.includes("/providers")) {
+    return "providers";
+  }
+
+  return "inbox";
+}
+
+export function isSettingsPath(pathname: string) {
+  return getActiveView(pathname) === "settings";
+}
+
 interface UserAccountMenuProps {
   session: SessionData | null | undefined;
   mode: "light" | "dark";
+  settingsPath: string;
   onSettingsClick: () => void;
   onToggleColorMode: () => void;
   onLogout: () => void;
@@ -64,6 +90,7 @@ interface UserAccountMenuProps {
 export function UserAccountMenuContent({
   session,
   mode,
+  settingsPath,
   onSettingsClick,
   onToggleColorMode,
   onLogout,
@@ -81,7 +108,7 @@ export function UserAccountMenuContent({
       <Divider />
       <MenuItem
         component={Link}
-        to="/settings"
+        to={settingsPath}
         onClick={onSettingsClick}
         sx={{ py: 1.25 }}
       >
@@ -171,16 +198,7 @@ export function Layout({
   onLogout,
 }: LayoutProps) {
   const location = useLocation();
-  const activeView =
-    location.pathname === "/settings"
-      ? "settings"
-      : location.pathname.includes("/quarantine")
-        ? "quarantine"
-        : location.pathname.includes("/members")
-          ? "members"
-          : location.pathname.includes("/providers")
-            ? "providers"
-            : "inbox";
+  const activeView = getActiveView(location.pathname);
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
@@ -194,6 +212,7 @@ export function Layout({
   const activeHousehold =
     households.find((household) => household.slug === householdSlug) ?? null;
   const roleLabel = householdRole === "owner" ? "Owner" : "Member";
+  const settingsPath = buildHouseholdPath(householdSlug, "/settings");
   const isHouseholdMenuOpen = Boolean(householdMenuAnchor);
   const isUserMenuOpen = Boolean(userMenuAnchor);
 
@@ -431,14 +450,13 @@ export function Layout({
         >
           <Box sx={{ minWidth: 0, pr: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-              {getDisplayName(session)}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" noWrap>
               {householdName}
             </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {roleLabel}
-            </Typography>
+            <Chip
+              label={roleLabel}
+              size="small"
+              sx={{ mt: 0.75, fontWeight: 600, maxWidth: "100%" }}
+            />
           </Box>
           <ExpandMore color="action" />
         </ButtonBase>
@@ -556,6 +574,7 @@ export function Layout({
             anchorEl={userMenuAnchor}
             open={isUserMenuOpen}
             mode={theme.palette.mode}
+            settingsPath={settingsPath}
             onClose={handleCloseUserMenu}
             onToggleColorMode={handleToggleColorMode}
             onLogout={handleLogoutClick}

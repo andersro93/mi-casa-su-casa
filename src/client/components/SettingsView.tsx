@@ -106,7 +106,7 @@ export function SettingsView({
 
   return (
     <Container maxWidth="md" disableGutters>
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: 4, px: { xs: 0.5, sm: 0 } }}>
         <Typography variant="h4" gutterBottom sx={{ fontWeight: "bold" }}>
           Account Settings
         </Typography>
@@ -117,13 +117,13 @@ export function SettingsView({
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 4 }}>
+        <Alert severity="error" sx={{ mb: 4, borderRadius: 2 }}>
           {error}
         </Alert>
       )}
 
       {/* Profile Card */}
-      <Card sx={{ mb: 4, borderRadius: 2 }}>
+      <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
         <CardHeader title="Profile" />
         <Divider />
         <CardContent>
@@ -169,7 +169,7 @@ export function SettingsView({
       </Card>
 
       {/* Password Card */}
-      <Card sx={{ mb: 4, borderRadius: 2 }}>
+      <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
         <CardHeader title="Change Password" />
         <Divider />
         <CardContent>
@@ -217,7 +217,7 @@ export function SettingsView({
         </CardContent>
       </Card>
 
-      <Card sx={{ mb: 4, borderRadius: 2 }}>
+      <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
         <CardHeader title="Password Reset Email" />
         <Divider />
         <CardContent>
@@ -254,7 +254,7 @@ export function SettingsView({
       </Card>
 
       {/* Two-Factor Authentication */}
-      <Card sx={{ mb: 4, borderRadius: 2 }}>
+      <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
         <CardHeader title="Two-Factor Authentication" />
         <Divider />
         <CardContent>
@@ -330,7 +330,7 @@ export function SettingsView({
       </Card>
 
       {/* Passkeys */}
-      <Card sx={{ mb: 4, borderRadius: 2 }}>
+      <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
         <CardHeader title="Passkeys" />
         <Divider />
         <CardContent>
@@ -367,18 +367,29 @@ export function SettingsView({
       </Card>
 
       {/* Sessions Card */}
-      <Card sx={{ mb: 4, borderRadius: 2 }}>
+      <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
         <CardHeader
           title="Active Sessions"
+          slotProps={{ title: { sx: { pr: { xs: 0, sm: 2 } } } }}
           action={
             <Button
               color="error"
               disabled={isSaving || sessions.length <= 1}
               onClick={() => setIsRevokeOthersOpen(true)}
+              sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
             >
               Revoke Others
             </Button>
           }
+          sx={{
+            alignItems: { xs: "flex-start", sm: "center" },
+            flexDirection: { xs: "column", sm: "row" },
+            gap: { xs: 1.5, sm: 0 },
+            "& .MuiCardHeader-action": {
+              alignSelf: { xs: "flex-start", sm: "center" },
+              m: 0,
+            },
+          }}
         />
         <Divider />
         <List disablePadding>
@@ -386,12 +397,17 @@ export function SettingsView({
             <Fragment key={session.id}>
               {index > 0 && <Divider />}
               <ListItem
+                sx={{
+                  alignItems: { xs: "flex-start", sm: "center" },
+                  pr: { xs: 2, sm: 11 },
+                }}
                 secondaryAction={
                   <Button
                     color="error"
                     size="small"
                     onClick={() => setSessionToRevoke(session)}
                     disabled={isSaving}
+                    sx={{ top: { xs: 20, sm: "50%" } }}
                   >
                     Revoke
                   </Button>
