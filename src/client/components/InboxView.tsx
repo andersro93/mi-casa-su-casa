@@ -23,6 +23,7 @@ import {
   ListItemButton,
   ListItemText,
   Paper,
+  Skeleton,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -63,6 +64,64 @@ function stringAvatar(name: string) {
     },
     children: initials.toUpperCase(),
   };
+}
+
+function getCodePreview(message: InboxMessage) {
+  if (message.extracted_code) {
+    return `Code ${message.extracted_code}`;
+  }
+
+  return "No code detected";
+}
+
+function LoadingList({ rows = 4 }: { rows?: number }) {
+  const skeletonRows = Array.from({ length: rows }, (_, rowNumber) => rowNumber + 1);
+
+  return (
+    <List disablePadding>
+      {skeletonRows.map((rowNumber) => (
+        <React.Fragment key={`loading-row-${rows}-${rowNumber}`}>
+          {rowNumber > 1 && <Divider />}
+          <ListItem sx={{ px: 1.5, py: 1.25 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, width: "100%" }}>
+              <Skeleton variant="circular" width={28} height={28} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Skeleton variant="text" width="58%" height={22} />
+                <Skeleton variant="text" width="36%" height={16} />
+              </Box>
+            </Box>
+          </ListItem>
+        </React.Fragment>
+      ))}
+    </List>
+  );
+}
+
+function LoadingDetail() {
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+        <Skeleton variant="text" width={72} height={16} />
+        <Skeleton variant="text" width="52%" height={32} />
+        <Skeleton variant="text" width="42%" height={22} />
+        <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", mt: 1.25 }}>
+          <Skeleton variant="rounded" width={76} height={24} />
+          <Skeleton variant="rounded" width={96} height={24} />
+          <Skeleton variant="rounded" width={150} height={24} />
+        </Box>
+      </Paper>
+      <Card elevation={0} sx={{ borderRadius: 2 }}>
+        <CardContent sx={{ p: 2.5 }}>
+          <Skeleton variant="text" width={112} height={16} />
+          <Skeleton variant="text" width="42%" height={40} />
+        </CardContent>
+      </Card>
+      <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+        <Skeleton variant="text" width={132} height={20} />
+        <Skeleton variant="rounded" width="100%" height={120} />
+      </Paper>
+    </Box>
+  );
 }
 
 interface InboxViewProps {
@@ -123,35 +182,94 @@ export function InboxView({
       sx={{
         display: "flex",
         flexDirection: { xs: "column", lg: "row" },
-        gap: 3,
+        gap: 2,
         height: "100%",
       }}
     >
-      {/* Providers Column */}
-      <Box sx={{ width: { xs: "100%", lg: 320 }, flexShrink: 0, minWidth: 0 }}>
-        <Typography
-          variant="overline"
-          color="text.secondary"
-          sx={{ fontWeight: "bold" }}
-        >
-          Providers
-        </Typography>
+      {/* Inboxes Column */}
+      <Box
+        sx={{
+          width: { xs: "100%", lg: 280 },
+          flexShrink: 0,
+          minWidth: 0,
+          order: { xs: selectedMessage ? 3 : 1, lg: 1 },
+        }}
+      >
         <Box
           sx={{
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "baseline",
-            mb: 2,
+            alignItems: "center",
+            mb: 1.5,
+            gap: 1,
           }}
         >
-          <Typography variant="h5" component="h2" sx={{ fontWeight: "bold" }}>
-            Your accessible groups
-          </Typography>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              sx={{ fontWeight: "bold", lineHeight: 1.2 }}
+            >
+              Inboxes
+            </Typography>
+            <Typography variant="h6" component="h2" sx={{ fontWeight: "bold" }}>
+              Your accessible inboxes
+            </Typography>
+          </Box>
+          <Chip
+            size="small"
+            label={`${providers.length} total`}
+            variant="outlined"
+            sx={{ flexShrink: 0 }}
+          />
         </Box>
 
-        <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
-          <List disablePadding>
-            {providers.map((provider, index) => {
+        <Box
+          sx={{
+            display: { xs: "flex", lg: "none" },
+            gap: 1,
+            overflowX: "auto",
+            pb: 0.5,
+            scrollbarWidth: "none",
+            "&::-webkit-scrollbar": { display: "none" },
+          }}
+        >
+          {providers.map((provider) => {
+            const isSelected = provider.provider_key === selectedProviderKey;
+
+            return (
+              <Chip
+                key={provider.provider_key}
+                clickable
+                onClick={() => onSelectProvider(provider.provider_key)}
+                color={isSelected ? "primary" : "default"}
+                variant={isSelected ? "filled" : "outlined"}
+                label={`${provider.display_name}${provider.new_count > 0 ? ` (${provider.new_count})` : ""}`}
+                sx={{ flexShrink: 0, maxWidth: 220 }}
+              />
+            );
+          })}
+
+          {!providers.length && !isLoadingInbox && (
+            <Typography variant="body2" color="text.secondary">
+              No inboxes yet.
+            </Typography>
+          )}
+        </Box>
+
+        <Paper
+          variant="outlined"
+          sx={{
+            borderRadius: 2,
+            overflow: "hidden",
+            display: { xs: "none", lg: "block" },
+          }}
+        >
+          {isLoadingInbox ? (
+            <LoadingList rows={5} />
+          ) : (
+            <List disablePadding>
+              {providers.map((provider, index) => {
               const isSelected = provider.provider_key === selectedProviderKey;
 
               return (
@@ -161,7 +279,15 @@ export function InboxView({
                     <ListItemButton
                       selected={isSelected}
                       onClick={() => onSelectProvider(provider.provider_key)}
-                      sx={{ py: 2 }}
+                      sx={{
+                        px: 1.5,
+                        py: 1.25,
+                        alignItems: "stretch",
+                        borderLeft: 3,
+                        borderColor: isSelected ? "primary.main" : "transparent",
+                        bgcolor: isSelected ? "action.selected" : "transparent",
+                        transition: "background-color 0.2s ease, border-color 0.2s ease",
+                      }}
                     >
                       <ListItemText
                         primary={
@@ -169,8 +295,7 @@ export function InboxView({
                             sx={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 2,
-                              mb: 0.5,
+                              gap: 1.25,
                               minWidth: 0,
                             }}
                           >
@@ -181,6 +306,8 @@ export function InboxView({
                               sx={{
                                 "& .MuiBadge-badge": {
                                   fontWeight: "bold",
+                                  minWidth: 18,
+                                  height: 18,
                                 },
                               }}
                             >
@@ -188,110 +315,143 @@ export function InboxView({
                                 {...stringAvatar(provider.display_name)}
                                 sx={{
                                   ...stringAvatar(provider.display_name).sx,
-                                  width: 32,
-                                  height: 32,
-                                  fontSize: "0.875rem",
+                                  width: 28,
+                                  height: 28,
+                                  fontSize: "0.75rem",
                                 }}
                               />
                             </Badge>
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: isSelected ? "bold" : "medium",
-                                color: isSelected
-                                  ? "primary.main"
-                                  : "text.primary",
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {provider.display_name}
-                            </Typography>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{
+                                  fontWeight: isSelected ? "bold" : 600,
+                                  color: isSelected
+                                    ? "primary.main"
+                                    : "text.primary",
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {provider.display_name}
+                              </Typography>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 1,
+                                  mt: 0.25,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <Typography variant="caption" color="text.secondary">
+                                  {provider.message_count} messages
+                                </Typography>
+                                {provider.new_count > 0 && (
+                                  <Chip
+                                    label={`${provider.new_count} new`}
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                    sx={{ height: 18 }}
+                                  />
+                                )}
+                              </Box>
+                            </Box>
                           </Box>
                         }
                         secondary={
-                          <Box
-                            sx={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 1,
-                              flexWrap: "wrap",
-                              color: "text.secondary",
-                            }}
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: "block", mt: 0.75 }}
                           >
-                            <Typography variant="body2">
-                              {formatTimestamp(provider.latest_received_at)}
-                            </Typography>
-                            <Typography variant="body2">
-                              {provider.message_count} total
-                            </Typography>
-                          </Box>
+                            Latest {formatTimestamp(provider.latest_received_at)}
+                          </Typography>
                         }
                       />
                     </ListItemButton>
                   </ListItem>
                 </React.Fragment>
               );
-            })}
+              })}
 
-            {!providers.length && !isLoadingInbox && (
-              <Box sx={{ p: 4, textAlign: "center" }}>
-                <InboxOutlined
-                  sx={{ fontSize: 48, color: "text.disabled", mb: 2 }}
-                />
-                <Typography
-                  variant="subtitle1"
-                  sx={{ fontWeight: "bold" }}
-                  gutterBottom
-                >
-                  No providers yet
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Once messages arrive for your household services, they’ll
-                  appear here.
-                </Typography>
-              </Box>
-            )}
-          </List>
+              {!providers.length && (
+                <Box sx={{ p: 3, textAlign: "center" }}>
+                  <InboxOutlined
+                    sx={{ fontSize: 40, color: "text.disabled", mb: 1.5 }}
+                  />
+                  <Typography
+                    variant="subtitle1"
+                    sx={{ fontWeight: "bold" }}
+                    gutterBottom
+                  >
+                    No inboxes yet
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Once messages arrive for your household services, they&apos;ll
+                    appear here.
+                  </Typography>
+                </Box>
+              )}
+            </List>
+          )}
         </Paper>
       </Box>
 
       {/* Messages Column */}
-      <Box sx={{ width: { xs: "100%", lg: 360 }, flexShrink: 0, minWidth: 0 }}>
-        <Typography
-          variant="overline"
-          color="text.secondary"
-          sx={{ fontWeight: "bold" }}
-        >
-          Inbox
-        </Typography>
+      <Box
+        sx={{
+          width: { xs: "100%", lg: 320 },
+          flexShrink: 0,
+          minWidth: 0,
+          order: { xs: 2, lg: 2 },
+        }}
+      >
         <Box
           sx={{
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "baseline",
-            mb: 2,
+            alignItems: "center",
+            mb: 1.5,
+            gap: 1,
           }}
         >
-          <Typography variant="h5" component="h2" sx={{ fontWeight: "bold" }}>
-            {selectedProvider?.display_name ?? "Choose a provider"}
-          </Typography>
-          {selectedProvider && (
+          <Box sx={{ minWidth: 0 }}>
             <Typography
-              variant="body2"
+              variant="overline"
               color="text.secondary"
-              sx={{ flexShrink: 0 }}
+              sx={{ fontWeight: "bold", lineHeight: 1.2 }}
             >
-              {messages.length} messages
+              Messages
             </Typography>
+            <Typography
+              variant="h6"
+              component="h2"
+              sx={{ fontWeight: "bold" }}
+              noWrap
+            >
+              {selectedProvider?.display_name ?? "Choose an inbox"}
+            </Typography>
+          </Box>
+          {selectedProvider && (
+            <Chip
+              label={`${messages.length} total`}
+              size="small"
+              variant="outlined"
+              sx={{ flexShrink: 0 }}
+            />
           )}
         </Box>
 
         <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
-          <List disablePadding>
-            {messages.map((message, index) => {
+          {isLoadingInbox ? (
+            <LoadingList rows={6} />
+          ) : (
+            <List disablePadding>
+              {messages.map((message, index) => {
               const isSelected = message.id === selectedMessageId;
 
               return (
@@ -301,15 +461,23 @@ export function InboxView({
                     <ListItemButton
                       selected={isSelected}
                       onClick={() => onSelectMessage(message.id)}
-                      sx={{ py: 2 }}
+                      sx={{
+                        px: 1.5,
+                        py: 1.25,
+                        alignItems: "stretch",
+                        borderLeft: 3,
+                        borderColor: isSelected ? "primary.main" : "transparent",
+                        bgcolor: isSelected ? "action.selected" : "transparent",
+                        transition: "background-color 0.2s ease, border-color 0.2s ease",
+                      }}
                     >
                       <ListItemText
                         primary={
                           <Box
                             sx={{
                               display: "flex",
-                              justifyContent: "space-between",
                               alignItems: "flex-start",
+                              justifyContent: "space-between",
                               gap: 1,
                               mb: 0.5,
                             }}
@@ -319,26 +487,26 @@ export function InboxView({
                               sx={{
                                 flex: 1,
                                 minWidth: 0,
-                                fontWeight: isSelected ? "bold" : "medium",
+                                fontWeight: isSelected ? "bold" : 600,
+                                color: isSelected ? "primary.main" : "text.primary",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
-                                pr: 0.5,
                               }}
                             >
                               {message.subject ?? "Untitled message"}
                             </Typography>
-                            <Chip
-                              label={message.status}
-                              size="small"
-                              color={getStatusColor(message.status)}
-                              variant="outlined"
-                              sx={{ textTransform: "capitalize", height: 20 }}
-                            />
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ flexShrink: 0, pl: 1 }}
+                            >
+                              {formatTimestamp(message.received_at)}
+                            </Typography>
                           </Box>
                         }
                         secondary={
-                          <>
+                          <Box>
                             <Typography
                               variant="body2"
                               color="text.secondary"
@@ -350,93 +518,125 @@ export function InboxView({
                             >
                               {message.from_header ?? "Unknown sender"}
                             </Typography>
-                            <Typography
-                              variant="caption"
-                              color="text.disabled"
+                            <Box
                               sx={{
-                                mt: 0.5,
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 0.5,
+                                gap: 0.75,
+                                mt: 0.75,
+                                flexWrap: "wrap",
                               }}
                             >
-                              <ScheduleOutlined sx={{ fontSize: 14 }} />
-                              {formatTimestamp(message.received_at)}
-                            </Typography>
-                          </>
+                              <Chip
+                                label={message.status}
+                                size="small"
+                                color={getStatusColor(message.status)}
+                                variant="outlined"
+                                sx={{ textTransform: "capitalize", height: 20 }}
+                              />
+                              <Typography variant="caption" color="text.secondary">
+                                {getCodePreview(message)}
+                              </Typography>
+                            </Box>
+                          </Box>
                         }
                       />
                     </ListItemButton>
                   </ListItem>
                 </React.Fragment>
               );
-            })}
+              })}
 
-            {!messages.length && !isLoadingInbox && (
-              <Box sx={{ p: 4, textAlign: "center" }}>
-                <MailOutlined
-                  sx={{ fontSize: 48, color: "text.disabled", mb: 2 }}
-                />
-                <Typography
-                  variant="subtitle1"
-                  sx={{ fontWeight: "bold" }}
-                  gutterBottom
-                >
-                  No messages here yet
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Select another provider or wait for the next verification
-                  email.
-                </Typography>
-              </Box>
-            )}
-          </List>
+              {!messages.length && (
+                <Box sx={{ p: 3, textAlign: "center" }}>
+                  <MailOutlined
+                    sx={{ fontSize: 40, color: "text.disabled", mb: 1.5 }}
+                  />
+                  <Typography
+                    variant="subtitle1"
+                    sx={{ fontWeight: "bold" }}
+                    gutterBottom
+                  >
+                    {selectedProvider ? "No messages here yet" : "Choose an inbox"}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedProvider
+                      ? "This inbox is ready for the next verification email."
+                      : "Pick an inbox to browse recent verification messages."}
+                  </Typography>
+                </Box>
+              )}
+            </List>
+          )}
         </Paper>
       </Box>
 
       {/* Message Detail Column */}
-      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography
-          variant="overline"
-          color="text.secondary"
-          sx={{ fontWeight: "bold" }}
-        >
-          Message Detail
-        </Typography>
-        <Typography
-          variant="h5"
-          component="h2"
-          sx={{ fontWeight: "bold", mb: 2, visibility: "hidden" }}
-        >
-          Detail
-        </Typography>
-
-        {selectedMessage ? (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                flexDirection: { xs: "column", sm: "row" },
-                gap: 1.5,
-              }}
-            >
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="h5" sx={{ fontWeight: "bold", mb: 0.5 }}>
-                  {selectedMessage.subject ?? "Untitled message"}
-                </Typography>
-                <Typography variant="body1" color="text.secondary">
-                  {selectedMessage.from_header ?? "Unknown sender"}
-                </Typography>
+      <Box
+        sx={{
+          flexGrow: 1,
+          minWidth: 0,
+          order: { xs: selectedMessage ? 1 : 3, lg: 3 },
+        }}
+      >
+        {isLoadingInbox ? (
+          <LoadingDetail />
+        ) : selectedMessage ? (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  flexDirection: { xs: "column", sm: "row" },
+                  gap: 1.5,
+                }}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography
+                    variant="overline"
+                    color="text.secondary"
+                    sx={{ fontWeight: "bold", lineHeight: 1.2 }}
+                  >
+                    Details
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold", mb: 0.5 }}>
+                    {selectedMessage.subject ?? "Untitled message"}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedMessage.from_header ?? "Unknown sender"}
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 0.75,
+                      mt: 1.25,
+                    }}
+                  >
+                    <Chip
+                      label={selectedMessage.status}
+                      size="small"
+                      color={getStatusColor(selectedMessage.status)}
+                      variant="outlined"
+                      sx={{ textTransform: "capitalize" }}
+                    />
+                    <Chip
+                      label={selectedProvider?.display_name ?? "Inbox"}
+                      size="small"
+                      variant="outlined"
+                    />
+                    <Chip
+                      label={formatTimestamp(selectedMessage.received_at)}
+                      size="small"
+                      variant="outlined"
+                      icon={<ScheduleOutlined sx={{ fontSize: 14 }} />}
+                    />
+                  </Box>
+                </Box>
               </Box>
-              <Chip
-                label={selectedMessage.status}
-                color={getStatusColor(selectedMessage.status)}
-                size="small"
-                sx={{ textTransform: "capitalize", fontWeight: "bold" }}
-              />
-            </Box>
+            </Paper>
 
             <Card
               elevation={0}
@@ -448,14 +648,12 @@ export function InboxView({
                 color: "primary.contrastText",
               }}
             >
-              <CardContent
-                sx={{ p: 4, textAlign: "center", position: "relative" }}
-              >
+              <CardContent sx={{ p: 2.5 }}>
                 <Typography
                   variant="overline"
                   sx={{
                     display: "block",
-                    mb: 1,
+                    mb: 0.75,
                     fontWeight: "bold",
                     opacity: 0.9,
                   }}
@@ -466,17 +664,16 @@ export function InboxView({
                   sx={{
                     display: "flex",
                     flexDirection: { xs: "column", sm: "row" },
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 2,
+                    alignItems: { xs: "flex-start", sm: "center" },
+                    justifyContent: "space-between",
+                    gap: 1.5,
                   }}
                 >
                   <Typography
-                    variant="h3"
+                    variant="h4"
                     sx={{
                       fontWeight: "bold",
                       letterSpacing: { xs: 1, sm: 2 },
-                      fontSize: { xs: "2rem", sm: undefined },
                       wordBreak: "break-word",
                     }}
                   >
@@ -518,37 +715,43 @@ export function InboxView({
               </CardContent>
             </Card>
 
-            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
               <Button
                 variant="outlined"
+                size="small"
                 disabled={isSavingMessage}
                 onClick={() => onStatusChange("new")}
                 startIcon={<EmailOutlined />}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
                 Mark new
               </Button>
               <Button
                 variant="outlined"
+                size="small"
                 disabled={isSavingMessage}
                 onClick={() => onStatusChange("used")}
                 startIcon={<MarkEmailReadOutlined />}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
                 Mark used
               </Button>
               <Button
                 variant="outlined"
+                size="small"
                 disabled={isSavingMessage}
                 onClick={() => onStatusChange("expired")}
                 startIcon={<HistoryOutlined />}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
                 Mark expired
               </Button>
             </Box>
 
-            <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
               <Typography
                 variant="subtitle2"
-                sx={{ mb: 2, fontWeight: "bold" }}
+                sx={{ mb: 1.5, fontWeight: "bold" }}
               >
                 Plain-text message
               </Typography>
@@ -560,6 +763,7 @@ export function InboxView({
                   wordBreak: "break-word",
                   fontFamily: "monospace",
                   fontSize: "0.875rem",
+                  lineHeight: 1.55,
                 }}
               >
                 {selectedMessage.text_body}
@@ -570,21 +774,22 @@ export function InboxView({
           <Paper
             variant="outlined"
             sx={{
-              p: 6,
+              p: 5,
               textAlign: "center",
               borderRadius: 2,
               borderStyle: "dashed",
             }}
           >
             <EmailOutlined
-              sx={{ fontSize: 64, color: "text.disabled", mb: 2 }}
+              sx={{ fontSize: 56, color: "text.disabled", mb: 2 }}
             />
             <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
-              Select a message
+              {selectedProvider ? "Select a message" : "No message selected"}
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Pick the most recent message in a provider group to see the full
-              code and body.
+              {selectedProvider
+                ? "Pick a message to see the code, metadata, and full plain-text body."
+                : "Choose an inbox first, then select a message to review its verification details."}
             </Typography>
           </Paper>
         )}

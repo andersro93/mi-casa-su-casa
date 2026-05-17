@@ -1007,7 +1007,7 @@ describe("worker routes", () => {
       session: { id: "session-1", userId: "member-home" },
     };
 
-    const response = await invokeWorker("/api/inbox/home/providers");
+    const response = await invokeWorker("/api/inbox/home/inboxes");
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -1034,7 +1034,7 @@ describe("worker routes", () => {
       session: { id: "session-1", userId: "owner-away" },
     };
 
-    const response = await invokeWorker("/api/inbox/home/providers");
+    const response = await invokeWorker("/api/inbox/home/inboxes");
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "Forbidden" });

@@ -59,7 +59,6 @@ describe("MembersView", () => {
         memberFormState={{
           email: "",
           name: "",
-          password: "",
           role: "member",
         }}
         onMemberFormChange={vi.fn()}
@@ -88,6 +87,6 @@ describe("MembersView", () => {
     expect(html).toContain("Resend");
     expect(html).toContain("Cancel");
     expect(html).toContain("Family Member");
-    expect(html).toContain("Provider Access");
+    expect(html).toContain("Inbox Access");
   });
 });

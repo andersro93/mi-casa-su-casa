@@ -26,11 +26,11 @@ export function getProviderAccessToggleRequest(shouldHaveAccess: boolean): {
   return shouldHaveAccess
     ? {
         method: "POST",
-        statusMessage: "Provider access granted.",
+        statusMessage: "Inbox access granted.",
       }
     : {
         method: "DELETE",
-        statusMessage: "Provider access revoked.",
+        statusMessage: "Inbox access revoked.",
       };
 }
 

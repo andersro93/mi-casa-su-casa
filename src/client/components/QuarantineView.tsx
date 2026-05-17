@@ -402,12 +402,12 @@ export function QuarantineView({
             >
               <FormControl sx={{ minWidth: { xs: 0, sm: 200 }, flexGrow: 1 }}>
                 <InputLabel id="release-provider-label">
-                  Release to provider
+                  Release to inbox
                 </InputLabel>
                 <Select
                   labelId="release-provider-label"
                   value={releaseProviderKey}
-                  label="Release to provider"
+                  label="Release to inbox"
                   onChange={(e) => onReleaseProviderKeyChange(e.target.value)}
                 >
                   {providers.map((provider) => (
@@ -487,7 +487,7 @@ export function QuarantineView({
             </Typography>
             <Typography variant="body1" color="text.secondary">
               Review the classification reason, then release it to the right
-              provider or dismiss it.
+              inbox or dismiss it.
             </Typography>
           </Paper>
         )}
@@ -511,7 +511,7 @@ export function QuarantineView({
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {reviewAction === "release"
-                  ? `This will move the message into ${providers.find((provider) => provider.provider_key === releaseProviderKey)?.display_name || "the selected provider"}.`
+                  ? `This will move the message into ${providers.find((provider) => provider.provider_key === releaseProviderKey)?.display_name || "the selected inbox"}.`
                   : "This will remove the message from quarantine review."}
               </Typography>
             </Stack>

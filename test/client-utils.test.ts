@@ -7,8 +7,8 @@ import {
 
 describe("buildHouseholdApiPath", () => {
   it("builds inbox household routes under /api/inbox/:slug", () => {
-    expect(buildHouseholdApiPath("home", "/inbox/providers")).toBe(
-      "/api/inbox/home/providers",
+    expect(buildHouseholdApiPath("home", "/inbox/inboxes")).toBe(
+      "/api/inbox/home/inboxes",
     );
   });
 
@@ -29,14 +29,14 @@ describe("getProviderAccessToggleRequest", () => {
   it("uses POST and a granted message when access should be enabled", () => {
     expect(getProviderAccessToggleRequest(true)).toEqual({
       method: "POST",
-      statusMessage: "Provider access granted.",
+      statusMessage: "Inbox access granted.",
     });
   });
 
   it("uses DELETE and a revoked message when access should be disabled", () => {
     expect(getProviderAccessToggleRequest(false)).toEqual({
       method: "DELETE",
-      statusMessage: "Provider access revoked.",
+      statusMessage: "Inbox access revoked.",
     });
   });
 });

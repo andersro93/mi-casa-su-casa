@@ -195,7 +195,7 @@ export function ProvidersRulesView({
   const providerColumns: GridColDef<ProviderConfiguration>[] = [
     {
       field: "display_name",
-      headerName: "Provider",
+      headerName: "Inbox",
       flex: 1,
       minWidth: 180,
     },
@@ -274,8 +274,8 @@ export function ProvidersRulesView({
               <AutoAwesomeOutlined />
             </Avatar>
           }
-          title="Provider and rule setup"
-          subheader="Configure senders so codes route cleanly without owner intervention."
+          title="Inbox and rule setup"
+          subheader="Configure inboxes so codes route cleanly without owner intervention."
           slotProps={{
             title: { variant: "h6", fontWeight: "bold" },
           }}
@@ -283,14 +283,14 @@ export function ProvidersRulesView({
         <Divider />
         <CardContent>
           <Alert severity="info" sx={{ mb: 3 }} icon={<LinkOutlined />}>
-            Providers define the household service buckets. Sender rules attach
-            exact addresses or domains to those providers so inbound
+            Inboxes define the household service buckets. Sender rules attach
+            exact addresses or domains to those inboxes so inbound
             verification emails classify automatically.
           </Alert>
           <Stack spacing={2}>
             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
               <Chip
-                label={`${providers.length} providers`}
+                label={`${providers.length} inboxes`}
                 color="primary"
                 variant="outlined"
               />
@@ -306,7 +306,7 @@ export function ProvidersRulesView({
                 startIcon={<AddCircleOutlined />}
                 onClick={handleOpenCreateProvider}
               >
-                Create provider
+                Create inbox
               </Button>
               <Button
                 variant="outlined"
@@ -339,14 +339,14 @@ export function ProvidersRulesView({
               color="text.secondary"
               sx={{ fontWeight: "bold" }}
             >
-              Provider inventory
+              Inbox inventory
             </Typography>
             <Typography
               variant="h5"
               component="h2"
               sx={{ fontWeight: "bold", mb: 2 }}
             >
-              Connected providers
+              Connected inboxes
             </Typography>
             <Stack spacing={1.5} sx={{ display: { xs: "flex", md: "none" } }}>
               {providers.map((provider) => {
@@ -402,7 +402,7 @@ export function ProvidersRulesView({
                 );
               })}
               {!providers.length && (
-                <Alert severity="info">No providers configured yet.</Alert>
+                <Alert severity="info">No inboxes configured yet.</Alert>
               )}
             </Stack>
             <Box
@@ -451,7 +451,7 @@ export function ProvidersRulesView({
               >
                 {selectedProvider
                   ? `${selectedProvider.display_name} rules`
-                  : "Choose a provider"}
+                  : "Choose an inbox"}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {providerRules.length} configured
@@ -520,8 +520,8 @@ export function ProvidersRulesView({
               {!providerRules.length && (
                 <Alert severity="info">
                   {selectedProvider
-                    ? "No sender rules configured yet for this provider."
-                    : "Choose a provider to view its rules."}
+                    ? "No sender rules configured yet for this inbox."
+                    : "Choose an inbox to view its rules."}
                 </Alert>
               )}
             </Stack>
@@ -562,8 +562,8 @@ export function ProvidersRulesView({
                   <AddCircleOutlined />
                 </Avatar>
               }
-              title="Provider actions"
-              subheader="Open a dialog to create, update, or delete a selected provider"
+              title="Inbox actions"
+              subheader="Open a dialog to create, update, or delete a selected inbox"
               slotProps={{
                 title: { variant: "h6", fontWeight: "bold" },
               }}
@@ -572,7 +572,7 @@ export function ProvidersRulesView({
             <CardContent>
               <Stack spacing={2}>
                 <Typography variant="body2" color="text.secondary">
-                  Select a provider from the inventory, then open the focused
+                  Select an inbox from the inventory, then open the focused
                   edit flow when you need to make changes.
                 </Typography>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -581,7 +581,7 @@ export function ProvidersRulesView({
                     startIcon={<AddCircleOutlined />}
                     onClick={handleOpenCreateProvider}
                   >
-                    Create provider
+                    Create inbox
                   </Button>
                   <Button
                     variant="outlined"
@@ -627,7 +627,7 @@ export function ProvidersRulesView({
             <CardContent>
               <Stack spacing={2}>
                 <Typography variant="body2" color="text.secondary">
-                  Rules stay tied to the selected provider, but the editor opens
+                  Rules stay tied to the selected inbox, but the editor opens
                   separately so the inventory remains easy to scan.
                 </Typography>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -678,11 +678,11 @@ export function ProvidersRulesView({
         <Box component="form" onSubmit={handleProviderSubmit}>
           <DialogTitle sx={{ pr: 7 }}>
             {providerDialogMode === "edit"
-              ? "Edit provider"
-              : "Create provider"}
+              ? "Edit inbox"
+              : "Create inbox"}
           </DialogTitle>
           <IconButton
-            aria-label="Close provider dialog"
+            aria-label="Close inbox dialog"
             onClick={() => setProviderDialogMode(null)}
             disabled={isSaving}
             sx={{ position: "absolute", top: 12, right: 12 }}
@@ -692,7 +692,7 @@ export function ProvidersRulesView({
           <DialogContent dividers>
             <Stack spacing={3}>
               <Alert severity="info" icon={<LinkOutlined />}>
-                Providers define the household service buckets used by inbox and
+                Inboxes define the household service buckets used by inbox and
                 access controls.
               </Alert>
               <Stack spacing={2}>
@@ -707,7 +707,7 @@ export function ProvidersRulesView({
                   fullWidth
                 />
                 <TextField
-                  label="Provider key"
+                  label="Inbox key"
                   size="small"
                   helperText="Lowercase identifier used in routing and access control"
                   value={providerFormState.providerKey}
@@ -731,8 +731,8 @@ export function ProvidersRulesView({
               {isSaving
                 ? "Saving…"
                 : providerDialogMode === "edit"
-                  ? "Save provider"
-                  : "Create provider"}
+                  ? "Save inbox"
+                  : "Create inbox"}
             </Button>
           </DialogActions>
         </Box>
@@ -759,17 +759,17 @@ export function ProvidersRulesView({
           <DialogContent dividers>
             <Stack spacing={3}>
               <Alert severity="info" icon={<RuleFolderOutlined />}>
-                Match exact senders or domains to the provider that should own
+                Match exact senders or domains to the inbox that should own
                 incoming verification messages.
               </Alert>
               <Stack spacing={2}>
                 <FormControl size="small" fullWidth>
                   <InputLabel id="provider-rule-provider-label">
-                    Provider
+                    Inbox
                   </InputLabel>
                   <Select
                     labelId="provider-rule-provider-label"
-                    label="Provider"
+                    label="Inbox"
                     value={ruleFormState.providerId}
                     onChange={(event) =>
                       onRuleFormChange({
@@ -848,7 +848,7 @@ export function ProvidersRulesView({
 
       <ConfirmDialog
         open={isDeleteProviderOpen}
-        title="Delete provider?"
+        title="Delete inbox?"
         description={
           selectedProvider ? (
             <Typography variant="body2" color="text.secondary">
@@ -859,7 +859,7 @@ export function ProvidersRulesView({
             ""
           )
         }
-        confirmLabel="Delete provider"
+        confirmLabel="Delete inbox"
         confirmColor="error"
         isLoading={isSaving}
         onClose={() => setIsDeleteProviderOpen(false)}
@@ -873,7 +873,7 @@ export function ProvidersRulesView({
           selectedRule ? (
             <Typography variant="body2" color="text.secondary">
               Rule <strong>{selectedRule.match_value}</strong> will stop routing
-              senders to this provider.
+              senders to this inbox.
             </Typography>
           ) : (
             ""

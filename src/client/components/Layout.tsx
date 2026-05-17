@@ -67,8 +67,8 @@ function getActiveView(pathname: string) {
     return "members";
   }
 
-  if (pathname.includes("/providers")) {
-    return "providers";
+  if (pathname.includes("/inboxes")) {
+    return "inboxes";
   }
 
   return "inbox";
@@ -375,15 +375,15 @@ export function Layout({
 
             <ListItem disablePadding sx={{ mb: 1 }}>
               <ListItemButton
-                selected={activeView === "providers"}
+                selected={activeView === "inboxes"}
                 component={Link}
-                to={buildHouseholdPath(householdSlug, "/providers")}
+                to={buildHouseholdPath(householdSlug, "/inboxes")}
                 onClick={handleNavClick}
                 sx={{ borderRadius: 2 }}
               >
                 <ListItemIcon>
                   <HubOutlined
-                    color={activeView === "providers" ? "primary" : "inherit"}
+                    color={activeView === "inboxes" ? "primary" : "inherit"}
                   />
                 </ListItemIcon>
                 <ListItemText
@@ -391,10 +391,10 @@ export function Layout({
                     <Typography
                       sx={{
                         fontWeight:
-                          activeView === "providers" ? "bold" : "normal",
+                          activeView === "inboxes" ? "bold" : "normal",
                       }}
                     >
-                      Providers &amp; rules
+                      Inboxes &amp; rules
                     </Typography>
                   }
                 />

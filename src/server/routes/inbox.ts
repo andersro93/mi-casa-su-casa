@@ -32,13 +32,13 @@ export const inboxRoutes = new Hono<{
   Variables: AppVariables;
 }>();
 
-inboxRoutes.use("/providers", requireAuthenticatedUser);
+inboxRoutes.use("/inboxes", requireAuthenticatedUser);
 inboxRoutes.use("/:slug/*", requireAuthenticatedUser);
 inboxRoutes.use("/:slug/*", requireHouseholdContext);
 inboxRoutes.use("/:slug/quarantine", requireOwner);
 inboxRoutes.use("/:slug/quarantine/:messageId/review", requireOwner);
 
-inboxRoutes.get("/:slug/providers", async (c) => {
+inboxRoutes.get("/:slug/inboxes", async (c) => {
   const user = c.get("user");
   const household = c.get("household");
 
@@ -54,7 +54,7 @@ inboxRoutes.get("/:slug/providers", async (c) => {
   return c.json({ providers });
 });
 
-inboxRoutes.get("/:slug/providers/:providerKey", async (c) => {
+inboxRoutes.get("/:slug/inboxes/:providerKey", async (c) => {
   const providerKey = c.req.param("providerKey");
   const user = c.get("user");
   const household = c.get("household");

@@ -58,7 +58,7 @@ import {
   getProviderAccessToggleRequest,
 } from "./utils";
 
-type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
+type ViewType = "inbox" | "quarantine" | "members" | "inboxes" | "settings";
 
 function getActiveView(pathname: string): ViewType {
   if (pathname === "/settings" || pathname.endsWith("/settings")) {
@@ -73,8 +73,8 @@ function getActiveView(pathname: string): ViewType {
     return "members";
   }
 
-  if (pathname.includes("/providers")) {
-    return "providers";
+  if (pathname.includes("/inboxes")) {
+    return "inboxes";
   }
 
   return "inbox";
@@ -239,10 +239,10 @@ export function App() {
             household.slug,
             household.role === "owner" ? "/members" : "/inbox",
           );
-        case "providers":
+        case "inboxes":
           return buildHouseholdPath(
             household.slug,
-            household.role === "owner" ? "/providers" : "/inbox",
+            household.role === "owner" ? "/inboxes" : "/inbox",
           );
         default:
           return buildHouseholdPath(household.slug, "/inbox");
@@ -834,7 +834,7 @@ export function App() {
 
       try {
         const response = await fetchJson<{ providers: ProviderSummary[] }>(
-          householdApiPath("/inbox/providers"),
+          householdApiPath("/inbox/inboxes"),
         );
 
         if (cancelled) return;
@@ -861,7 +861,7 @@ export function App() {
       } catch (error) {
         if (!cancelled) {
           setViewError(
-            error instanceof Error ? error.message : "Unable to load providers",
+            error instanceof Error ? error.message : "Unable to load inboxes",
           );
         }
       } finally {
@@ -893,7 +893,7 @@ export function App() {
 
       try {
         const response = await fetchJson<ProviderMessagesResponse>(
-          householdApiPath(`/inbox/providers/${selectedProviderKey}`),
+          householdApiPath(`/inbox/inboxes/${selectedProviderKey}`),
         );
 
         if (cancelled) return;
@@ -992,7 +992,7 @@ export function App() {
       !isAuthenticated ||
       !isOwner ||
       !currentHousehold ||
-      activeView !== "providers"
+      activeView !== "inboxes"
     ) {
       return;
     }
@@ -1004,7 +1004,7 @@ export function App() {
 
       try {
         const response = await fetchJson<ProviderConfigurationResponse>(
-          householdApiPath("/admin/providers"),
+          householdApiPath("/admin/inboxes"),
         );
 
         if (cancelled) return;
@@ -1066,7 +1066,7 @@ export function App() {
           setViewError(
             error instanceof Error
               ? error.message
-              : "Unable to load provider configuration",
+              : "Unable to load inbox configuration",
           );
         }
       }
@@ -1156,7 +1156,7 @@ export function App() {
   async function refreshProviders() {
     if (!isAuthenticated || !currentHousehold) return;
     const response = await fetchJson<{ providers: ProviderSummary[] }>(
-      householdApiPath("/inbox/providers"),
+      householdApiPath("/inbox/inboxes"),
     );
     setProviders(response.providers);
     setReleaseProviderKey((current) => {
@@ -1212,7 +1212,7 @@ export function App() {
     if (!isAuthenticated || !isOwner || !currentHousehold) return;
 
     const response = await fetchJson<ProviderConfigurationResponse>(
-      householdApiPath("/admin/providers"),
+      householdApiPath("/admin/inboxes"),
     );
 
     setProviderConfigurations(response.providers);
@@ -1303,7 +1303,7 @@ export function App() {
 
       setStatusMessage(
         action === "release"
-          ? "Quarantined message released to the selected provider."
+          ? "Quarantined message released to the selected inbox."
           : "Quarantined message dismissed.",
       );
 
@@ -1489,7 +1489,7 @@ export function App() {
       setViewError(
         error instanceof Error
           ? error.message
-          : "Unable to update provider access",
+          : "Unable to update inbox access",
       );
     }
   }
@@ -1504,7 +1504,7 @@ export function App() {
 
     try {
       await fetchJson<{ provider: ProviderConfiguration }>(
-        householdApiPath("/admin/providers"),
+        householdApiPath("/admin/inboxes"),
         {
           method: "POST",
           body: JSON.stringify(providerFormState),
@@ -1521,7 +1521,7 @@ export function App() {
       return true;
     } catch (error) {
       setViewError(
-        error instanceof Error ? error.message : "Unable to create provider",
+        error instanceof Error ? error.message : "Unable to create inbox",
       );
       return false;
     } finally {
@@ -1538,7 +1538,7 @@ export function App() {
 
     try {
       await fetchJson<{ provider: ProviderConfiguration }>(
-        householdApiPath(`/admin/providers/${selectedProviderId}`),
+        householdApiPath(`/admin/inboxes/${selectedProviderId}`),
         {
           method: "PATCH",
           body: JSON.stringify(providerFormState),
@@ -1554,7 +1554,7 @@ export function App() {
       return true;
     } catch (error) {
       setViewError(
-        error instanceof Error ? error.message : "Unable to update provider",
+        error instanceof Error ? error.message : "Unable to update inbox",
       );
       return false;
     } finally {
@@ -1571,7 +1571,7 @@ export function App() {
 
     try {
       await fetchJson<{ ok: boolean }>(
-        householdApiPath(`/admin/providers/${selectedProviderId}`),
+        householdApiPath(`/admin/inboxes/${selectedProviderId}`),
         {
           method: "DELETE",
         },
@@ -1588,7 +1588,7 @@ export function App() {
       return true;
     } catch (error) {
       setViewError(
-        error instanceof Error ? error.message : "Unable to delete provider",
+        error instanceof Error ? error.message : "Unable to delete inbox",
       );
       return false;
     } finally {
@@ -1956,7 +1956,7 @@ export function App() {
           }
         />
         <Route
-          path="/:slug/providers"
+          path="/:slug/inboxes"
           element={
             isOwner ? (
               <ProvidersRulesView

@@ -345,7 +345,7 @@ export function MembersView({
             <Stack spacing={3}>
               <Alert severity="info" icon={<PersonAddOutlined />}>
                 Invitations let members choose their own password and receive
-                provider access once accepted.
+                inbox access once accepted.
               </Alert>
               <Box
                 sx={{
@@ -397,13 +397,13 @@ export function MembersView({
                   sx={{ gridColumn: { md: "1 / -1" } }}
                 >
                   <InputLabel id="invite-providers-select-label">
-                    Provider Access
+                    Inbox Access
                   </InputLabel>
                   <Select
                     labelId="invite-providers-select-label"
                     multiple
                     value={invitationFormState.providerIds}
-                    label="Provider Access"
+                    label="Inbox Access"
                     onChange={(e) =>
                       onInvitationFormChange({
                         providerIds: e.target.value as string[],
@@ -413,7 +413,7 @@ export function MembersView({
                       const providerIds = selected as string[];
 
                       if (!providerIds.length) {
-                        return "No provider access yet";
+                        return "No inbox access yet";
                       }
 
                       return providerOptions
@@ -759,7 +759,7 @@ export function MembersView({
                     display: { xs: "none", md: "table-cell" },
                   }}
                 >
-                  Provider Access
+                  Inbox Access
                 </TableCell>
                 <TableCell
                   align="right"
@@ -996,7 +996,7 @@ export function MembersView({
                     color="text.secondary"
                     sx={{ mb: 2 }}
                   >
-                    Owners can invite members and configure provider access.
+                    Owners can invite members and configure inbox access.
                   </Typography>
                   <FormControl fullWidth size="small">
                     <InputLabel id="role-change-label">
@@ -1033,7 +1033,7 @@ export function MembersView({
                   }}
                 >
                   <VpnKeyOutlined fontSize="small" />
-                  Provider Access
+                  Inbox Access
                 </Typography>
                 <Card variant="outlined" sx={{ borderRadius: 2 }}>
                   <List disablePadding>

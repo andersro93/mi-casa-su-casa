@@ -175,7 +175,7 @@ adminRoutes.patch("/:slug/settings", async (c) => {
   });
 });
 
-adminRoutes.get("/:slug/providers", async (c) => {
+adminRoutes.get("/:slug/inboxes", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
   const [providers, rules] = await Promise.all([
@@ -189,7 +189,7 @@ adminRoutes.get("/:slug/providers", async (c) => {
   });
 });
 
-adminRoutes.post("/:slug/providers", async (c) => {
+adminRoutes.post("/:slug/inboxes", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
   let payload: ProviderPayload;
@@ -223,7 +223,7 @@ adminRoutes.post("/:slug/providers", async (c) => {
   return c.json({ provider }, 201);
 });
 
-adminRoutes.patch("/:slug/providers/:providerId", async (c) => {
+adminRoutes.patch("/:slug/inboxes/:providerId", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
   let payload: ProviderPayload;
@@ -267,7 +267,7 @@ adminRoutes.patch("/:slug/providers/:providerId", async (c) => {
   return c.json({ provider });
 });
 
-adminRoutes.delete("/:slug/providers/:providerId", async (c) => {
+adminRoutes.delete("/:slug/inboxes/:providerId", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
   const providerId = c.req.param("providerId");

@@ -50,7 +50,7 @@ describe("Layout", () => {
     const settingsIndex = html.indexOf("Settings");
     const membersIndex = html.indexOf("Members");
     const quarantineIndex = html.indexOf("Quarantine");
-    const providersIndex = html.indexOf("Providers &amp; rules");
+    const providersIndex = html.indexOf("Inboxes &amp; rules");
     const householdSettingsIndex = html.indexOf("Household settings");
 
     expect(html).toContain("Inbox");
@@ -58,7 +58,7 @@ describe("Layout", () => {
     expect(html).toContain("Household settings");
     expect(html).toContain("Quarantine");
     expect(html).toContain("Members");
-    expect(html).toContain("Providers &amp; rules");
+    expect(html).toContain("Inboxes &amp; rules");
     expect(html).toContain("Home");
     expect(html).toContain("Owner");
     expect(html).toContain("AM");
