@@ -46,34 +46,34 @@
     "ci": "npm run check && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@better-auth/drizzle-adapter": "^1.6.10",
-    "@better-auth/passkey": "^1.6.10",
+    "@better-auth/drizzle-adapter": "^1.6.12",
+    "@better-auth/passkey": "^1.6.12",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",
-    "@mui/x-data-grid": "^9.1.0",
-    "better-auth": "1.6.10",
+    "@mui/x-data-grid": "^9.3.0",
+    "better-auth": "1.6.12",
     "drizzle-orm": "^0.45.2",
-    "hono": "4.12.18",
+    "hono": "4.12.23",
     "postal-mime": "2.7.4",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "react-router-dom": "^7.15.0"
+    "react-router-dom": "^7.16.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
-    "@cloudflare/vite-plugin": "1.36.3",
-    "@cloudflare/workers-types": "4.20260510.1",
-    "@types/react": "19.2.14",
+    "@biomejs/biome": "2.4.16",
+    "@cloudflare/vite-plugin": "1.39.0",
+    "@cloudflare/workers-types": "4.20260531.1",
+    "@types/react": "19.2.15",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.1",
-    "concurrently": "9.2.1",
+    "@vitejs/plugin-react": "6.0.2",
+    "concurrently": "10.0.0",
     "drizzle-kit": "^0.31.10",
     "typescript": "6.0.3",
-    "vite": "8.0.11",
-    "vitest": "4.1.5",
-    "wrangler": "4.90.0"
+    "vite": "8.0.14",
+    "vitest": "4.1.7",
+    "wrangler": "4.95.0"
   },
   "overrides": {
     "esbuild": "0.27.3"
