@@ -59,7 +59,7 @@ jobs:
               });
             }
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: env.HAS_CLOUDFLARE_API_TOKEN == 'true' && env.HAS_CLOUDFLARE_ACCOUNT_ID == 'true' && env.HAS_D1_DATABASE_ID_PREVIEW == 'true'
 
       - uses: actions/setup-node@v6
