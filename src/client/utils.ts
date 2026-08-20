@@ -38,13 +38,14 @@ export async function fetchJson<T>(
   input: RequestInfo,
   init?: RequestInit,
 ): Promise<T> {
+  const { headers: initHeaders, ...restInit } = init ?? {};
   const response = await fetch(input, {
     credentials: "include",
+    ...restInit,
     headers: {
       "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
+      ...(initHeaders as Record<string, string> | undefined),
     },
-    ...init,
   });
 
   if (!response.ok) {

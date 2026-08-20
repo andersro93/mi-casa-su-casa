@@ -1,6 +1,6 @@
 # Operations: observability and alerting
 
-Mi Casa Su Casa runs as one Cloudflare Worker. Everything it reports goes to **Workers Logs** (enabled in `wrangler.jsonc` → `observability.logs`) as single-line JSON, and to Cloudflare's built-in Worker metrics.
+Mi Casa Su Casa runs as one Cloudflare Worker. Everything it reports goes to **Workers Logs** (enabled in `wrangler.jsonc` → `observability.logs`) as single-line JSON, and to Cloudflare's built-in Worker metrics. Automatic *invocation logs* are **off** because they would record full request URLs — invitation and password-reset links carry one-time secrets — so failed requests are logged explicitly by the app (`api_request_failed`) and the invitation API takes its token in the `X-Invitation-Token` header rather than the URL.
 
 ## Log events
 

@@ -98,7 +98,10 @@
   "observability": {
     "logs": {
       "enabled": true,
-      "invocation_logs": true
+      // Invocation logs record full request URLs. Invitation and reset links
+      // carry secrets in the path/query, so we rely on the app's structured
+      // logs (docs/operations.md) instead.
+      "invocation_logs": false
     }
   }
 }

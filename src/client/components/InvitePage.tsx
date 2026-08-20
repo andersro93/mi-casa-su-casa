@@ -41,7 +41,8 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
     async function loadInvitation() {
       try {
         const response = await fetchJson<InvitationLookupResponse>(
-          `/api/invitations/${token}`,
+          "/api/invitations/lookup",
+          { headers: { "X-Invitation-Token": token } },
         );
 
         if (cancelled) return;
@@ -75,8 +76,12 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
 
     try {
       const response = await fetchJson<{ household?: { slug: string } | null }>(
-        `/api/invitations/${token}/accept`,
-        { method: "POST", body: JSON.stringify(body) },
+        "/api/invitations/accept",
+        {
+          method: "POST",
+          headers: { "X-Invitation-Token": token },
+          body: JSON.stringify(body),
+        },
       );
 
       if (!response.household?.slug) {

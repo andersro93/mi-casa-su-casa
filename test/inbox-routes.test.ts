@@ -1387,8 +1387,9 @@ describe("worker routes", () => {
   });
 
   it("accepts an invitation via provisioning signup and attaches the user to the invited household", async () => {
-    const response = await invokeWorker("/api/invitations/test-token/accept", {
+    const response = await invokeWorker("/api/invitations/accept", {
       method: "POST",
+      headers: { "x-invitation-token": "test-token" },
       body: JSON.stringify({
         name: "Invited Person",
         password: "super-secure-password",

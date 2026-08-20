@@ -52,9 +52,12 @@ async function signUpWithCookie(email: string) {
 }
 
 async function postAccept(token: string, body: unknown) {
-  return SELF.fetch(`http://localhost:8787/api/invitations/${token}/accept`, {
+  return SELF.fetch("http://localhost:8787/api/invitations/accept", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-invitation-token": token,
+    },
     body: JSON.stringify(body),
   });
 }
@@ -110,9 +113,9 @@ describe("invitation acceptance (end-to-end against D1)", () => {
     const cookie = await signUpWithCookie("kid@example.com");
 
     const lookup = await SELF.fetch(
-      `http://localhost:8787/api/invitations/${token}`,
+      "http://localhost:8787/api/invitations/lookup",
       {
-        headers: { cookie },
+        headers: { cookie, "x-invitation-token": token },
       },
     );
     await expect(lookup.json()).resolves.toMatchObject({
@@ -121,10 +124,14 @@ describe("invitation acceptance (end-to-end against D1)", () => {
     });
 
     const response = await SELF.fetch(
-      `http://localhost:8787/api/invitations/${token}/accept`,
+      "http://localhost:8787/api/invitations/accept",
       {
         method: "POST",
-        headers: { cookie, "content-type": "application/json" },
+        headers: {
+          cookie,
+          "content-type": "application/json",
+          "x-invitation-token": token,
+        },
       },
     );
 
@@ -149,9 +156,9 @@ describe("invitation acceptance (end-to-end against D1)", () => {
     const cookie = await signUpWithCookie("someone-else@example.com");
 
     const lookup = await SELF.fetch(
-      `http://localhost:8787/api/invitations/${token}`,
+      "http://localhost:8787/api/invitations/lookup",
       {
-        headers: { cookie },
+        headers: { cookie, "x-invitation-token": token },
       },
     );
     await expect(lookup.json()).resolves.toMatchObject({
@@ -159,8 +166,8 @@ describe("invitation acceptance (end-to-end against D1)", () => {
     });
 
     const response = await SELF.fetch(
-      `http://localhost:8787/api/invitations/${token}/accept`,
-      { method: "POST", headers: { cookie } },
+      "http://localhost:8787/api/invitations/accept",
+      { method: "POST", headers: { cookie, "x-invitation-token": token } },
     );
     expect(response.status).toBe(403);
     expect(await count("household_invitations", "status = 'pending'")).toBe(1);
@@ -171,7 +178,8 @@ describe("invitation acceptance (end-to-end against D1)", () => {
     await createTestUser({ email: "kid@example.com" });
 
     const lookup = await SELF.fetch(
-      `http://localhost:8787/api/invitations/${token}`,
+      "http://localhost:8787/api/invitations/lookup",
+      { headers: { "x-invitation-token": token } },
     );
     await expect(lookup.json()).resolves.toMatchObject({
       accountExists: true,

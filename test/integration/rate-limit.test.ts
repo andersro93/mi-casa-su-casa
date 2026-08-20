@@ -66,8 +66,11 @@ describe("rate limiting (D1-backed)", () => {
 
   it("throttles invitation token probing", async () => {
     const probe = () =>
-      SELF.fetch("http://localhost:8787/api/invitations/does-not-exist", {
-        headers: { "cf-connecting-ip": "198.51.100.2" },
+      SELF.fetch("http://localhost:8787/api/invitations/lookup", {
+        headers: {
+          "cf-connecting-ip": "198.51.100.2",
+          "x-invitation-token": "does-not-exist",
+        },
       });
 
     for (let attempt = 0; attempt < RATE_LIMITS.invitations.max; attempt += 1) {

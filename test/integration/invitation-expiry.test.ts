@@ -65,15 +65,19 @@ describe("invitation expiry", () => {
     const token = await seed(new Date(Date.now() - 60_000));
 
     const lookup = await SELF.fetch(
-      `http://localhost:8787/api/invitations/${token}`,
+      "http://localhost:8787/api/invitations/lookup",
+      { headers: { "x-invitation-token": token } },
     );
     expect([404, 410]).toContain(lookup.status);
 
     const accept = await SELF.fetch(
-      `http://localhost:8787/api/invitations/${token}/accept`,
+      "http://localhost:8787/api/invitations/accept",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-invitation-token": token,
+        },
         body: JSON.stringify({ name: "Kid", password: "averylongpassword123" }),
       },
     );
