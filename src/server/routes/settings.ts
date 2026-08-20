@@ -31,6 +31,7 @@ settingsRoutes.get("/", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
+  const currentSession = c.get("session");
   const [profile, sessions] = await Promise.all([
     getUserProfile(c.env.DB, currentUser.id),
     listUserSessions(c.env.DB, currentUser.id),
@@ -40,7 +41,15 @@ settingsRoutes.get("/", async (c) => {
     return c.json({ error: "User not found" }, 404);
   }
 
-  return c.json({ profile, sessions });
+  // Session tokens are bearer secrets and never leave the server; the client
+  // only needs to know which row is the session it is using right now.
+  return c.json({
+    profile,
+    sessions: sessions.map((session) => ({
+      ...session,
+      isCurrent: session.id === currentSession?.id,
+    })),
+  });
 });
 
 settingsRoutes.get("/households", async (c) => {

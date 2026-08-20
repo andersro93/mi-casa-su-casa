@@ -159,7 +159,6 @@ invitationRoutes.post("/:token/accept", async (c) => {
           role: invitation.role,
         },
         household,
-        session: signUpResult.response,
       },
       201,
     );
