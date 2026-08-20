@@ -5,6 +5,7 @@ import {
   integer,
   sqliteTable,
   text,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
@@ -191,7 +192,7 @@ export const householdMemberships = sqliteTable(
     updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
-    uniqueIndex("household_memberships_household_user_unique").on(
+    unique("household_memberships_household_user_unique").on(
       table.householdId,
       table.userId,
     ),
@@ -217,9 +218,10 @@ export const householdMemberProviderAccess = sqliteTable(
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
-    uniqueIndex(
-      "household_member_provider_access_membership_provider_unique",
-    ).on(table.householdMembershipId, table.providerId),
+    unique("household_member_provider_access_membership_provider_unique").on(
+      table.householdMembershipId,
+      table.providerId,
+    ),
     index("household_member_provider_access_membership_idx").on(
       table.householdMembershipId,
     ),
@@ -242,7 +244,7 @@ export const senderRules = sqliteTable(
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
-    uniqueIndex("sender_rules_household_match_type_match_value_unique").on(
+    unique("sender_rules_household_match_type_match_value_unique").on(
       table.householdId,
       table.matchType,
       table.matchValue,
@@ -259,29 +261,11 @@ export const senderRules = sqliteTable(
   ],
 );
 
-export const userProviderAccess = sqliteTable(
-  "user_provider_access",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id").notNull(),
-    providerId: text("provider_id")
-      .notNull()
-      .references(() => providers.id, { onDelete: "cascade" }),
-    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-  },
-  (table) => [
-    uniqueIndex("user_provider_access_user_id_provider_id_unique").on(
-      table.userId,
-      table.providerId,
-    ),
-  ],
-);
-
 export const messages = sqliteTable(
   "messages",
   {
     id: text("id").primaryKey(),
-    messageId: text("message_id").notNull().unique(),
+    messageId: text("message_id").notNull(),
     householdId: text("household_id")
       .notNull()
       .references(() => households.id, { onDelete: "cascade" }),
@@ -294,7 +278,10 @@ export const messages = sqliteTable(
     subject: text("subject"),
     textBody: text("text_body").notNull(),
     extractedCode: text("extracted_code"),
-    status: text("status").$type<"new" | "used" | "expired">().notNull(),
+    status: text("status")
+      .$type<"new" | "used" | "expired">()
+      .notNull()
+      .default("new"),
     classificationReason: text("classification_reason").notNull(),
     rawSize: integer("raw_size").notNull(),
     dateHeader: text("date_header"),
@@ -303,7 +290,7 @@ export const messages = sqliteTable(
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
-    uniqueIndex("messages_household_id_message_id_unique").on(
+    unique("messages_household_id_message_id_unique").on(
       table.householdId,
       table.messageId,
     ),
@@ -347,7 +334,7 @@ export const quarantineMessages = sqliteTable(
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
-    uniqueIndex("quarantine_messages_household_id_message_id_unique").on(
+    unique("quarantine_messages_household_id_message_id_unique").on(
       table.householdId,
       table.messageId,
     ),
@@ -446,7 +433,7 @@ export const householdInvitationProviderAccess = sqliteTable(
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   },
   (table) => [
-    uniqueIndex(
+    unique(
       "household_invitation_provider_access_invitation_provider_unique",
     ).on(table.invitationId, table.providerId),
   ],

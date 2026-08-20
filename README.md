@@ -91,21 +91,17 @@ Set `OWNER_EMAIL` in the top-level `vars` section of `wrangler.jsonc` to your em
 npm run db:apply:local
 ```
 
-### Generate Drizzle migrations
+### Database schema and migrations
 
-Better Auth tables and app tables are now represented in Drizzle schema definitions while Cloudflare D1 remains the runtime database.
+The hand-written SQL files in `migrations/` are the **source of truth** for the D1 schema and are applied with Wrangler (`npm run db:apply:local|preview|production`). `src/server/db/schema.ts` is a Drizzle mirror of that schema used for typed queries and by the Better Auth adapter — it must match the migrations exactly, and `test/integration/schema-drift.test.ts` fails CI if it does not (tables, columns, nullability, defaults, unique constraints, indexes).
 
-Generate new migration SQL with:
+To change the schema:
 
-```bash
-npm run db:generate
-```
+1. add a new numbered file under `migrations/` (migrations are append-only; never edit an applied one),
+2. mirror the change in `src/server/db/schema.ts`,
+3. run `npm run test:integration` — the drift test tells you about any mismatch.
 
-Apply the generated SQL through the existing Wrangler migration flow:
-
-```bash
-npm run db:apply:local
-```
+`npm run db:generate` (drizzle-kit) is **not** part of the workflow; there is no Drizzle journal and it would emit a full initial schema.
 
 ### Start development
 
