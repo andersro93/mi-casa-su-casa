@@ -17,6 +17,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { CreateHouseholdPage } from "./components/CreateHouseholdPage";
+import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
 import { HouseholdSettingsView } from "./components/HouseholdSettingsView";
 import { InboxView } from "./components/InboxView";
 import { InvitePage } from "./components/InvitePage";
@@ -25,6 +26,7 @@ import { LoginPage } from "./components/LoginPage";
 import { MembersView } from "./components/MembersView";
 import { ProvidersRulesView } from "./components/ProvidersRulesView";
 import { QuarantineView } from "./components/QuarantineView";
+import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { SettingsView } from "./components/SettingsView";
 import { SetupPage } from "./components/SetupPage";
 import type {
@@ -139,7 +141,14 @@ export function App() {
   const routeSegments = location.pathname.split("/").filter(Boolean);
   const routeSlug =
     routeSegments[0] &&
-    !["login", "setup", "invite", "settings"].includes(routeSegments[0])
+    ![
+      "login",
+      "setup",
+      "invite",
+      "settings",
+      "forgot-password",
+      "reset-password",
+    ].includes(routeSegments[0])
       ? routeSegments[0]
       : null;
 
@@ -1809,6 +1818,8 @@ export function App() {
             />
           }
         />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route
           path="*"
           element={

@@ -36,6 +36,7 @@ function createAuth(env: Env, options: { disableSignUp: boolean }) {
       disableSignUp: options.disableSignUp,
       minPasswordLength: 12,
       maxPasswordLength: 128,
+      revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         try {
           await sendPasswordResetEmail(env, {

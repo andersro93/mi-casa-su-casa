@@ -1,6 +1,7 @@
-import { Alert, Box, Button, TextField } from "@mui/material";
+import { Alert, Box, Button, Link as MuiLink, TextField } from "@mui/material";
 import { authClient } from "@server/auth/client";
 import { type FormEvent, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import type { LoginState, SetupStatus } from "../types";
 import { PublicEntryShell } from "./PublicEntryShell";
 
@@ -109,6 +110,16 @@ export function LoginPage({
         >
           {isLoggingIn ? "Signing in…" : "Sign in"}
         </Button>
+
+        <Box sx={{ mt: 2, textAlign: "center" }}>
+          <MuiLink
+            component={RouterLink}
+            to="/forgot-password"
+            underline="hover"
+          >
+            Forgot your password?
+          </MuiLink>
+        </Box>
       </Box>
     </PublicEntryShell>
   );
