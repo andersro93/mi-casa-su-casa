@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { dbForDatabase } from "../client";
+import { type AppDatabase, dbForDatabase } from "../client";
 import {
   householdInvitationProviderAccess,
   householdInvitations,
@@ -47,9 +47,11 @@ export async function createHouseholdInvitation(
   },
 ) {
   const invitationId = crypto.randomUUID();
+  const database = dbForDatabase(db);
 
-  await dbForDatabase(db).transaction(async (tx) => {
-    await tx.insert(householdInvitations).values({
+  // D1 does not support SQL transactions (BEGIN/COMMIT); `batch` is atomic.
+  await database.batch([
+    database.insert(householdInvitations).values({
       id: invitationId,
       householdId: input.householdId,
       email: input.email,
@@ -64,19 +66,9 @@ export async function createHouseholdInvitation(
       cancelledAt: null,
       createdAt: sql`CURRENT_TIMESTAMP`,
       updatedAt: sql`CURRENT_TIMESTAMP`,
-    });
-
-    if (input.providerIds.length > 0) {
-      await tx.insert(householdInvitationProviderAccess).values(
-        input.providerIds.map((providerId) => ({
-          id: crypto.randomUUID(),
-          invitationId,
-          providerId,
-          createdAt: sql`CURRENT_TIMESTAMP`,
-        })),
-      );
-    }
-  });
+    }),
+    ...invitationProviderInserts(database, invitationId, input.providerIds),
+  ]);
 
   return invitationId;
 }
@@ -223,8 +215,11 @@ export async function acceptInvitation(
     role: InvitationRole;
   },
 ) {
-  await dbForDatabase(db).transaction(async (tx) => {
-    await tx
+  const database = dbForDatabase(db);
+
+  // D1 does not support SQL transactions (BEGIN/COMMIT); `batch` is atomic.
+  await database.batch([
+    database
       .insert(householdMemberships)
       .values({
         id: crypto.randomUUID(),
@@ -240,9 +235,8 @@ export async function acceptInvitation(
           role: input.role,
           updatedAt: sql`CURRENT_TIMESTAMP`,
         },
-      });
-
-    await tx
+      }),
+    database
       .update(householdInvitations)
       .set({
         status: "accepted",
@@ -250,8 +244,8 @@ export async function acceptInvitation(
         acceptedAt: sql`CURRENT_TIMESTAMP`,
         updatedAt: sql`CURRENT_TIMESTAMP`,
       })
-      .where(eq(householdInvitations.id, input.invitationId));
-  });
+      .where(eq(householdInvitations.id, input.invitationId)),
+  ]);
 }
 
 export async function refreshExpiredInvitations(db: D1Database) {
@@ -351,22 +345,34 @@ export async function replaceInvitationProviders(
   invitationId: string,
   providerIds: string[],
 ) {
-  await dbForDatabase(db).transaction(async (tx) => {
-    await tx
-      .delete(householdInvitationProviderAccess)
-      .where(eq(householdInvitationProviderAccess.invitationId, invitationId));
+  const database = dbForDatabase(db);
 
-    if (providerIds.length > 0) {
-      await tx.insert(householdInvitationProviderAccess).values(
-        providerIds.map((providerId) => ({
-          id: crypto.randomUUID(),
-          invitationId,
-          providerId,
-          createdAt: sql`CURRENT_TIMESTAMP`,
-        })),
-      );
-    }
-  });
+  // D1 does not support SQL transactions (BEGIN/COMMIT); `batch` is atomic.
+  await database.batch([
+    database
+      .delete(householdInvitationProviderAccess)
+      .where(eq(householdInvitationProviderAccess.invitationId, invitationId)),
+    ...invitationProviderInserts(database, invitationId, providerIds),
+  ]);
+}
+
+/**
+ * One insert statement per provider so each statement stays well under D1's
+ * bound-parameter limit regardless of how many providers are scoped.
+ */
+function invitationProviderInserts(
+  database: AppDatabase,
+  invitationId: string,
+  providerIds: string[],
+) {
+  return providerIds.map((providerId) =>
+    database.insert(householdInvitationProviderAccess).values({
+      id: crypto.randomUUID(),
+      invitationId,
+      providerId,
+      createdAt: sql`CURRENT_TIMESTAMP`,
+    }),
+  );
 }
 
 export async function getProvidersByIds(db: D1Database, providerIds: string[]) {
