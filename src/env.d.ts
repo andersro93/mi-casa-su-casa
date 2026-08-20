@@ -21,7 +21,8 @@ interface Env {
   DB: D1Database;
   EMAIL: SendEmail;
   ENVIRONMENT: string;
-  OUTBOUND_EMAIL_FROM?: string;
+  NODE_ENV?: string;
+  OUTBOUND_EMAIL_FROM: string;
   OWNER_EMAIL?: string;
   SETUP_SECRET?: string;
 }

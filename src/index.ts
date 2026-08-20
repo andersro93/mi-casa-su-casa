@@ -13,6 +13,7 @@ import { invitationRoutes } from "./server/routes/invitations";
 import { settingsRoutes } from "./server/routes/settings";
 import { setupRoutes } from "./server/routes/setup";
 import { createAppContext } from "./server/runtime/context";
+import { assertValidEnv, validateEnv } from "./server/runtime/env";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -25,6 +26,31 @@ app.use(
     credentials: true,
   }),
 );
+
+// Fail fast (and loudly) when required configuration is missing, instead of
+// letting auth/email silently degrade. Liveness stays available.
+app.use("/api/*", async (c, next) => {
+  if (c.req.path === "/api/health/live") {
+    return next();
+  }
+
+  const validation = validateEnv(c.env);
+
+  if (!validation.ok) {
+    console.error(
+      JSON.stringify({
+        event: "env_misconfigured",
+        problems: validation.problems,
+      }),
+    );
+    return c.json(
+      { error: "misconfigured", problems: validation.problems },
+      503,
+    );
+  }
+
+  await next();
+});
 
 app.use("/api/inbox/*", loadAuthSession);
 app.use("/api/admin/*", loadAuthSession);
@@ -51,10 +77,12 @@ const worker: ExportedHandler<Env> = {
     return app.fetch(request, env, ctx);
   },
   async email(message, env, ctx) {
+    assertValidEnv(env);
     const appContext = createAppContext(env, ctx);
     await handleIncomingEmail(message, appContext);
   },
   async scheduled(controller, env, ctx) {
+    assertValidEnv(env);
     const appContext = createAppContext(env, ctx);
     await purgeExpiredMessages(appContext, controller.scheduledTime);
   },

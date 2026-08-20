@@ -8,11 +8,9 @@ import * as schema from "../db/schema";
 import { sendPasswordResetEmail } from "../email/sender";
 
 function getRpId(url: string) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return "localhost";
-  }
+  // APP_URL is validated at the edge (see runtime/env.ts); a bad value here
+  // must not silently bind passkeys to "localhost".
+  return new URL(url).hostname;
 }
 
 export function authForEnv(env: Env) {

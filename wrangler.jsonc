@@ -29,7 +29,8 @@
     "APP_NAME": "Mi Casa Su Casa",
     "APP_URL": "http://localhost:8787",
     "ENVIRONMENT": "development",
-    "OWNER_EMAIL": "owner@example.com"
+    "OWNER_EMAIL": "owner@example.com",
+    "OUTBOUND_EMAIL_FROM": "noreply@example.com"
   },
   "env": {
     "preview": {
@@ -51,7 +52,9 @@
       // APP_URL and OWNER_EMAIL are injected at deploy time via --var from GitHub variables.
       "vars": {
         "APP_NAME": "Mi Casa Su Casa (Preview)",
-        "ENVIRONMENT": "preview"
+        "ENVIRONMENT": "preview",
+        // Better Auth only enforces its production safeguards when NODE_ENV is set.
+        "NODE_ENV": "production"
       }
     },
     "production": {
@@ -73,7 +76,9 @@
       // APP_URL and OWNER_EMAIL are injected at deploy time via --var from GitHub variables.
       "vars": {
         "APP_NAME": "Mi Casa Su Casa",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        // Better Auth only enforces its production safeguards when NODE_ENV is set.
+        "NODE_ENV": "production"
       }
     }
   },
