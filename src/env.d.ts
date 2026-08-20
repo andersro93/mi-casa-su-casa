@@ -23,6 +23,8 @@ interface Env {
   ENVIRONMENT: string;
   NODE_ENV?: string;
   OUTBOUND_EMAIL_FROM: string;
+  /** Domain of the inbound addresses (<slug>@EMAIL_DOMAIN); optional, display only. */
+  EMAIL_DOMAIN?: string;
   OWNER_EMAIL?: string;
   SETUP_SECRET?: string;
 }

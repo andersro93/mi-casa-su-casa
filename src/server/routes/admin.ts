@@ -119,6 +119,7 @@ type SenderRulePayload = {
 type InvitationPayload = {
   email?: string;
   name?: string;
+  /** "owner" | "member"; the legacy value "admin" is accepted as "owner". */
   role?: InvitationRole | "admin";
   providerIds?: string[];
 };
@@ -131,6 +132,29 @@ export const adminRoutes = new Hono<{
   Bindings: Env;
   Variables: AppVariables;
 }>();
+
+/**
+ * Household roles are "owner" | "member" everywhere. The UI used to send
+ * "admin" for owners; keep accepting it so old clients don't break.
+ */
+function normalizeHouseholdRole(value: unknown): "owner" | "member" | null {
+  if (value === "owner" || value === "admin") return "owner";
+  if (value === "member") return "member";
+  return null;
+}
+
+function householdSettingsPayload(
+  env: Env,
+  settings: { slug: string; displayName: string },
+) {
+  const domain = env.EMAIL_DOMAIN?.trim();
+  return {
+    slug: settings.slug,
+    displayName: settings.displayName,
+    // The address providers must send codes to; null until EMAIL_DOMAIN is set.
+    emailAddress: domain ? `${settings.slug}@${domain}` : null,
+  };
+}
 
 function normalizeProviderKey(value: string | undefined) {
   return value?.trim().toLowerCase() ?? "";
@@ -176,14 +200,7 @@ adminRoutes.get("/:slug/settings", async (c) => {
     return c.json({ error: "Household not found" }, 404);
   }
 
-  return c.json({
-    household: {
-      slug: settings.slug,
-      emailAddress: `${settings.slug}@DOMAIN`,
-      displayName: settings.displayName,
-      subscriptionPlan: "Free Plan",
-    },
-  });
+  return c.json({ household: householdSettingsPayload(c.env, settings) });
 });
 
 adminRoutes.patch("/:slug/settings", async (c) => {
@@ -217,14 +234,7 @@ adminRoutes.patch("/:slug/settings", async (c) => {
     return c.json({ error: "Household not found" }, 404);
   }
 
-  return c.json({
-    household: {
-      slug: settings.slug,
-      emailAddress: `${settings.slug}@DOMAIN`,
-      displayName: settings.displayName,
-      subscriptionPlan: "Free Plan",
-    },
-  });
+  return c.json({ household: householdSettingsPayload(c.env, settings) });
 });
 
 adminRoutes.get("/:slug/providers", async (c) => {
@@ -477,7 +487,7 @@ adminRoutes.get("/:slug/members", async (c) => {
   return c.json({
     members: members.map((member) => ({
       ...member,
-      role: member.householdRole === "owner" ? "admin" : "member",
+      role: member.householdRole,
       providerAccess: accessByUserId.get(member.id) ?? [],
     })),
     providers,
@@ -505,8 +515,7 @@ adminRoutes.post("/:slug/invitations", async (c) => {
 
   const email = normalizeEmail(payload.email);
   const name = normalizeDisplayName(payload.name);
-  const role: InvitationRole =
-    payload.role === "owner" || payload.role === "admin" ? "owner" : "member";
+  const role: InvitationRole = normalizeHouseholdRole(payload.role) ?? "member";
   const providerIds = Array.isArray(payload.providerIds)
     ? payload.providerIds.filter((providerId) => Boolean(providerId))
     : [];
@@ -681,7 +690,7 @@ adminRoutes.post("/:slug/members", async (c) => {
     Date.now() + 1000 * 60 * 60 * 24 * 7,
   ).toISOString();
   const invitationRole: InvitationRole =
-    payload.role === "admin" ? "owner" : "member";
+    normalizeHouseholdRole(payload.role) ?? "member";
 
   const invitationId = await createHouseholdInvitation(c.env.DB, {
     householdId: household.id,
@@ -733,8 +742,10 @@ adminRoutes.patch("/:slug/members/:userId/role", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  if (payload.role !== "admin" && payload.role !== "member") {
-    return c.json({ error: "role must be admin or member" }, 400);
+  const nextRole = normalizeHouseholdRole(payload.role);
+
+  if (!nextRole) {
+    return c.json({ error: "role must be owner or member" }, 400);
   }
 
   const household = c.get("household");
@@ -756,7 +767,7 @@ adminRoutes.patch("/:slug/members/:userId/role", async (c) => {
   await updateHouseholdMembershipRole(c.env.DB, {
     householdId: household.id,
     userId,
-    role: payload.role === "admin" ? "owner" : "member",
+    role: nextRole,
   });
 
   return c.json({ ok: true });

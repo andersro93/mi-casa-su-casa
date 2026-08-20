@@ -106,13 +106,13 @@ export type SenderRuleFormState = {
 export type MemberFormState = {
   email: string;
   name: string;
-  role: "member" | "admin";
+  role: "member" | "owner";
 };
 
 export type InvitationFormState = {
   email: string;
   name: string;
-  role: "member" | "admin";
+  role: "member" | "owner";
   providerIds: string[];
 };
 
@@ -120,7 +120,7 @@ export type InvitationSummary = {
   id: string;
   email: string;
   name: string;
-  role: "member" | "admin";
+  role: "member" | "owner";
   status: "pending" | "accepted" | "cancelled" | "expired";
   invitedByUserId: string;
   acceptedByUserId: string | null;
@@ -172,9 +172,9 @@ export type AccountSettingsFormState = {
 
 export type HouseholdSettings = {
   slug: string;
-  emailAddress: string;
+  /** <slug>@EMAIL_DOMAIN, or null until the operator configures EMAIL_DOMAIN. */
+  emailAddress: string | null;
   displayName: string;
-  subscriptionPlan: string;
 };
 
 export type HouseholdSettingsResponse = {

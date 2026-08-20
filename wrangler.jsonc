@@ -37,7 +37,8 @@
     "APP_URL": "http://localhost:8787",
     "ENVIRONMENT": "development",
     "OWNER_EMAIL": "owner@example.com",
-    "OUTBOUND_EMAIL_FROM": "noreply@example.com"
+    "OUTBOUND_EMAIL_FROM": "noreply@example.com",
+    "EMAIL_DOMAIN": "example.com"
   },
   "env": {
     "preview": {

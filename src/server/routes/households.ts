@@ -85,5 +85,10 @@ householdRoutes.post("/", rateLimit(RATE_LIMITS.householdCreate), async (c) => {
     ownerUserId: user.id,
   });
 
-  return c.json({ household }, 201);
+  if (!household) {
+    return c.json({ error: "Unable to create household" }, 500);
+  }
+
+  // Same shape as /api/households/me entries so the client can use it directly.
+  return c.json({ household: { ...household, role: "owner" as const } }, 201);
 });

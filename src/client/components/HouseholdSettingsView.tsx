@@ -83,7 +83,11 @@ export function HouseholdSettingsView({
               <TextField
                 fullWidth
                 label="Household email address"
-                value={household.emailAddress}
+                value={
+                  household.emailAddress ??
+                  "Not configured — set EMAIL_DOMAIN on the Worker"
+                }
+                helperText="Give this address to the services that send verification codes."
                 disabled
               />
               <TextField
@@ -94,12 +98,6 @@ export function HouseholdSettingsView({
                   onFormChange({ displayName: event.target.value })
                 }
                 required
-              />
-              <TextField
-                fullWidth
-                label="Subscription plan"
-                value={household.subscriptionPlan}
-                disabled
               />
               <Box>
                 <Button

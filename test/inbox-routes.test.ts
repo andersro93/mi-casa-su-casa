@@ -829,6 +829,7 @@ function createEnv(db: D1Database, overrides?: Partial<Env>): Env {
     EMAIL: email,
     ENVIRONMENT: "test",
     OUTBOUND_EMAIL_FROM: "noreply@example.com",
+    EMAIL_DOMAIN: "example.com",
     OWNER_EMAIL: "owner@example.com",
     SETUP_SECRET: "setup-secret",
     ...overrides,
@@ -1122,7 +1123,7 @@ describe("worker routes", () => {
           email: "owner@example.com",
           name: "Home Owner",
           householdRole: "owner",
-          role: "admin",
+          role: "owner",
           createdAt: "2026-05-10T12:00:00.000Z",
           updatedAt: "2026-05-10T12:00:00.000Z",
           providerAccess: [],
@@ -1165,9 +1166,8 @@ describe("worker routes", () => {
     await expect(response.json()).resolves.toEqual({
       household: {
         slug: "home",
-        emailAddress: "home@DOMAIN",
         displayName: "Home",
-        subscriptionPlan: "Free Plan",
+        emailAddress: "home@example.com",
       },
     });
   });
@@ -1187,9 +1187,8 @@ describe("worker routes", () => {
     await expect(response.json()).resolves.toEqual({
       household: {
         slug: "home",
-        emailAddress: "home@DOMAIN",
         displayName: "Renamed Home",
-        subscriptionPlan: "Free Plan",
+        emailAddress: "home@example.com",
       },
     });
     expect(
