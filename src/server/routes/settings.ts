@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-
 import {
   type AppVariables,
   requireAuthenticatedUser,
 } from "../auth/middleware";
+import { recordAuditEvent } from "../db/repositories/audit";
 import {
   deleteOtherSessions,
   deleteSessionById,
@@ -101,6 +101,13 @@ settingsRoutes.delete("/sessions/others", async (c) => {
   }
 
   await deleteOtherSessions(c.env.DB, currentUser.id, currentSession.id);
+  await recordAuditEvent(c.env.DB, {
+    actorUserId: currentUser.id,
+    action: "session.revoked_others",
+    targetType: "user",
+    targetId: currentUser.id,
+  });
+
   return c.json({ ok: true });
 });
 
@@ -113,5 +120,12 @@ settingsRoutes.delete("/sessions/:sessionId", async (c) => {
   }
 
   await deleteSessionById(c.env.DB, currentUser.id, sessionId);
+  await recordAuditEvent(c.env.DB, {
+    actorUserId: currentUser.id,
+    action: "session.revoked",
+    targetType: "session",
+    targetId: sessionId,
+  });
+
   return c.json({ ok: true });
 });
