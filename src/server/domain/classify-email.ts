@@ -12,6 +12,7 @@ export async function classifyEmail(
   if (!parsed.householdSlug) {
     return {
       kind: "quarantine",
+      householdId: null,
       reason: "No household slug could be resolved from the recipient address.",
       code,
     };
@@ -22,6 +23,7 @@ export async function classifyEmail(
   if (!household) {
     return {
       kind: "quarantine",
+      householdId: null,
       reason: "No household matched the inbound recipient address.",
       code,
     };
@@ -36,6 +38,7 @@ export async function classifyEmail(
   if (!providerMatch) {
     return {
       kind: "quarantine",
+      householdId: household.id,
       reason:
         "No sender rule matched the inbound email within the addressed household.",
       code,
