@@ -270,7 +270,7 @@ Add as **encrypted secrets**:
 | Secret | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Random string used by Better Auth to sign sessions (generate with `openssl rand -base64 32`) |
-| `SETUP_SECRET` | One-time setup passphrase you choose for the initial owner account creation |
+| `SETUP_SECRET` | One-time setup passphrase you choose for the initial owner account creation. Delete it after `/setup` succeeds |
 
 Repeat for the preview Worker (`mi-casa-su-casa-preview`) if you want setup to work in preview environments. Use the preview URL for `APP_URL` in that Worker.
 
@@ -305,6 +305,7 @@ After the first successful deploy:
 1. Visit `https://<your-production-url>/setup`
 2. Enter the `OWNER_EMAIL` and `SETUP_SECRET` you configured
 3. The initial owner account is created and the `/setup` route locks permanently
+4. Remove `SETUP_SECRET` from the Worker's secrets in the Cloudflare dashboard — it was only needed once. The route stays locked (it answers 409 for any secret after setup), so keeping the secret around only adds risk
 
 You're done. Invite family members through the app.
 
