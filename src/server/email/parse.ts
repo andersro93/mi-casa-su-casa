@@ -75,9 +75,48 @@ export function parseAuthenticationResults(
   return result;
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  "#39": "'",
+};
+
+export function decodeHtmlEntities(value: string): string {
+  return value.replace(
+    /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,
+    (whole, entity: string) => {
+      const lower = entity.toLowerCase();
+      if (lower.startsWith("#x")) {
+        const codePoint = Number.parseInt(lower.slice(2), 16);
+        return Number.isNaN(codePoint)
+          ? whole
+          : String.fromCodePoint(codePoint);
+      }
+      if (lower.startsWith("#")) {
+        const codePoint = Number.parseInt(lower.slice(1), 10);
+        return Number.isNaN(codePoint)
+          ? whole
+          : String.fromCodePoint(codePoint);
+      }
+      return NAMED_ENTITIES[lower] ?? whole;
+    },
+  );
+}
+
+/**
+ * Turns HTML into plain text good enough for code extraction: style/script
+ * blocks and comments are removed entirely (CSS colours like #123456 must not
+ * look like codes), tags become spaces, entities are decoded.
+ */
+export function stripHtml(html: string): string {
+  const withoutBlocks = html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(style|script|head|title)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ");
+  return decodeHtmlEntities(withoutBlocks.replace(/<[^>]+>/g, " "))
     .replace(/\s+/g, " ")
     .trim();
 }
