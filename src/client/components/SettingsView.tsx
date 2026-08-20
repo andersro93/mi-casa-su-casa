@@ -414,9 +414,7 @@ export function SettingsView({
                 }
               >
                 <ListItemText
-                  primary={
-                    session.userAgent ? session.userAgent : "Unknown Device"
-                  }
+                  primary={`${session.userAgent ? session.userAgent : "Unknown Device"}${session.isCurrent ? " · this device" : ""}`}
                   secondary={
                     <>
                       {session.ipAddress && `IP: ${session.ipAddress} • `}

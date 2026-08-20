@@ -1417,7 +1417,6 @@ describe("worker routes", () => {
     const payload = (await response.json()) as {
       member: { id: string; email: string; role: string };
       household: { slug: string };
-      session: { session: { userId: string } };
     };
 
     expect(payload.member).toEqual({
@@ -1427,7 +1426,7 @@ describe("worker routes", () => {
       role: "member",
     });
     expect(payload.household.slug).toBe("home");
-    expect(payload.session.session.userId).toBe("created-user-1");
+    expect("session" in payload).toBe(false);
     expect(response.headers.get("set-cookie")).toContain(
       "better-auth.session_token=test-token",
     );
@@ -1466,7 +1465,6 @@ describe("worker routes", () => {
     const payload = (await response.json()) as {
       member: { role: string; email: string };
       household: { slug: string };
-      session: { session: { userId: string } };
     };
 
     expect(payload.member).toEqual({
@@ -1476,7 +1474,7 @@ describe("worker routes", () => {
       role: "owner",
     });
     expect(payload.household.slug).toBe("home-setup");
-    expect(payload.session.session.userId).toBe("created-user-1");
+    expect("session" in payload).toBe(false);
   });
 });
 

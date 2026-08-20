@@ -19,7 +19,7 @@ describe("SettingsView", () => {
         sessions={[
           {
             id: "session-1",
-            token: "token-1",
+            isCurrent: true,
             expiresAt: "2026-06-01T12:00:00.000Z",
             ipAddress: "127.0.0.1",
             userAgent: "Safari",

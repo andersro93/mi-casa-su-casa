@@ -226,7 +226,6 @@ setupRoutes.post("/complete", async (c) => {
           role: "owner",
         },
         household,
-        session: signUpResult.response,
       },
       201,
     );

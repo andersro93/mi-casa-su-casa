@@ -134,7 +134,7 @@ export type InvitationSummary = {
 
 export type AccountSession = {
   id: string;
-  token: string;
+  isCurrent: boolean;
   expiresAt: string | null;
   ipAddress: string | null;
   userAgent: string | null;

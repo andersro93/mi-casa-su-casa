@@ -63,7 +63,6 @@ export async function listUserSessions(db: D1Database, userId: string) {
   const rows = await dbForDatabase(db)
     .select({
       id: session.id,
-      token: session.token,
       expiresAt: session.expiresAt,
       ipAddress: session.ipAddress,
       userAgent: session.userAgent,
@@ -77,7 +76,6 @@ export async function listUserSessions(db: D1Database, userId: string) {
 
   return rows.map((row) => ({
     id: row.id,
-    token: row.token,
     expiresAt: normalizeTimestamp(row.expiresAt),
     ipAddress: row.ipAddress,
     userAgent: row.userAgent,
