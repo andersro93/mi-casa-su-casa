@@ -124,6 +124,19 @@ const INITIAL_RULE_FORM_STATE: SenderRuleFormState = {
   matchValue: "",
 };
 
+const PENDING_INVITE_KEY = "pendingInviteToken";
+
+// Declared at module level so it is not remounted on every App render.
+function InviteRoute({ onAccepted }: { onAccepted: (slug: string) => void }) {
+  const { token } = useParams<{ token: string }>();
+
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <InvitePage token={token} onAcceptSuccess={onAccepted} />;
+}
+
 export function App() {
   const {
     data: session,
@@ -152,6 +165,7 @@ export function App() {
       ? routeSegments[0]
       : null;
 
+  const isInvitePath = routeSegments[0] === "invite";
   const activeView = getActiveView(location.pathname);
   const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [isLoadingHouseholds, setIsLoadingHouseholds] = useState(false);
@@ -309,25 +323,11 @@ export function App() {
     setViewError(null);
   };
 
-  function InviteRoute() {
-    const { token } = useParams<{ token: string }>();
-
-    if (!token) {
-      return <Navigate to="/login" replace />;
-    }
-
-    return (
-      <InvitePage
-        token={token}
-        onAcceptSuccess={(householdSlug) => {
-          navigate(buildHouseholdPath(householdSlug, "/inbox"), {
-            replace: true,
-          });
-          void refetch();
-        }}
-      />
-    );
-  }
+  const handleInviteAccepted = (householdSlug: string) => {
+    sessionStorage.removeItem(PENDING_INVITE_KEY);
+    navigate(buildHouseholdPath(householdSlug, "/inbox"), { replace: true });
+    void refetch();
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -375,7 +375,13 @@ export function App() {
       return;
     }
 
-    if (activeView === "settings") {
+    if (activeView === "settings" || isInvitePath) {
+      return;
+    }
+
+    const pendingInvite = sessionStorage.getItem(PENDING_INVITE_KEY);
+    if (pendingInvite) {
+      navigate(`/invite/${pendingInvite}`, { replace: true });
       return;
     }
 
@@ -395,6 +401,7 @@ export function App() {
     defaultHousehold,
     households,
     isAuthenticated,
+    isInvitePath,
     isLoadingHouseholds,
     navigate,
     routeSlug,
@@ -1788,7 +1795,10 @@ export function App() {
   if (!isAuthenticated) {
     return (
       <Routes>
-        <Route path="/invite/:token" element={<InviteRoute />} />
+        <Route
+          path="/invite/:token"
+          element={<InviteRoute onAccepted={handleInviteAccepted} />}
+        />
         <Route
           path="/setup"
           element={
@@ -1863,6 +1873,10 @@ export function App() {
       onLogout={handleLogout}
     >
       <Routes>
+        <Route
+          path="/invite/:token"
+          element={<InviteRoute onAccepted={handleInviteAccepted} />}
+        />
         <Route
           path="/"
           element={

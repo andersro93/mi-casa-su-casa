@@ -8,7 +8,11 @@ import {
 } from "@mui/material";
 import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { InvitationAcceptanceState, InvitationSummary } from "../types";
+import type {
+  InvitationAcceptanceState,
+  InvitationLookupResponse,
+  InvitationSummary,
+} from "../types";
 import { fetchJson } from "../utils";
 import { PublicEntryShell } from "./PublicEntryShell";
 
@@ -20,6 +24,9 @@ interface InvitePageProps {
 export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
   const navigate = useNavigate();
   const [invitation, setInvitation] = useState<InvitationSummary | null>(null);
+  const [accountExists, setAccountExists] = useState(false);
+  const [viewer, setViewer] =
+    useState<InvitationLookupResponse["viewer"]>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAccepting, setIsAccepting] = useState(false);
@@ -33,13 +40,15 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
 
     async function loadInvitation() {
       try {
-        const response = await fetchJson<{ invitation: InvitationSummary }>(
+        const response = await fetchJson<InvitationLookupResponse>(
           `/api/invitations/${token}`,
         );
 
         if (cancelled) return;
 
         setInvitation(response.invitation);
+        setAccountExists(response.accountExists);
+        setViewer(response.viewer);
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -60,6 +69,32 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
     };
   }, [token]);
 
+  async function submitAcceptance(body: Record<string, string>) {
+    setError(null);
+    setIsAccepting(true);
+
+    try {
+      const response = await fetchJson<{ household?: { slug: string } | null }>(
+        `/api/invitations/${token}/accept`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+
+      if (!response.household?.slug) {
+        throw new Error("Invitation accepted but no household was returned");
+      }
+
+      onAcceptSuccess(response.household.slug);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to accept invitation";
+      if (/already exists/i.test(message)) {
+        setAccountExists(true);
+      }
+      setError(message);
+      setIsAccepting(false);
+    }
+  }
+
   async function handleAccept(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -70,32 +105,15 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
       return;
     }
 
-    setError(null);
-    setIsAccepting(true);
+    await submitAcceptance({
+      name: formState.name,
+      password: formState.password,
+    });
+  }
 
-    try {
-      const response = await fetchJson<{ household?: { slug: string } | null }>(
-        `/api/invitations/${token}/accept`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: formState.name,
-            password: formState.password,
-          }),
-        },
-      );
-
-      if (!response.household?.slug) {
-        throw new Error("Invitation accepted but no household was returned");
-      }
-
-      onAcceptSuccess(response.household.slug);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to accept invitation",
-      );
-      setIsAccepting(false);
-    }
+  function goToSignIn() {
+    sessionStorage.setItem("pendingInviteToken", token);
+    navigate("/login");
   }
 
   if (isLoading) {
@@ -142,6 +160,92 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
 
   if (!invitation) {
     return null;
+  }
+
+  if (viewer?.emailMatches) {
+    return (
+      <PublicEntryShell
+        eyebrow="Mi Casa Su Casa"
+        title="Accept invitation"
+        description={
+          <>
+            You are signed in as <strong>{viewer.email}</strong> and have been
+            invited to join as a <strong>{invitation.role}</strong>.
+          </>
+        }
+      >
+        {error && (
+          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+            {error}
+          </Alert>
+        )}
+        <Button
+          fullWidth
+          variant="contained"
+          size="large"
+          disabled={isAccepting}
+          onClick={() => void submitAcceptance({})}
+          sx={{ py: 1.5 }}
+        >
+          {isAccepting ? "Accepting…" : `Accept as ${viewer.email}`}
+        </Button>
+      </PublicEntryShell>
+    );
+  }
+
+  if (viewer && !viewer.emailMatches) {
+    return (
+      <PublicEntryShell
+        eyebrow="Mi Casa Su Casa"
+        title="This invitation is for a different account"
+        description={
+          <>
+            The invitation was sent to <strong>{invitation.email}</strong>, but
+            you are signed in as <strong>{viewer.email}</strong>. Sign out and
+            open the link again with the invited account.
+          </>
+        }
+      >
+        <Button
+          variant="outlined"
+          fullWidth
+          onClick={() => navigate("/settings")}
+        >
+          Go to account settings
+        </Button>
+      </PublicEntryShell>
+    );
+  }
+
+  if (accountExists) {
+    return (
+      <PublicEntryShell
+        eyebrow="Mi Casa Su Casa"
+        title="Sign in to accept"
+        description={
+          <>
+            An account already exists for <strong>{invitation.email}</strong>.
+            Sign in with it and you will be brought back here to accept the
+            invitation.
+          </>
+        }
+      >
+        {error && (
+          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+            {error}
+          </Alert>
+        )}
+        <Button
+          fullWidth
+          variant="contained"
+          size="large"
+          onClick={goToSignIn}
+          sx={{ py: 1.5 }}
+        >
+          Sign in to accept
+        </Button>
+      </PublicEntryShell>
+    );
   }
 
   return (

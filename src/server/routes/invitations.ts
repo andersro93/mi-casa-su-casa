@@ -45,27 +45,36 @@ invitationRoutes.get("/:token", async (c) => {
     return c.json({ error: "Invitation not found or no longer valid" }, 404);
   }
 
-  return c.json({ invitation: withoutToken(invitation) });
+  const currentUser = c.get("user");
+  const accountExists = Boolean(
+    await findUserByEmail(c.env.DB, invitation.email),
+  );
+
+  return c.json({
+    invitation: withoutToken(invitation),
+    // Lets the invite page pick the right flow: create an account, sign in
+    // first, or accept as the signed-in user.
+    accountExists,
+    viewer: currentUser
+      ? {
+          email: currentUser.email,
+          emailMatches:
+            currentUser.email.toLowerCase() === invitation.email.toLowerCase(),
+        }
+      : null,
+  });
 });
 
 invitationRoutes.post("/:token/accept", async (c) => {
   await refreshExpiredInvitations(c.env.DB);
 
-  let payload: AcceptInvitationPayload;
+  let payload: AcceptInvitationPayload = {};
 
   try {
-    payload = await c.req.json<AcceptInvitationPayload>();
+    const raw = await c.req.text();
+    payload = raw.trim() ? (JSON.parse(raw) as AcceptInvitationPayload) : {};
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (!payload.name || !payload.password || payload.password.length < 12) {
-    return c.json(
-      {
-        error: "name and a password with at least 12 characters are required",
-      },
-      400,
-    );
   }
 
   const tokenHash = await hashInvitationToken(c.req.param("token"));
@@ -77,6 +86,19 @@ invitationRoutes.post("/:token/accept", async (c) => {
 
   const auth = provisioningAuthForEnv(c.env);
   const currentUser = c.get("user");
+
+  // A signed-in user accepts with their existing account: no password, no
+  // name required.
+  if (!currentUser) {
+    if (!payload.name || !payload.password || payload.password.length < 12) {
+      return c.json(
+        {
+          error: "name and a password with at least 12 characters are required",
+        },
+        400,
+      );
+    }
+  }
 
   if (currentUser) {
     if (currentUser.email.toLowerCase() !== invitation.email.toLowerCase()) {
@@ -103,7 +125,7 @@ invitationRoutes.post("/:token/accept", async (c) => {
         member: {
           id: currentUser.id,
           email: currentUser.email,
-          name: payload.name.trim(),
+          name: currentUser.name,
           role: invitation.role,
         },
         household,
@@ -111,6 +133,9 @@ invitationRoutes.post("/:token/accept", async (c) => {
       200,
     );
   }
+
+  const name = payload.name?.trim() ?? "";
+  const password = payload.password ?? "";
 
   // An account for the invited address already exists (e.g. an earlier
   // attempt was interrupted after sign-up, or the person already has an
@@ -133,8 +158,8 @@ invitationRoutes.post("/:token/accept", async (c) => {
     const signUpResult = await auth.api.signUpEmail({
       body: {
         email: invitation.email,
-        name: payload.name.trim(),
-        password: payload.password,
+        name,
+        password,
       },
       headers: new Headers(c.req.raw.headers),
       returnHeaders: true,
