@@ -55,22 +55,15 @@ interface LayoutProps {
 }
 
 function getActiveView(pathname: string) {
-  if (pathname === "/settings" || pathname.endsWith("/settings")) {
-    return "settings";
-  }
+  // Match on path segments (/:slug/:view), not substrings, so a household slug
+  // that happens to contain a view name does not change the active view.
+  const segments = pathname.split("/").filter(Boolean);
+  const view = segments.length === 1 ? segments[0] : segments[1];
 
-  if (pathname.includes("/quarantine")) {
-    return "quarantine";
-  }
-
-  if (pathname.includes("/members")) {
-    return "members";
-  }
-
-  if (pathname.includes("/providers")) {
-    return "providers";
-  }
-
+  if (view === "settings") return "settings";
+  if (view === "quarantine") return "quarantine";
+  if (view === "members") return "members";
+  if (view === "providers") return "providers";
   return "inbox";
 }
 

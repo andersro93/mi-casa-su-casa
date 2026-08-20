@@ -9,6 +9,11 @@ import {
   getHouseholdBySlug,
   listHouseholdsForUser,
 } from "../db/repositories/households";
+import { getInstallationState } from "../db/repositories/installation-state";
+import {
+  normalizeHouseholdSlug,
+  validateHouseholdSlug,
+} from "../domain/household-slug";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 
 type CreateHouseholdPayload = {
@@ -16,8 +21,25 @@ type CreateHouseholdPayload = {
   displayName?: string;
 };
 
-function normalizeSlug(value: string | undefined) {
-  return value?.trim().toLowerCase() ?? "";
+/**
+ * Who may create households: the installation owner and app-level admins
+ * always; anyone else only when they belong to no household yet (so a user
+ * whose only household was removed can recover). Invited members cannot
+ * mint extra households or squat inbound addresses.
+ */
+async function mayCreateHousehold(
+  db: D1Database,
+  user: { id: string; role: string },
+): Promise<boolean> {
+  if (user.role === "admin") {
+    return true;
+  }
+  const installation = await getInstallationState(db);
+  if (installation.owner_user_id === user.id) {
+    return true;
+  }
+  const memberships = await listHouseholdsForUser(db, user.id);
+  return memberships.length === 0;
 }
 
 function normalizeDisplayName(value: string | undefined) {
@@ -56,21 +78,29 @@ householdRoutes.post("/", rateLimit(RATE_LIMITS.householdCreate), async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  const slug = normalizeSlug(payload.slug);
+  const slug = normalizeHouseholdSlug(payload.slug);
   const displayName = normalizeDisplayName(payload.displayName);
+  const slugCheck = validateHouseholdSlug(slug);
 
-  if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
+  if (!slugCheck.ok) {
+    return c.json({ error: slugCheck.error }, 400);
+  }
+
+  if (!displayName || displayName.length > 80) {
     return c.json(
-      {
-        error:
-          "slug is required and may only contain lowercase letters, numbers, and hyphens",
-      },
+      { error: "displayName is required (max 80 characters)" },
       400,
     );
   }
 
-  if (!displayName) {
-    return c.json({ error: "displayName is required" }, 400);
+  if (!(await mayCreateHousehold(c.env.DB, user))) {
+    return c.json(
+      {
+        error:
+          "Only the installation owner can create additional households. Ask them to create it and invite you.",
+      },
+      403,
+    );
   }
 
   const existing = await getHouseholdBySlug(c.env.DB, slug);
