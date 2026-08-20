@@ -65,9 +65,29 @@ function createAuth(env: Env, options: { disableSignUp: boolean }) {
         },
       },
     },
+    // Workers never set NODE_ENV, so Better Auth would otherwise leave rate
+    // limiting off; memory storage is per-isolate, so persist counters in D1.
+    rateLimit: {
+      enabled: true,
+      window: 60,
+      max: 60,
+      storage: "database",
+      customRules: {
+        "/sign-in/email": { window: 60, max: 5 },
+        "/request-password-reset": { window: 5 * 60, max: 3 },
+        "/reset-password": { window: 5 * 60, max: 5 },
+        "/two-factor/verify-totp": { window: 60, max: 5 },
+        "/two-factor/verify-backup-code": { window: 60, max: 5 },
+        "/sign-in/passkey": { window: 60, max: 10 },
+      },
+    },
     advanced: {
       database: {
         generateId: "uuid",
+      },
+      ipAddress: {
+        // Set by Cloudflare on every request; not client-spoofable.
+        ipAddressHeaders: ["cf-connecting-ip"],
       },
     },
     plugins: [

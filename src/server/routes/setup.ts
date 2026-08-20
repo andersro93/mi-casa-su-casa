@@ -13,6 +13,7 @@ import {
   resetInstallationSetup,
 } from "../db/repositories/installation-state";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
+import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 
 type SetupPayload = {
   email?: string;
@@ -71,7 +72,7 @@ setupRoutes.get("/status", async (c) => {
   return c.json(mapInstallationStatus(state, c.env));
 });
 
-setupRoutes.post("/complete", async (c) => {
+setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
   if (!c.env.OWNER_EMAIL || !c.env.SETUP_SECRET) {
     return c.json(
       {

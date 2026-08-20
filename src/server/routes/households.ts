@@ -9,6 +9,7 @@ import {
   getHouseholdBySlug,
   listHouseholdsForUser,
 } from "../db/repositories/households";
+import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 
 type CreateHouseholdPayload = {
   slug?: string;
@@ -40,7 +41,7 @@ householdRoutes.get("/me", async (c) => {
   return c.json({ households: await listHouseholdsForUser(c.env.DB, user.id) });
 });
 
-householdRoutes.post("/", async (c) => {
+householdRoutes.post("/", rateLimit(RATE_LIMITS.householdCreate), async (c) => {
   const user = c.get("user");
 
   if (!user) {
