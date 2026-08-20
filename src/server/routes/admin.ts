@@ -5,6 +5,7 @@ import {
   requireHouseholdContext,
   requireOwner,
 } from "../auth/middleware";
+import { listAuditEvents, recordAuditEvent } from "../db/repositories/audit";
 import {
   assertProvidersBelongToHousehold,
   countHouseholdOwners,
@@ -49,6 +50,28 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function isValidEmail(value: string) {
   return EMAIL_PATTERN.test(value) && value.length <= 254;
+}
+
+type AuditContext = {
+  env: Env;
+  get: (key: "user") => { id: string } | null;
+};
+
+function audit(
+  c: AuditContext & { get: (key: "household") => { id: string } | null },
+  action: string,
+  targetType: string,
+  targetId: string | null,
+  details?: Record<string, unknown>,
+) {
+  return recordAuditEvent(c.env.DB, {
+    actorUserId: c.get("user")?.id ?? null,
+    householdId: c.get("household")?.id ?? null,
+    action,
+    targetType,
+    targetId,
+    details,
+  });
 }
 
 function buildInviteUrl(env: Env, token: string) {
@@ -189,6 +212,13 @@ function isValidMatchType(
 adminRoutes.use("/:slug/*", requireHouseholdContext);
 adminRoutes.use("/:slug/*", requireOwner);
 
+adminRoutes.get("/:slug/audit", async (c) => {
+  const household = c.get("household");
+  if (!household) return c.json({ error: "Forbidden" }, 403);
+  const events = await listAuditEvents(c.env.DB, household.id);
+  return c.json({ events });
+});
+
 adminRoutes.get("/:slug/settings", async (c) => {
   const household = c.get("household");
 
@@ -235,6 +265,10 @@ adminRoutes.patch("/:slug/settings", async (c) => {
   if (!settings) {
     return c.json({ error: "Household not found" }, 404);
   }
+
+  await audit(c, "household.settings_updated", "household", household.id, {
+    displayName,
+  });
 
   return c.json({ household: householdSettingsPayload(c.env, settings) });
 });
@@ -284,6 +318,10 @@ adminRoutes.post("/:slug/providers", async (c) => {
     displayName,
   );
 
+  await audit(c, "provider.created", "provider", provider.id, {
+    providerKey,
+    displayName,
+  });
   return c.json({ provider }, 201);
 });
 
@@ -328,6 +366,10 @@ adminRoutes.patch("/:slug/providers/:providerId", async (c) => {
 
   const provider = await getProviderById(c.env.DB, household.id, providerId);
 
+  await audit(c, "provider.updated", "provider", providerId, {
+    providerKey,
+    displayName,
+  });
   return c.json({ provider });
 });
 
@@ -342,6 +384,7 @@ adminRoutes.delete("/:slug/providers/:providerId", async (c) => {
   }
 
   await deleteProvider(c.env.DB, household.id, providerId);
+  await audit(c, "provider.deleted", "provider", providerId);
 
   return c.json({ ok: true });
 });
@@ -388,6 +431,11 @@ adminRoutes.post("/:slug/provider-rules", async (c) => {
     matchValue,
   );
 
+  await audit(c, "sender_rule.created", "sender_rule", rule.id, {
+    providerId: payload.providerId,
+    matchType: payload.matchType,
+    matchValue,
+  });
   return c.json({ rule }, 201);
 });
 
@@ -441,6 +489,10 @@ adminRoutes.patch("/:slug/provider-rules/:ruleId", async (c) => {
 
   const rule = await getSenderRuleById(c.env.DB, household.id, ruleId);
 
+  await audit(c, "sender_rule.updated", "sender_rule", ruleId, {
+    providerId: payload.providerId,
+    matchType: payload.matchType,
+  });
   return c.json({ rule });
 });
 
@@ -455,6 +507,7 @@ adminRoutes.delete("/:slug/provider-rules/:ruleId", async (c) => {
   }
 
   await deleteSenderRule(c.env.DB, household.id, ruleId);
+  await audit(c, "sender_rule.deleted", "sender_rule", ruleId);
 
   return c.json({ ok: true });
 });
@@ -583,6 +636,12 @@ adminRoutes.post("/:slug/invitations", async (c) => {
     role,
   });
 
+  await audit(c, "invitation.created", "invitation", invitation.id, {
+    email: invitation.email,
+    role: invitation.role,
+    emailSent: delivery.emailSent,
+  });
+
   return c.json({ invitation, inviteUrl, ...delivery }, 201);
 });
 
@@ -643,6 +702,12 @@ adminRoutes.post("/:slug/invitations/:invitationId/resend", async (c) => {
     role: replacement.role,
   });
 
+  await audit(c, "invitation.resent", "invitation", replacement.id, {
+    email: replacement.email,
+    replaces: invitationId,
+    emailSent: delivery.emailSent,
+  });
+
   return c.json({ invitation: replacement, inviteUrl, ...delivery });
 });
 
@@ -657,6 +722,7 @@ adminRoutes.delete("/:slug/invitations/:invitationId", async (c) => {
   }
 
   await cancelInvitation(c.env.DB, invitationId);
+  await audit(c, "invitation.cancelled", "invitation", invitationId);
   return c.json({ ok: true });
 });
 
@@ -722,6 +788,12 @@ adminRoutes.post("/:slug/members", async (c) => {
     role: invitation.role,
   });
 
+  await audit(c, "invitation.created", "invitation", invitation.id, {
+    email: invitation.email,
+    role: invitation.role,
+    emailSent: delivery.emailSent,
+  });
+
   return c.json({ invitation, inviteUrl, ...delivery }, 201);
 });
 
@@ -767,6 +839,7 @@ adminRoutes.delete("/:slug/members/:userId", async (c) => {
       byUserId: currentUser.id,
     }),
   );
+  await audit(c, "member.removed", "user", userId);
 
   return c.json({ ok: true });
 });
@@ -817,6 +890,7 @@ adminRoutes.patch("/:slug/members/:userId/role", async (c) => {
     userId,
     role: nextRole,
   });
+  await audit(c, "member.role_changed", "user", userId, { role: nextRole });
 
   return c.json({ ok: true });
 });
@@ -858,6 +932,9 @@ adminRoutes.post("/:slug/members/:userId/provider-access", async (c) => {
   }
 
   await grantProviderAccess(c.env.DB, household.id, userId, provider.id);
+  await audit(c, "member.provider_access_granted", "user", userId, {
+    providerKey: payload.providerKey,
+  });
   return c.json({ ok: true });
 });
 
@@ -898,5 +975,8 @@ adminRoutes.delete("/:slug/members/:userId/provider-access", async (c) => {
   }
 
   await revokeProviderAccess(c.env.DB, household.id, userId, provider.id);
+  await audit(c, "member.provider_access_revoked", "user", userId, {
+    providerKey: payload.providerKey,
+  });
   return c.json({ ok: true });
 });

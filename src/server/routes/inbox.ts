@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-
 import {
   type AppVariables,
   requireAuthenticatedUser,
   requireHouseholdContext,
   requireOwner,
 } from "../auth/middleware";
+import { recordAuditEvent } from "../db/repositories/audit";
 import {
   findMessageById,
   listMessagesForProvider,
@@ -223,6 +223,17 @@ inboxRoutes.post("/:slug/quarantine/:messageId/review", async (c) => {
   if (!result) {
     return c.json({ error: "Quarantine message not found" }, 404);
   }
+
+  await recordAuditEvent(c.env.DB, {
+    actorUserId: c.get("user")?.id ?? null,
+    householdId: household.id,
+    action: `quarantine.${payload.action}`,
+    targetType: "quarantine_message",
+    targetId: messageId,
+    details: payload.providerKey
+      ? { providerKey: payload.providerKey }
+      : undefined,
+  });
 
   return c.json(result);
 });

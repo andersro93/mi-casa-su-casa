@@ -3,6 +3,7 @@ import { Hono } from "hono";
 
 import { provisioningAuthForEnv } from "../auth/auth";
 import { isUniqueViolation } from "../db/errors";
+import { recordAuditEvent } from "../db/repositories/audit";
 import {
   createHousehold,
   listHouseholdsForUser,
@@ -199,6 +200,14 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
     });
 
     await completeInstallationSetup(c.env.DB, createdUser.id, requestedEmail);
+    await recordAuditEvent(c.env.DB, {
+      actorUserId: createdUser.id,
+      householdId: household?.id ?? null,
+      action: "installation.setup_completed",
+      targetType: "installation",
+      targetId: "1",
+      details: { householdSlug },
+    });
 
     const response = c.json(
       {

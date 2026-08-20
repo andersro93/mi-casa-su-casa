@@ -5,6 +5,7 @@ import {
   requireAuthenticatedUser,
   requireHouseholdContext,
 } from "../auth/middleware";
+import { recordAuditEvent } from "../db/repositories/audit";
 import {
   countHouseholdOwners,
   createHousehold,
@@ -122,6 +123,15 @@ householdRoutes.post("/", rateLimit(RATE_LIMITS.householdCreate), async (c) => {
     return c.json({ error: "Unable to create household" }, 500);
   }
 
+  await recordAuditEvent(c.env.DB, {
+    actorUserId: user.id,
+    householdId: household.id,
+    action: "household.created",
+    targetType: "household",
+    targetId: household.id,
+    details: { slug },
+  });
+
   // Same shape as /api/households/me entries so the client can use it directly.
   return c.json({ household: { ...household, role: "owner" as const } }, 201);
 });
@@ -158,6 +168,13 @@ householdRoutes.post("/:slug/leave", requireHouseholdContext, async (c) => {
       userId: user.id,
     }),
   );
+  await recordAuditEvent(c.env.DB, {
+    actorUserId: user.id,
+    householdId: household.id,
+    action: "member.left",
+    targetType: "user",
+    targetId: user.id,
+  });
 
   return c.json({ ok: true });
 });

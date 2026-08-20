@@ -346,15 +346,25 @@ export const quarantineMessages = sqliteTable(
   ],
 );
 
-export const auditEvents = sqliteTable("audit_events", {
-  id: text("id").primaryKey(),
-  actorUserId: text("actor_user_id"),
-  action: text("action").notNull(),
-  targetType: text("target_type").notNull(),
-  targetId: text("target_id"),
-  detailsJson: text("details_json"),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+export const auditEvents = sqliteTable(
+  "audit_events",
+  {
+    id: text("id").primaryKey(),
+    actorUserId: text("actor_user_id"),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    detailsJson: text("details_json"),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    householdId: text("household_id"),
+  },
+  (table) => [
+    index("idx_audit_events_household_created").on(
+      table.householdId,
+      table.createdAt,
+    ),
+  ],
+);
 
 export const appInstallation = sqliteTable(
   "app_installation",
