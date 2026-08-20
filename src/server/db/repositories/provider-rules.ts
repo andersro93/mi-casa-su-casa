@@ -43,7 +43,7 @@ export async function findProviderMatch(
     return null;
   }
 
-  return database.get<SenderRuleMatch>(sql`
+  const byDomain = await database.get<SenderRuleMatch>(sql`
     SELECT providers.id AS providerId,
            providers.provider_key AS providerKey,
            providers.household_id AS householdId,
@@ -56,6 +56,8 @@ export async function findProviderMatch(
       AND lower(sender_rules.match_value) = lower(${domain})
     LIMIT 1
   `);
+
+  return byDomain ?? null;
 }
 
 export async function userHasProviderAccess(

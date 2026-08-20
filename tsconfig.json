@@ -13,7 +13,11 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "ignoreDeprecations": "6.0",
-    "types": ["@cloudflare/workers-types", "vitest/globals"],
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers/types",
+      "vitest/globals"
+    ],
     "paths": {
       "@client/*": ["./src/client/*"],
       "@server/*": ["./src/server/*"],
@@ -25,6 +29,7 @@
     "src/**/*.tsx",
     "src/**/*.d.ts",
     "test/**/*.ts",
+    "test/**/*.tsx",
     "vite.config.ts",
     "vitest.config.ts"
   ]

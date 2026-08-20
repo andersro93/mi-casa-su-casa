@@ -14,6 +14,7 @@ describe("SettingsView", () => {
           image: "https://example.com/avatar.png",
           role: "user",
           twoFactorEnabled: false,
+          households: [],
         }}
         sessions={[
           {
@@ -76,6 +77,7 @@ describe("SettingsView", () => {
           image: null,
           role: "user",
           twoFactorEnabled: true,
+          households: [],
         }}
         sessions={[]}
         isLoading={false}
