@@ -49,6 +49,7 @@ export const account = sqliteTable(
   "account",
   {
     id: text("id").primaryKey(),
+    issuer: text("issuer").notNull().default("local:credential"),
     accountId: text("accountId").notNull(),
     providerId: text("providerId").notNull(),
     userId: text("userId")
@@ -68,7 +69,13 @@ export const account = sqliteTable(
     createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("account_userId_idx").on(table.userId)],
+  (table) => [
+    index("account_userId_idx").on(table.userId),
+    uniqueIndex("account_issuer_accountId_unique").on(
+      table.issuer,
+      table.accountId,
+    ),
+  ],
 );
 
 export const verification = sqliteTable(
@@ -94,6 +101,8 @@ export const twoFactor = sqliteTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     verified: integer("verified", { mode: "boolean" }).default(true),
+    failedVerificationCount: integer("failed_verification_count"),
+    lockedUntil: integer("locked_until", { mode: "timestamp_ms" }),
   },
   (table) => [
     index("twoFactor_secret_idx").on(table.secret),
