@@ -260,7 +260,27 @@ export async function acceptInvitation(
   `);
 }
 
-export async function refreshExpiredInvitations(db: D1Database) {
+/** True when the invitation's expiry (ISO-8601 UTC) is in the past. */
+export function isInvitationExpired(
+  invitation: Pick<InvitationRecord, "expiresAt">,
+  now: Date = new Date(),
+): boolean {
+  const expiresAt = new Date(invitation.expiresAt).getTime();
+  return Number.isNaN(expiresAt) || expiresAt <= now.getTime();
+}
+
+/**
+ * Marks pending invitations whose expiry has passed as expired.
+ *
+ * `expires_at` is written by the app as ISO-8601 UTC ("…T10:00:00.000Z").
+ * SQLite's CURRENT_TIMESTAMP is "YYYY-MM-DD HH:MM:SS"; comparing the two
+ * lexically is wrong ('T' sorts after ' '), so the comparison value must be
+ * an ISO string produced in JS.
+ */
+export async function refreshExpiredInvitations(
+  db: D1Database,
+  now: Date = new Date(),
+) {
   await dbForDatabase(db)
     .update(householdInvitations)
     .set({
@@ -270,7 +290,7 @@ export async function refreshExpiredInvitations(db: D1Database) {
     .where(
       and(
         eq(householdInvitations.status, "pending"),
-        sql`${householdInvitations.expiresAt} < CURRENT_TIMESTAMP`,
+        sql`${householdInvitations.expiresAt} <= ${now.toISOString()}`,
       ),
     );
 }

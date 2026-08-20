@@ -7,6 +7,7 @@ import { getHouseholdById } from "../db/repositories/households";
 import {
   acceptInvitation,
   getInvitationByTokenHash,
+  isInvitationExpired,
   refreshExpiredInvitations,
 } from "../db/repositories/invitations";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
@@ -43,6 +44,10 @@ invitationRoutes.get("/:token", async (c) => {
 
   if (!invitation || invitation.status !== "pending") {
     return c.json({ error: "Invitation not found or no longer valid" }, 404);
+  }
+
+  if (isInvitationExpired(invitation)) {
+    return c.json({ error: "This invitation has expired" }, 410);
   }
 
   const currentUser = c.get("user");
@@ -82,6 +87,10 @@ invitationRoutes.post("/:token/accept", async (c) => {
 
   if (!invitation || invitation.status !== "pending") {
     return c.json({ error: "Invitation not found or no longer valid" }, 404);
+  }
+
+  if (isInvitationExpired(invitation)) {
+    return c.json({ error: "This invitation has expired" }, 410);
   }
 
   const auth = provisioningAuthForEnv(c.env);
