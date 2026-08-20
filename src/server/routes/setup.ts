@@ -2,13 +2,17 @@ import { isAPIError } from "better-auth/api";
 import { Hono } from "hono";
 
 import { provisioningAuthForEnv } from "../auth/auth";
-import { createHousehold } from "../db/repositories/households";
+import {
+  createHousehold,
+  listHouseholdsForUser,
+} from "../db/repositories/households";
 import {
   beginInstallationSetup,
   completeInstallationSetup,
   getInstallationState,
   resetInstallationSetup,
 } from "../db/repositories/installation-state";
+import { deleteUserById, findUserByEmail } from "../db/repositories/users";
 
 type SetupPayload = {
   email?: string;
@@ -39,6 +43,23 @@ function mapInstallationStatus(
     status: row.status,
     ownerEmail: row.owner_email,
   };
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const message = (current as { message?: unknown }).message;
+    if (
+      typeof message === "string" &&
+      /UNIQUE constraint failed/.test(message)
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 function normalizeSlug(value: string | undefined) {
@@ -128,7 +149,51 @@ setupRoutes.post("/complete", async (c) => {
     );
   }
 
+  // Recover from an interrupted earlier attempt: a user for OWNER_EMAIL may
+  // already exist without the installation ever being marked complete.
+  const existingOwner = await findUserByEmail(c.env.DB, requestedEmail);
+
+  if (existingOwner) {
+    const ownedHouseholds = (
+      await listHouseholdsForUser(c.env.DB, existingOwner.id)
+    ).filter((household) => household.role === "owner");
+
+    if (ownedHouseholds.length > 0) {
+      // Sign-up and household creation both succeeded last time; only the
+      // final bookkeeping step was lost. Finish it and tell the caller.
+      await completeInstallationSetup(
+        c.env.DB,
+        existingOwner.id,
+        requestedEmail,
+      );
+      console.warn(
+        JSON.stringify({
+          event: "setup_recovered_existing_owner",
+          userId: existingOwner.id,
+        }),
+      );
+      return c.json(
+        {
+          error:
+            "Setup has already been completed for this owner. Sign in with your owner account.",
+        },
+        409,
+      );
+    }
+
+    // Orphan from a failed attempt (no memberships): remove it so the retry
+    // starts from a clean slate.
+    console.warn(
+      JSON.stringify({
+        event: "setup_orphan_user_removed",
+        userId: existingOwner.id,
+      }),
+    );
+    await deleteUserById(c.env.DB, existingOwner.id);
+  }
+
   const auth = provisioningAuthForEnv(c.env);
+  let createdUserId: string | null = null;
 
   try {
     const signUpResult = await auth.api.signUpEmail({
@@ -142,6 +207,7 @@ setupRoutes.post("/complete", async (c) => {
     });
 
     const createdUser = signUpResult.response.user;
+    createdUserId = createdUser.id;
 
     const household = await createHousehold(c.env.DB, {
       slug: householdSlug,
@@ -171,9 +237,38 @@ setupRoutes.post("/complete", async (c) => {
 
     return response;
   } catch (error) {
-    console.error("Setup completion failed:", error);
+    console.error(
+      JSON.stringify({
+        event: "setup_failed",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+
+    // Compensate: remove the owner user created in this attempt so the next
+    // attempt does not fail with USER_ALREADY_EXISTS, then release the claim.
+    if (createdUserId) {
+      await deleteUserById(c.env.DB, createdUserId).catch((cleanupError) => {
+        console.error(
+          JSON.stringify({
+            event: "setup_cleanup_failed",
+            userId: createdUserId,
+            error:
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : String(cleanupError),
+          }),
+        );
+      });
+    }
 
     await resetInstallationSetup(c.env.DB);
+
+    if (isUniqueConstraintError(error)) {
+      return c.json(
+        { error: "A household with that slug already exists" },
+        409,
+      );
+    }
 
     if (isAPIError(error)) {
       const status = typeof error.status === "number" ? error.status : 400;
