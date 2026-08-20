@@ -114,19 +114,14 @@ describe("messages repository (D1)", () => {
 
     await insertQuarantineMessage(
       db,
-      parsedEmail({
-        messageId: "<q-1@test>",
-        dateHeader: "2020-01-01T00:00:00Z",
-      }),
+      parsedEmail({ messageId: "<q-1@test>" }),
       household.id,
       { kind: "quarantine", reason: "no rule", code: null },
+      new Date("2020-01-01T00:00:00Z"),
     );
     await insertQuarantineMessage(
       db,
-      parsedEmail({
-        messageId: "<q-2@test>",
-        dateHeader: new Date().toISOString(),
-      }),
+      parsedEmail({ messageId: "<q-2@test>" }),
       household.id,
       { kind: "quarantine", reason: "no rule", code: null },
     );
