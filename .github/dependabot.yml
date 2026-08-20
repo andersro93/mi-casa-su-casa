@@ -1,17 +1,8 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "sunday"
-      time: "13:00"
-      timezone: "Europe/Oslo"
-    groups:
-      all-npm-updates:
-        patterns:
-          - "*"
-
+  # One npm entry per directory: Dependabot rejects duplicate
+  # package-ecosystem + directory pairs. Version updates and security updates
+  # are grouped separately so security fixes arrive in their own PR.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -21,14 +12,17 @@ updates:
       timezone: "Europe/Oslo"
     open-pull-requests-limit: 10
     labels:
-      - "security"
       - "dependencies"
     commit-message:
-      prefix: "fix"
+      prefix: "chore"
       include: "scope"
     groups:
       all-security-updates:
         applies-to: security-updates
+        patterns:
+          - "*"
+      all-npm-updates:
+        applies-to: version-updates
         patterns:
           - "*"
 
@@ -39,6 +33,9 @@ updates:
       day: "sunday"
       time: "13:00"
       timezone: "Europe/Oslo"
+    labels:
+      - "dependencies"
+      - "github_actions"
     groups:
       all-action-updates:
         patterns:
