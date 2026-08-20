@@ -134,7 +134,7 @@ If your editor supports `.http` or REST client files, you can run these requests
 
 ### Operations
 
-Logging, health endpoints and the recommended alert set are described in [`docs/operations.md`](./docs/operations.md).
+Logging, health endpoints and the recommended alert set are described in [`docs/operations.md`](./docs/operations.md). Rollbacks, database backup/restore, lost-owner recovery and secret rotation are in [`docs/runbook.md`](./docs/runbook.md).
 
 ### Health endpoints
 
