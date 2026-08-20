@@ -346,6 +346,8 @@ Highlights:
 
 Mi Casa Su Casa is intended as a private household tool. The app should not be treated as a password vault in v1, and it does not store service account passwords.
 
+Brute-force protection is built in and backed by D1 (Workers have no shared memory): Better Auth limits sign-in to 5 attempts per minute per IP (reset/2FA/passkey endpoints have their own limits), `/api/setup/complete` allows 5 attempts per 15 minutes per IP, invitation-token lookups 20 per 10 minutes, and household creation 10 per hour. The client IP comes from Cloudflare's `cf-connecting-ip` header. For additional protection you can add Cloudflare WAF rate-limiting rules in front of `/api/auth/*` and `/api/setup/*`.
+
 ## License
 
 [MIT](./LICENSE)

@@ -94,6 +94,7 @@ const RESET_ORDER = [
   "account",
   "verification",
   "user",
+  "rate_limit",
 ];
 
 /** Empties every application table so each test starts from a clean database. */

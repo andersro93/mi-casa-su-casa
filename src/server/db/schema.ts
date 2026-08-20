@@ -78,6 +78,17 @@ export const account = sqliteTable(
   ],
 );
 
+export const rateLimit = sqliteTable(
+  "rate_limit",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull().unique(),
+    count: integer("count").notNull(),
+    lastRequest: integer("last_request").notNull(),
+  },
+  (table) => [index("rate_limit_last_request_idx").on(table.lastRequest)],
+);
+
 export const verification = sqliteTable(
   "verification",
   {

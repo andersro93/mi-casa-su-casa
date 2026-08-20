@@ -10,6 +10,7 @@ import {
   refreshExpiredInvitations,
 } from "../db/repositories/invitations";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
+import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 import { hashInvitationToken } from "../security/tokens";
 
 type AcceptInvitationPayload = {
@@ -33,6 +34,7 @@ export const invitationRoutes = new Hono<{
 }>();
 
 invitationRoutes.use("*", loadAuthSession);
+invitationRoutes.use("*", rateLimit(RATE_LIMITS.invitations));
 
 invitationRoutes.get("/:token", async (c) => {
   await refreshExpiredInvitations(c.env.DB);
