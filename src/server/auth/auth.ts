@@ -25,6 +25,7 @@ function createAuth(env: Env, options: { disableSignUp: boolean }) {
   return betterAuth({
     appName: "Mi Casa Su Casa",
     baseURL: env.APP_URL,
+    trustedOrigins: [env.APP_URL],
     secret: env.AUTH_SECRET,
     database: drizzleAdapter(dbForEnv(env), {
       provider: "sqlite",

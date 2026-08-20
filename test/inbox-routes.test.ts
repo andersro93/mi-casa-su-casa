@@ -1479,3 +1479,106 @@ describe("worker routes", () => {
     expect(payload.session.session.userId).toBe("created-user-1");
   });
 });
+
+describe("cross-origin protections", () => {
+  beforeEach(() => {
+    sessionState.current = {
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
+    };
+    invitationEmailState.calls = [];
+    invitationEmailState.failWith = null;
+  });
+
+  it("does not reflect foreign origins in CORS headers", async () => {
+    const response = await invokeWorker("/api/setup/status", {
+      headers: { Origin: "https://evil.example" },
+    });
+
+    expect(response.status).toBe(200);
+    // Without Allow-Origin the browser blocks the cross-origin read, whatever
+    // Allow-Credentials says.
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("grants credentialed CORS to the app's own origin", async () => {
+    const response = await invokeWorker("/api/setup/status", {
+      headers: { Origin: "http://localhost:8787" },
+    });
+
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:8787",
+    );
+    expect(response.headers.get("access-control-allow-credentials")).toBe(
+      "true",
+    );
+  });
+
+  it("rejects mutations that carry a foreign Origin or a cross-site fetch metadata header", async () => {
+    const body = JSON.stringify({
+      email: "new@example.com",
+      name: "New Person",
+      role: "member",
+      providerIds: [],
+    });
+
+    const foreignOrigin = await invokeWorker("/api/admin/home/invitations", {
+      method: "POST",
+      headers: {
+        Origin: "https://evil.example",
+        "content-type": "application/json",
+      },
+      body,
+    });
+    expect(foreignOrigin.status).toBe(403);
+
+    const crossSite = await invokeWorker("/api/admin/home/invitations", {
+      method: "POST",
+      headers: {
+        "Sec-Fetch-Site": "cross-site",
+        "content-type": "application/json",
+      },
+      body,
+    });
+    expect(crossSite.status).toBe(403);
+
+    const foreignReferer = await invokeWorker("/api/admin/home/invitations", {
+      method: "POST",
+      headers: {
+        Referer: "https://evil.example/page",
+        "content-type": "application/json",
+      },
+      body,
+    });
+    expect(foreignReferer.status).toBe(403);
+
+    expect(repoState.createInvitationCalls).toHaveLength(0);
+  });
+
+  it("allows same-origin browser mutations and non-browser clients", async () => {
+    const body = JSON.stringify({
+      email: "new@example.com",
+      name: "New Person",
+      role: "member",
+      providerIds: [],
+    });
+
+    const sameOrigin = await invokeWorker("/api/admin/home/invitations", {
+      method: "POST",
+      headers: {
+        Origin: "http://localhost:8787",
+        "Sec-Fetch-Site": "same-origin",
+        "content-type": "application/json",
+      },
+      body,
+    });
+    expect(sameOrigin.status).toBe(201);
+
+    const curlLike = await invokeWorker("/api/admin/home/invitations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+    expect(curlLike.status).toBe(201);
+  });
+});

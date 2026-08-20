@@ -14,18 +14,25 @@ import { settingsRoutes } from "./server/routes/settings";
 import { setupRoutes } from "./server/routes/setup";
 import { createAppContext } from "./server/runtime/context";
 import { assertValidEnv, validateEnv } from "./server/runtime/env";
+import {
+  corsOriginFor,
+  rejectCrossSiteMutations,
+} from "./server/security/origin";
 
 const app = new Hono<{ Bindings: Env }>();
 
+// The SPA is same-origin; credentialed CORS is only granted to APP_URL (and
+// localhost during development). Anything else gets no CORS headers at all.
 app.use(
   "/api/*",
   cors({
-    origin: (origin) => origin ?? "http://localhost:8787",
+    origin: (origin, c) => corsOriginFor(c.env, origin),
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
   }),
 );
+app.use("/api/*", rejectCrossSiteMutations);
 
 // Fail fast (and loudly) when required configuration is missing, instead of
 // letting auth/email silently degrade. Liveness stays available.
