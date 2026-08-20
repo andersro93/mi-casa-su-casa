@@ -4,6 +4,11 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-05-10",
   "compatibility_flags": ["nodejs_compat"],
+  // Runtime variables such as APP_URL, OWNER_EMAIL and OUTBOUND_EMAIL_FROM are
+  // set per Worker in the Cloudflare dashboard. By default Wrangler treats this
+  // file as the source of truth and DELETES dashboard vars on every deploy;
+  // keep_vars makes deploys preserve them.
+  "keep_vars": true,
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
@@ -49,7 +54,8 @@
           "name": "EMAIL"
         }
       ],
-      // APP_URL and OWNER_EMAIL are injected at deploy time via --var from GitHub variables.
+      // APP_URL, OWNER_EMAIL and OUTBOUND_EMAIL_FROM are set in the Cloudflare
+      // dashboard for this Worker and preserved across deploys (keep_vars).
       "vars": {
         "APP_NAME": "Mi Casa Su Casa (Preview)",
         "ENVIRONMENT": "preview",
@@ -73,7 +79,8 @@
           "name": "EMAIL"
         }
       ],
-      // APP_URL and OWNER_EMAIL are injected at deploy time via --var from GitHub variables.
+      // APP_URL, OWNER_EMAIL and OUTBOUND_EMAIL_FROM are set in the Cloudflare
+      // dashboard for this Worker and preserved across deploys (keep_vars).
       "vars": {
         "APP_NAME": "Mi Casa Su Casa",
         "ENVIRONMENT": "production",

@@ -83,7 +83,7 @@ Fill in:
 - `AUTH_SECRET`
 - `SETUP_SECRET`
 
-Set `OWNER_EMAIL` in the top-level `vars` section of `wrangler.jsonc` to your email address for local development. For CI/CD deployments, all environment-specific values (D1 database IDs, URLs, owner email) are injected automatically from GitHub secrets and variables — see [`docs/ci-cd-architecture.md`](./docs/ci-cd-architecture.md).
+Set `OWNER_EMAIL` in the top-level `vars` section of `wrangler.jsonc` to your email address for local development. For CI/CD deployments, the D1 database IDs are injected from GitHub secrets, while runtime variables (`APP_URL`, `OWNER_EMAIL`, `OUTBOUND_EMAIL_FROM`) and secrets are set once per Worker in the Cloudflare dashboard and preserved across deploys (`keep_vars` in `wrangler.jsonc`) — see [`docs/ci-cd-architecture.md`](./docs/ci-cd-architecture.md).
 
 ### Apply local migrations
 

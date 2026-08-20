@@ -81,7 +81,9 @@ This is the explicit production schema step required by issue #8.
 
 D1 `database_id` values are **not hardcoded** in `wrangler.jsonc`. They are injected at deploy time by the GitHub Actions workflows via `sed` from GitHub secrets before Wrangler runs.
 
-Runtime variables (`APP_URL`, `OWNER_EMAIL`) and secrets (`AUTH_SECRET`, `SETUP_SECRET`) are configured directly in the Cloudflare dashboard for each Worker. They persist across deploys and do not depend on GitHub Actions.
+Runtime variables (`APP_URL`, `OWNER_EMAIL`, `OUTBOUND_EMAIL_FROM`) and secrets (`AUTH_SECRET`, `SETUP_SECRET`) are configured directly in the Cloudflare dashboard for each Worker. They persist across deploys and do not depend on GitHub Actions.
+
+> **Why `keep_vars` matters:** by default Wrangler treats `wrangler.jsonc` as the source of truth and **deletes** any plaintext variable that is set in the dashboard but not in the config on every `wrangler deploy` (secrets are never touched). `wrangler.jsonc` sets `"keep_vars": true` so dashboard variables survive deploys. Do not remove it unless you move those variables into the config or pass them with `wrangler deploy --var`.
 
 This design means forkers never need to edit `wrangler.jsonc` — just add the required secrets and variables to their GitHub repository and Cloudflare dashboard.
 
