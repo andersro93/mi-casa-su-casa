@@ -298,12 +298,12 @@ export function MembersView({
                     label="Role"
                     onChange={(e) =>
                       onMemberFormChange({
-                        role: e.target.value as "member" | "admin",
+                        role: e.target.value as "member" | "owner",
                       })
                     }
                   >
                     <MenuItem value="member">Member</MenuItem>
-                    <MenuItem value="admin">Owner</MenuItem>
+                    <MenuItem value="owner">Owner</MenuItem>
                   </Select>
                 </FormControl>
               </Box>
@@ -383,12 +383,12 @@ export function MembersView({
                     label="Role"
                     onChange={(e) =>
                       onInvitationFormChange({
-                        role: e.target.value as "member" | "admin",
+                        role: e.target.value as "member" | "owner",
                       })
                     }
                   >
                     <MenuItem value="member">Member</MenuItem>
-                    <MenuItem value="admin">Owner</MenuItem>
+                    <MenuItem value="owner">Owner</MenuItem>
                   </Select>
                 </FormControl>
                 <FormControl
@@ -514,10 +514,10 @@ export function MembersView({
                           <Chip
                             size="small"
                             label={
-                              invitation.role === "admin" ? "Owner" : "Member"
+                              invitation.role === "owner" ? "Owner" : "Member"
                             }
                             color={
-                              invitation.role === "admin"
+                              invitation.role === "owner"
                                 ? "primary"
                                 : "default"
                             }
@@ -622,7 +622,7 @@ export function MembersView({
                             horizontal: "right",
                           }}
                           badgeContent={
-                            member.role === "admin" ? (
+                            member.role === "owner" ? (
                               <Tooltip title="Household Owner" placement="top">
                                 <AdminPanelSettingsOutlined
                                   sx={{
@@ -661,8 +661,8 @@ export function MembersView({
 
                     <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
                       <Chip
-                        label={member.role === "admin" ? "Owner" : "Member"}
-                        color={member.role === "admin" ? "primary" : "default"}
+                        label={member.role === "owner" ? "Owner" : "Member"}
+                        color={member.role === "owner" ? "primary" : "default"}
                         size="small"
                         sx={{ fontWeight: "bold" }}
                       />
@@ -799,7 +799,7 @@ export function MembersView({
                             horizontal: "right",
                           }}
                           badgeContent={
-                            member.role === "admin" ? (
+                            member.role === "owner" ? (
                               <Tooltip title="Household Owner" placement="top">
                                 <AdminPanelSettingsOutlined
                                   sx={{
@@ -835,8 +835,8 @@ export function MembersView({
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={member.role === "admin" ? "Owner" : "Member"}
-                        color={member.role === "admin" ? "primary" : "default"}
+                        label={member.role === "owner" ? "Owner" : "Member"}
+                        color={member.role === "owner" ? "primary" : "default"}
                         size="small"
                         sx={{ fontWeight: "bold" }}
                       />
@@ -1009,12 +1009,12 @@ export function MembersView({
                       onChange={(e) =>
                         onRoleChange(
                           selectedMember.id,
-                          e.target.value as "admin" | "member",
+                          e.target.value as "owner" | "member",
                         )
                       }
                     >
                       <MenuItem value="member">Member</MenuItem>
-                      <MenuItem value="admin">Owner</MenuItem>
+                      <MenuItem value="owner">Owner</MenuItem>
                     </Select>
                   </FormControl>
                 </Card>

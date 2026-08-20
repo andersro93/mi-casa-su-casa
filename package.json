@@ -21,6 +21,9 @@
       "SETUP_SECRET": {
         "description": "One-time secret required to complete the `/setup` first-run flow. Pick any strong passphrase — it is only used once."
       },
+      "EMAIL_DOMAIN": {
+        "description": "Domain of the household inbox addresses (households receive mail at <slug>@EMAIL_DOMAIN). Used to display the address in household settings."
+      },
       "OUTBOUND_EMAIL_FROM": {
         "description": "Sender address for invitation and password-reset emails. Must be an address on a domain you have enabled for sending in Cloudflare Email Routing."
       }

@@ -263,6 +263,7 @@ Add as **plaintext variables**:
 | --- | --- |
 | `APP_URL` | Full URL of this deployment (e.g. `https://mi-casa-su-casa.example.com`) |
 | `OWNER_EMAIL` | Email address for the initial owner account |
+| `EMAIL_DOMAIN` | Domain of the household inbox addresses (`<slug>@EMAIL_DOMAIN`, e.g. `home.yourdomain.com`). Display only — shown to owners in household settings |
 | `OUTBOUND_EMAIL_FROM` | Sender address for invitation and password-reset emails — must be on a domain enabled for sending in Cloudflare Email Routing. The Worker refuses API requests (503 `misconfigured`) until this, `APP_URL` and `AUTH_SECRET` are set |
 
 Add as **encrypted secrets**:
