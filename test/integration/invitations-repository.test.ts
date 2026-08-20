@@ -17,6 +17,18 @@ import { count, createTestUser, db } from "./helpers";
 const inAWeek = () =>
   new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+async function createOwnedHousehold(ownerUserId: string) {
+  const household = await createHousehold(db, {
+    slug: "casa",
+    displayName: "Casa",
+    ownerUserId,
+  });
+  if (!household) {
+    throw new Error("household was not created");
+  }
+  return household;
+}
+
 describe("households + invitations multi-statement writes (D1)", () => {
   it("createHousehold inserts the household and the owner membership", async () => {
     const owner = await createTestUser({ email: "owner@example.com" });
@@ -37,26 +49,22 @@ describe("households + invitations multi-statement writes (D1)", () => {
 
   it("createHouseholdInvitation stores the invitation with its provider scope", async () => {
     const owner = await createTestUser({ email: "owner@example.com" });
-    const household = await createHousehold(db, {
-      slug: "casa",
-      displayName: "Casa",
-      ownerUserId: owner.id,
-    });
+    const household = await createOwnedHousehold(owner.id);
     const netflix = await createProvider(
       db,
-      household!.id,
+      household.id,
       "netflix",
       "Netflix",
     );
     const spotify = await createProvider(
       db,
-      household!.id,
+      household.id,
       "spotify",
       "Spotify",
     );
 
     const invitationId = await createHouseholdInvitation(db, {
-      householdId: household!.id,
+      householdId: household.id,
       email: "kid@example.com",
       name: "Kid",
       role: "member",
@@ -81,7 +89,7 @@ describe("households + invitations multi-statement writes (D1)", () => {
 
     // No provider scope is also valid.
     await createHouseholdInvitation(db, {
-      householdId: household!.id,
+      householdId: household.id,
       email: "other@example.com",
       name: "Other",
       role: "member",
@@ -95,25 +103,21 @@ describe("households + invitations multi-statement writes (D1)", () => {
 
   it("replaceInvitationProviders swaps the provider scope atomically", async () => {
     const owner = await createTestUser({ email: "owner@example.com" });
-    const household = await createHousehold(db, {
-      slug: "casa",
-      displayName: "Casa",
-      ownerUserId: owner.id,
-    });
+    const household = await createOwnedHousehold(owner.id);
     const netflix = await createProvider(
       db,
-      household!.id,
+      household.id,
       "netflix",
       "Netflix",
     );
     const spotify = await createProvider(
       db,
-      household!.id,
+      household.id,
       "spotify",
       "Spotify",
     );
     const invitationId = await createHouseholdInvitation(db, {
-      householdId: household!.id,
+      householdId: household.id,
       email: "kid@example.com",
       name: "Kid",
       role: "member",
@@ -137,13 +141,9 @@ describe("households + invitations multi-statement writes (D1)", () => {
   it("acceptInvitation creates the membership, marks the invitation accepted, and is idempotent on re-accept", async () => {
     const owner = await createTestUser({ email: "owner@example.com" });
     const kid = await createTestUser({ email: "kid@example.com" });
-    const household = await createHousehold(db, {
-      slug: "casa",
-      displayName: "Casa",
-      ownerUserId: owner.id,
-    });
+    const household = await createOwnedHousehold(owner.id);
     const invitationId = await createHouseholdInvitation(db, {
-      householdId: household!.id,
+      householdId: household.id,
       email: "kid@example.com",
       name: "Kid",
       role: "member",
@@ -155,7 +155,7 @@ describe("households + invitations multi-statement writes (D1)", () => {
 
     await acceptInvitation(db, {
       invitationId,
-      householdId: household!.id,
+      householdId: household.id,
       acceptedByUserId: kid.id,
       role: "member",
     });
@@ -171,7 +171,7 @@ describe("households + invitations multi-statement writes (D1)", () => {
     // Re-accepting with a higher role upserts the membership instead of failing.
     await acceptInvitation(db, {
       invitationId,
-      householdId: household!.id,
+      householdId: household.id,
       acceptedByUserId: kid.id,
       role: "owner",
     });
