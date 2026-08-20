@@ -88,4 +88,75 @@ describe("provider rule matching (D1)", () => {
       String((error as Error & { cause?: unknown }).cause ?? error),
     ).toMatch(/UNIQUE constraint failed/);
   });
+
+  it("matches subdomains of a domain rule and prefers the most specific domain rule", async () => {
+    const household = await insertHousehold({ slug: "casa" });
+    const netflix = await createProvider(
+      db,
+      household.id,
+      "netflix",
+      "Netflix",
+    );
+    const ses = await createProvider(db, household.id, "ses", "SES");
+    await createSenderRule(
+      db,
+      household.id,
+      netflix.id,
+      "domain",
+      "netflix.com",
+    );
+    await createSenderRule(
+      db,
+      household.id,
+      ses.id,
+      "domain",
+      "em.netflix.com",
+    );
+
+    expect(
+      (await findProviderMatch(db, household.id, "bounces@mail.netflix.com"))
+        ?.providerKey,
+    ).toBe("netflix");
+    expect(
+      (await findProviderMatch(db, household.id, "x@em.netflix.com"))
+        ?.providerKey,
+    ).toBe("ses");
+    expect(
+      await findProviderMatch(db, household.id, "x@notnetflix.com"),
+    ).toBeNull();
+  });
+
+  it("tries the visible From address before the envelope sender and reports the source", async () => {
+    const household = await insertHousehold({ slug: "casa" });
+    const netflix = await createProvider(
+      db,
+      household.id,
+      "netflix",
+      "Netflix",
+    );
+    await createSenderRule(
+      db,
+      household.id,
+      netflix.id,
+      "domain",
+      "netflix.com",
+    );
+
+    const match = await findProviderMatch(db, household.id, [
+      { address: "info@netflix.com", source: "header" },
+      { address: "bounce+123@amazonses.com", source: "envelope" },
+    ]);
+    expect(match).toMatchObject({
+      providerKey: "netflix",
+      matchedAddress: "info@netflix.com",
+      matchedSource: "header",
+      matchType: "domain",
+    });
+
+    const envelopeOnly = await findProviderMatch(db, household.id, [
+      { address: "someone@else.example", source: "header" },
+      { address: "codes@netflix.com", source: "envelope" },
+    ]);
+    expect(envelopeOnly).toMatchObject({ matchedSource: "envelope" });
+  });
 });

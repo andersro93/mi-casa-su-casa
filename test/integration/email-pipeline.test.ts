@@ -15,9 +15,14 @@ function rawEmail(input: {
   subject: string;
   body: string;
   messageId?: string;
+  headerFrom?: string;
+  authenticationResults?: string;
 }) {
   return [
-    `From: Service <${input.from}>`,
+    `From: Service <${input.headerFrom ?? input.from}>`,
+    ...(input.authenticationResults
+      ? [`Authentication-Results: ${input.authenticationResults}`]
+      : []),
     `To: ${input.to}`,
     `Subject: ${input.subject}`,
     ...(input.messageId ? [`Message-ID: ${input.messageId}`] : []),
@@ -118,5 +123,74 @@ describe("inbound email pipeline (worker.email against D1)", () => {
     expect(setReject).toHaveBeenCalledWith("Unknown recipient");
     expect(await count("quarantine_messages")).toBe(0);
     expect(await count("messages")).toBe(0);
+  });
+
+  it("files mail by the visible From address when the envelope sender is a bounce address", async () => {
+    const household = await insertHousehold({ slug: "casa" });
+    const provider = await createProvider(
+      db,
+      household.id,
+      "netflix",
+      "Netflix",
+    );
+    await createSenderRule(
+      db,
+      household.id,
+      provider.id,
+      "domain",
+      "netflix.com",
+    );
+
+    const { setReject } = await deliver({
+      from: "bounce+abc@amazonses.com",
+      headerFrom: "info@account.netflix.com",
+      to: "casa@example.com",
+      subject: "Code",
+      body: "Your verification code is 555444",
+      authenticationResults:
+        "mx.cloudflare.net; spf=pass smtp.mailfrom=amazonses.com; dkim=pass header.d=netflix.com; dmarc=pass header.from=netflix.com",
+    });
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(
+      (await listMessagesForProvider(db, household.id, "netflix"))[0],
+    ).toMatchObject({
+      extracted_code: "555444",
+    });
+  });
+
+  it("quarantines a spoofed envelope sender that fails SPF even though a rule matches", async () => {
+    const household = await insertHousehold({ slug: "casa" });
+    const provider = await createProvider(
+      db,
+      household.id,
+      "netflix",
+      "Netflix",
+    );
+    await createSenderRule(
+      db,
+      household.id,
+      provider.id,
+      "domain",
+      "netflix.com",
+    );
+
+    await deliver({
+      from: "codes@netflix.com",
+      headerFrom: "attacker@attacker.example",
+      to: "casa@example.com",
+      subject: "Your Netflix code",
+      body: "Your verification code is 000000",
+      authenticationResults:
+        "mx.cloudflare.net; spf=fail smtp.mailfrom=netflix.com; dkim=pass header.d=attacker.example; dmarc=pass header.from=attacker.example",
+    });
+
+    expect(
+      await listMessagesForProvider(db, household.id, "netflix"),
+    ).toHaveLength(0);
+    const quarantined = await db
+      .prepare("SELECT quarantine_reason FROM quarantine_messages")
+      .first<{ quarantine_reason: string }>();
+    expect(quarantined?.quarantine_reason).toMatch(/authentication failed/);
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_TEXT_BODY_CHARS,
+  parseAuthenticationResults,
   parseIncomingEmail,
 } from "../src/server/email/parse";
 
@@ -109,5 +110,39 @@ describe("parseIncomingEmail", () => {
     expect(again.messageId).toBe(first.messageId);
     expect(different.messageId).not.toBe(first.messageId);
     expect(first.textBodyTruncated).toBe(false);
+  });
+
+  it("exposes the From address and Authentication-Results verdicts", async () => {
+    const parsed = await parseIncomingEmail(
+      createMessage(
+        [
+          "From: Netflix <Info@Account.Netflix.com>",
+          "To: casa@example.com",
+          "Subject: Code",
+          "Authentication-Results: mx.cloudflare.net; dkim=pass header.d=netflix.com; spf=fail smtp.mailfrom=bounce.example; dmarc=pass header.from=netflix.com",
+          "",
+          "Your code is 123456",
+        ].join("\n"),
+      ),
+    );
+
+    expect(parsed.fromAddress).toBe("info@account.netflix.com");
+    expect(parsed.authentication).toEqual({
+      spf: "fail",
+      dkim: "pass",
+      dmarc: "pass",
+    });
+  });
+});
+
+describe("parseAuthenticationResults", () => {
+  it("returns null without a header and reads the first verdict per mechanism", () => {
+    expect(parseAuthenticationResults([])).toBeNull();
+    expect(
+      parseAuthenticationResults([
+        "mx.cloudflare.net; spf=pass smtp.mailfrom=x; dkim=none",
+        "other; dkim=pass; dmarc=fail",
+      ]),
+    ).toEqual({ spf: "pass", dkim: "none", dmarc: "fail" });
   });
 });

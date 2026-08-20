@@ -16,11 +16,21 @@ export type ClassificationResult =
       code: string | null;
     };
 
+export type SenderAuthentication = {
+  spf: string | null;
+  dkim: string | null;
+  dmarc: string | null;
+};
+
 export type ParsedIncomingEmail = {
   envelopeFrom: string;
   envelopeTo: string;
   householdSlug: string | null;
   fromHeader: string | null;
+  /** Lower-cased address from the RFC 5322 From: header, if parseable. */
+  fromAddress?: string | null;
+  /** Results from the Authentication-Results header(s), if present. */
+  authentication?: SenderAuthentication | null;
   subject: string | null;
   messageId: string | null;
   dateHeader: string | null;
