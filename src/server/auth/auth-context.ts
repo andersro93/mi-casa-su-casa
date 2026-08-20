@@ -2,6 +2,7 @@ export type AuthContext = {
   user: {
     id: string;
     email: string;
+    name: string;
     role: string;
     households: Array<{
       id: string;

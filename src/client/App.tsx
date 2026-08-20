@@ -1,6 +1,7 @@
 import {
   Alert,
   Box,
+  Button,
   CircularProgress,
   Snackbar,
   Typography,
@@ -36,6 +37,7 @@ import type {
   HouseholdSettingsResponse,
   HouseholdSummary,
   InboxMessage,
+  InvitationDeliveryResponse,
   InvitationFormState,
   InvitationSummary,
   MemberFormState,
@@ -215,6 +217,38 @@ export function App() {
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
+  const [pendingInviteLink, setPendingInviteLink] = useState<string | null>(
+    null,
+  );
+
+  function reportInvitationDelivery(
+    result: InvitationDeliveryResponse,
+    sentMessage: string,
+  ) {
+    if (result.emailSent) {
+      setPendingInviteLink(null);
+      setStatusMessage(sentMessage);
+      return;
+    }
+
+    setPendingInviteLink(result.inviteUrl);
+    setViewError(
+      "The invitation was created, but the email could not be sent. Copy the invite link and share it directly.",
+    );
+  }
+
+  async function copyPendingInviteLink() {
+    if (!pendingInviteLink) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(pendingInviteLink);
+      setViewError(null);
+      setStatusMessage("Invite link copied.");
+    } catch {
+      window.prompt("Copy the invite link:", pendingInviteLink);
+    }
+  }
 
   const isAuthenticated = Boolean(session?.user?.email);
   const currentHousehold = routeSlug
@@ -1328,7 +1362,7 @@ export function App() {
     setViewError(null);
 
     try {
-      await fetchJson<{ invitation: InvitationSummary }>(
+      const result = await fetchJson<InvitationDeliveryResponse>(
         householdApiPath("/admin/members"),
         {
           method: "POST",
@@ -1337,7 +1371,7 @@ export function App() {
       );
 
       setMemberFormState(INITIAL_MEMBER_FORM_STATE);
-      setStatusMessage("Invitation email sent.");
+      reportInvitationDelivery(result, "Invitation email sent.");
       await refreshInvitations();
       return true;
     } catch (error) {
@@ -1361,7 +1395,7 @@ export function App() {
     setViewError(null);
 
     try {
-      await fetchJson<{ invitation: InvitationSummary }>(
+      const result = await fetchJson<InvitationDeliveryResponse>(
         householdApiPath("/admin/invitations"),
         {
           method: "POST",
@@ -1370,7 +1404,7 @@ export function App() {
       );
 
       setInvitationFormState(INITIAL_INVITATION_FORM_STATE);
-      setStatusMessage("Invitation email sent.");
+      reportInvitationDelivery(result, "Invitation email sent.");
       await refreshInvitations();
       return true;
     } catch (error) {
@@ -1389,14 +1423,14 @@ export function App() {
     setViewError(null);
 
     try {
-      await fetchJson<{ invitation: InvitationSummary }>(
+      const result = await fetchJson<InvitationDeliveryResponse>(
         householdApiPath(`/admin/invitations/${invitationId}/resend`),
         {
           method: "POST",
         },
       );
 
-      setStatusMessage("Invitation resent.");
+      reportInvitationDelivery(result, "Invitation resent.");
       await refreshInvitations();
     } catch (error) {
       setViewError(
@@ -2057,6 +2091,17 @@ export function App() {
           severity={viewError ? "error" : "success"}
           variant="filled"
           sx={{ width: "100%" }}
+          action={
+            viewError && pendingInviteLink ? (
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => void copyPendingInviteLink()}
+              >
+                Copy invite link
+              </Button>
+            ) : undefined
+          }
         >
           {viewError || statusMessage}
         </Alert>

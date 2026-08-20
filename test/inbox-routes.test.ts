@@ -65,7 +65,8 @@ const authApiState = vi.hoisted(() => ({
 }));
 
 const invitationEmailState = vi.hoisted(() => ({
-  calls: [] as unknown[],
+  calls: [] as Array<{ env: unknown; input: Record<string, unknown> }>,
+  failWith: null as string | null,
 }));
 
 const repoState = vi.hoisted(() => ({
@@ -189,8 +190,14 @@ function invitationSummary(invitation: InvitationRecord) {
 }
 
 vi.mock("../src/server/email/sender", () => ({
-  sendHouseholdInvitationEmail: async (env: unknown, input: unknown) => {
+  sendHouseholdInvitationEmail: async (
+    env: unknown,
+    input: Record<string, unknown>,
+  ) => {
     invitationEmailState.calls.push({ env, input });
+    if (invitationEmailState.failWith) {
+      throw new Error(invitationEmailState.failWith);
+    }
   },
   sendPasswordResetEmail: async () => {},
   sendTransactionalEmail: async () => {},
@@ -866,6 +873,7 @@ describe("worker routes", () => {
     sessionState.current = null;
     authApiState.signUpEmailCalls = [];
     invitationEmailState.calls = [];
+    invitationEmailState.failWith = null;
     repoState.users = [
       {
         id: "owner-home",
@@ -1279,7 +1287,64 @@ describe("worker routes", () => {
         role: "member",
         status: "pending",
       }),
+      inviteUrl: "http://localhost:8787/invite/invite-token",
+      emailSent: true,
     });
+  });
+
+  it("still creates the invitation and returns the link when the email cannot be sent", async () => {
+    sessionState.current = {
+      user: {
+        id: "owner-home",
+        email: "owner@example.com",
+        role: "user",
+        name: "Olivia Owner",
+      },
+      session: { id: "session-1", userId: "owner-home" },
+    };
+    invitationEmailState.failWith =
+      "OUTBOUND_EMAIL_FROM must be configured before sending email.";
+
+    const response = await invokeWorker("/api/admin/home/invitations", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "new@example.com",
+        name: "New Person",
+        role: "member",
+        providerIds: [],
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(repoState.createInvitationCalls).toHaveLength(1);
+    // The inviter's display name (not the email) is used in the message.
+    expect(invitationEmailState.calls[0]?.input).toMatchObject({
+      inviterName: "Olivia Owner",
+      inviterEmail: "owner@example.com",
+    });
+    await expect(response.json()).resolves.toEqual({
+      invitation: expect.objectContaining({ email: "new@example.com" }),
+      inviteUrl: "http://localhost:8787/invite/invite-token",
+      emailSent: false,
+      emailError:
+        "OUTBOUND_EMAIL_FROM must be configured before sending email.",
+    });
+  });
+
+  it("rejects invitations to malformed email addresses", async () => {
+    sessionState.current = {
+      user: { id: "owner-home", email: "owner@example.com", role: "user" },
+      session: { id: "session-1", userId: "owner-home" },
+    };
+
+    const response = await invokeWorker("/api/admin/home/invitations", {
+      method: "POST",
+      body: JSON.stringify({ email: "not-an-email", name: "Nope" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(repoState.createInvitationCalls).toHaveLength(0);
+    expect(invitationEmailState.calls).toHaveLength(0);
   });
 
   it("rejects role changes for a user outside the active household", async () => {
