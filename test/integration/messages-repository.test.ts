@@ -114,19 +114,14 @@ describe("messages repository (D1)", () => {
 
     await insertQuarantineMessage(
       db,
-      parsedEmail({
-        messageId: "<q-1@test>",
-        dateHeader: "2020-01-01T00:00:00Z",
-      }),
+      parsedEmail({ messageId: "<q-1@test>" }),
       household.id,
       { kind: "quarantine", reason: "no rule", code: null },
+      new Date("2020-01-01T00:00:00Z"),
     );
     await insertQuarantineMessage(
       db,
-      parsedEmail({
-        messageId: "<q-2@test>",
-        dateHeader: new Date().toISOString(),
-      }),
+      parsedEmail({ messageId: "<q-2@test>" }),
       household.id,
       { kind: "quarantine", reason: "no rule", code: null },
     );
@@ -137,5 +132,66 @@ describe("messages repository (D1)", () => {
 
     const remaining = await listQuarantineMessages(db, household.id);
     expect(remaining).toHaveLength(1);
+  });
+});
+
+describe("received_at is server time, not the Date: header (D1)", () => {
+  it("keeps a forged far-future Date header from escaping retention or topping the inbox", async () => {
+    const household = await insertHousehold({ slug: "casa" });
+    const provider = await createProvider(
+      db,
+      household.id,
+      "netflix",
+      "Netflix",
+    );
+    const matched = {
+      kind: "matched" as const,
+      householdId: household.id,
+      householdSlug: "casa",
+      providerId: provider.id,
+      providerKey: "netflix",
+      code: "123456",
+      reason: "matched",
+    };
+    const t0 = new Date("2026-05-10T12:00:00Z");
+
+    await insertMessage(
+      db,
+      parsedEmail({
+        messageId: "<forged@test>",
+        dateHeader: "2099-01-01T00:00:00Z",
+      }),
+      household.id,
+      provider.id,
+      matched,
+      t0,
+    );
+    await insertMessage(
+      db,
+      parsedEmail({
+        messageId: "<genuine@test>",
+        dateHeader: "2026-05-10T12:05:00Z",
+      }),
+      household.id,
+      provider.id,
+      matched,
+      new Date("2026-05-10T12:05:00Z"),
+    );
+
+    const rows = await listMessagesForProvider(db, household.id, "netflix");
+    expect(rows.map((row) => row.received_at)).toEqual([
+      "2026-05-10T12:05:00.000Z",
+      "2026-05-10T12:00:00.000Z",
+    ]);
+
+    // 31 days after t0 everything is purged, whatever the header claimed.
+    await purgeExpired(db, new Date("2026-06-10T12:00:00Z").toISOString());
+    expect(await count("messages")).toBe(0);
+
+    // The header value is still available for display.
+    const stored = await db
+      .prepare("SELECT date_header FROM quarantine_messages")
+      .all();
+    expect(stored.results).toEqual([]);
   });
 });

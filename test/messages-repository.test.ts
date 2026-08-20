@@ -50,16 +50,24 @@ describe("messages repository inserts", () => {
     });
 
     await expect(
-      insertMessage(db.db, createParsedEmail(), "household-1", "provider-1", {
-        kind: "matched",
-        householdId: "household-1",
-        householdSlug: "codes",
-        providerId: "provider-1",
-        providerKey: "netflix",
-        code: "123456",
-        reason:
-          "Sender matched a configured rule and a likely verification code was found.",
-      }),
+      insertMessage(
+        db.db,
+        // The sender-controlled Date header must not influence received_at.
+        createParsedEmail({ dateHeader: "2099-01-01T00:00:00Z" }),
+        "household-1",
+        "provider-1",
+        {
+          kind: "matched",
+          householdId: "household-1",
+          householdSlug: "codes",
+          providerId: "provider-1",
+          providerKey: "netflix",
+          code: "123456",
+          reason:
+            "Sender matched a configured rule and a likely verification code was found.",
+        },
+        new Date("2026-05-10T12:00:00Z"),
+      ),
     ).resolves.toMatchObject({
       receivedAt: "2026-05-10T12:00:00.000Z",
       deleteAfter: "2026-06-09T12:00:00.000Z",
@@ -79,11 +87,17 @@ describe("messages repository inserts", () => {
     });
 
     await expect(
-      insertQuarantineMessage(db.db, createParsedEmail(), "household-1", {
-        kind: "quarantine",
-        reason: "No sender rule matched the inbound email.",
-        code: "123456",
-      }),
+      insertQuarantineMessage(
+        db.db,
+        createParsedEmail({ dateHeader: "1999-01-01T00:00:00Z" }),
+        "household-1",
+        {
+          kind: "quarantine",
+          reason: "No sender rule matched the inbound email.",
+          code: "123456",
+        },
+        new Date("2026-05-10T12:00:00Z"),
+      ),
     ).resolves.toMatchObject({
       receivedAt: "2026-05-10T12:00:00.000Z",
       deleteAfter: "2026-06-09T12:00:00.000Z",

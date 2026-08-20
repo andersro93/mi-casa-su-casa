@@ -18,18 +18,22 @@ function addRetentionWindow(isoDate: string): string {
   return next.toISOString();
 }
 
-function resolveReceivedAt(dateHeader: string | null): string {
+/**
+ * received_at is always the server's clock. The sender-controlled Date:
+ * header is stored separately for display only, so it can neither reorder
+ * the inbox nor push delete_after past the retention window.
+ */
+function resolveReceivedAt(now: Date): string {
+  return now.toISOString();
+}
+
+function normalizeDateHeader(dateHeader: string | null): string | null {
   if (!dateHeader) {
-    return new Date().toISOString();
+    return null;
   }
 
-  const receivedAt = new Date(dateHeader);
-
-  if (Number.isNaN(receivedAt.getTime())) {
-    return new Date().toISOString();
-  }
-
-  return receivedAt.toISOString();
+  const parsed = new Date(dateHeader);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 function isDuplicateMessageError(
@@ -66,21 +70,23 @@ export async function insertMessage(
   householdId: string,
   providerId: string,
   result: Extract<ClassificationResult, { kind: "matched" }>,
+  now: Date = new Date(),
 ) {
   const database = dbForDatabase(db);
   const id = crypto.randomUUID();
-  const receivedAt = resolveReceivedAt(parsed.dateHeader);
+  const receivedAt = resolveReceivedAt(now);
   const deleteAfter = addRetentionWindow(receivedAt);
+  const dateHeader = normalizeDateHeader(parsed.dateHeader);
 
   try {
     await database.run(sql`
       INSERT INTO messages (
         id, household_id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
-        text_body, extracted_code, classification_reason, raw_size, received_at, delete_after
+        text_body, extracted_code, classification_reason, raw_size, date_header, received_at, delete_after
       ) VALUES (
         ${id}, ${householdId}, ${parsed.messageId ?? id}, ${providerId}, ${parsed.envelopeFrom}, ${parsed.envelopeTo},
         ${parsed.fromHeader}, ${parsed.subject}, ${parsed.textBody}, ${result.code}, ${result.reason},
-        ${parsed.rawSize}, ${receivedAt}, ${deleteAfter}
+        ${parsed.rawSize}, ${dateHeader}, ${receivedAt}, ${deleteAfter}
       )
     `);
   } catch (error) {
@@ -97,21 +103,23 @@ export async function insertQuarantineMessage(
   parsed: ParsedIncomingEmail,
   householdId: string,
   result: Extract<ClassificationResult, { kind: "quarantine" }>,
+  now: Date = new Date(),
 ) {
   const database = dbForDatabase(db);
   const id = crypto.randomUUID();
-  const receivedAt = resolveReceivedAt(parsed.dateHeader);
+  const receivedAt = resolveReceivedAt(now);
   const deleteAfter = addRetentionWindow(receivedAt);
+  const dateHeader = normalizeDateHeader(parsed.dateHeader);
 
   try {
     await database.run(sql`
       INSERT INTO quarantine_messages (
         id, household_id, message_id, envelope_from, envelope_to, from_header, subject,
-        text_body, extracted_code, quarantine_reason, raw_size, received_at, delete_after
+        text_body, extracted_code, quarantine_reason, raw_size, date_header, received_at, delete_after
       ) VALUES (
         ${id}, ${householdId}, ${parsed.messageId ?? id}, ${parsed.envelopeFrom}, ${parsed.envelopeTo},
         ${parsed.fromHeader}, ${parsed.subject}, ${parsed.textBody}, ${result.code}, ${result.reason},
-        ${parsed.rawSize}, ${receivedAt}, ${deleteAfter}
+        ${parsed.rawSize}, ${dateHeader}, ${receivedAt}, ${deleteAfter}
       )
     `);
   } catch (error) {
