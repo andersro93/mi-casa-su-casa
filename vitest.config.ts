@@ -42,6 +42,7 @@ export default defineConfig(async () => {
                 compatibilityDate: "2026-05-10",
                 compatibilityFlags: ["nodejs_compat"],
                 d1Databases: ["DB"],
+                email: { send_email: [{ name: "EMAIL" }] },
                 bindings: {
                   APP_NAME: "Mi Casa Su Casa (test)",
                   APP_URL: "http://localhost:8787",
