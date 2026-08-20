@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 
 import { isUniqueViolation, uniqueViolationTarget } from "../db/errors";
+import { logEvent, requestFields } from "../runtime/log";
 
 /**
  * Last-resort error handler for the API: every failure becomes a JSON
@@ -25,15 +26,10 @@ export function handleApiError(error: unknown, c: Context): Response {
     );
   }
 
-  console.error(
-    JSON.stringify({
-      event: "unhandled_error",
-      method: c.req.method,
-      path: c.req.path,
-      ray: c.req.header("cf-ray") ?? null,
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  logEvent("error", "unhandled_error", {
+    ...requestFields(c),
+    error: error instanceof Error ? error.message : String(error),
+  });
 
   return c.json({ error: "Internal error" }, 500);
 }

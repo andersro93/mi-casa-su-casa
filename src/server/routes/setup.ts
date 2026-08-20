@@ -19,6 +19,7 @@ import {
   normalizeHouseholdSlug,
   validateHouseholdSlug,
 } from "../domain/household-slug";
+import { logEvent } from "../runtime/log";
 import { secretsEqual } from "../security/compare";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 
@@ -150,12 +151,9 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
         existingOwner.id,
         requestedEmail,
       );
-      console.warn(
-        JSON.stringify({
-          event: "setup_recovered_existing_owner",
-          userId: existingOwner.id,
-        }),
-      );
+      logEvent("warn", "setup_recovered_existing_owner", {
+        userId: existingOwner.id,
+      });
       return c.json(
         {
           error:
@@ -167,12 +165,9 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
 
     // Orphan from a failed attempt (no memberships): remove it so the retry
     // starts from a clean slate.
-    console.warn(
-      JSON.stringify({
-        event: "setup_orphan_user_removed",
-        userId: existingOwner.id,
-      }),
-    );
+    logEvent("warn", "setup_orphan_user_removed", {
+      userId: existingOwner.id,
+    });
     await deleteUserById(c.env.DB, existingOwner.id);
   }
 
@@ -228,27 +223,21 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
 
     return response;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "setup_failed",
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    logEvent("error", "setup_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
 
     // Compensate: remove the owner user created in this attempt so the next
     // attempt does not fail with USER_ALREADY_EXISTS, then release the claim.
     if (createdUserId) {
       await deleteUserById(c.env.DB, createdUserId).catch((cleanupError) => {
-        console.error(
-          JSON.stringify({
-            event: "setup_cleanup_failed",
-            userId: createdUserId,
-            error:
-              cleanupError instanceof Error
-                ? cleanupError.message
-                : String(cleanupError),
-          }),
-        );
+        logEvent("error", "setup_cleanup_failed", {
+          userId: createdUserId,
+          error:
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : String(cleanupError),
+        });
       });
     }
 

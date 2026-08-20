@@ -16,6 +16,7 @@ import { settingsRoutes } from "./server/routes/settings";
 import { setupRoutes } from "./server/routes/setup";
 import { createAppContext } from "./server/runtime/context";
 import { assertValidEnv, validateEnv } from "./server/runtime/env";
+import { logEvent, logFailedApiRequests } from "./server/runtime/log";
 import {
   corsOriginFor,
   rejectCrossSiteMutations,
@@ -69,6 +70,7 @@ app.use(
   }),
 );
 app.use("/api/*", rejectCrossSiteMutations);
+app.use("/api/*", logFailedApiRequests);
 
 // Fail fast (and loudly) when required configuration is missing, instead of
 // letting auth/email silently degrade. Liveness stays available.
@@ -80,12 +82,9 @@ app.use("/api/*", async (c, next) => {
   const validation = validateEnv(c.env);
 
   if (!validation.ok) {
-    console.error(
-      JSON.stringify({
-        event: "env_misconfigured",
-        problems: validation.problems,
-      }),
-    );
+    logEvent("error", "env_misconfigured", {
+      problems: validation.problems,
+    });
     return c.json(
       { error: "misconfigured", problems: validation.problems },
       503,
@@ -110,6 +109,9 @@ app.route("/api/admin", adminRoutes);
 app.route("/api/invitations", invitationRoutes);
 app.route("/api/settings", settingsRoutes);
 app.route("/api/setup", setupRoutes);
+
+// Unknown API paths must never fall through to the SPA/asset handler.
+app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 
 app.get("*", async (c) => {
   return c.env.ASSETS.fetch(c.req.raw);

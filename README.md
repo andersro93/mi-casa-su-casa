@@ -132,6 +132,10 @@ They cover:
 
 If your editor supports `.http` or REST client files, you can run these requests directly against the local dev server.
 
+### Operations
+
+Logging, health endpoints and the recommended alert set are described in [`docs/operations.md`](./docs/operations.md).
+
 ### Health endpoints
 
 - `GET /api/health/live` — liveness check

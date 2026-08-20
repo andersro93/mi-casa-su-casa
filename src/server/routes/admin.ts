@@ -44,6 +44,7 @@ import {
   updateSenderRule,
 } from "../db/repositories/provider-rules";
 import { sendHouseholdInvitationEmail } from "../email/sender";
+import { logEvent } from "../runtime/log";
 import { createInvitationToken } from "../security/tokens";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -108,14 +109,11 @@ async function deliverInvitationEmail(
     return { emailSent: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(
-      JSON.stringify({
-        event: "invitation_email_failed",
-        invitationId: input.invitationId,
-        to: input.to,
-        error: message,
-      }),
-    );
+    logEvent("error", "invitation_email_failed", {
+      invitationId: input.invitationId,
+      to: input.to,
+      error: message,
+    });
     return { emailSent: false, emailError: message };
   }
 }
@@ -831,14 +829,11 @@ adminRoutes.delete("/:slug/members/:userId", async (c) => {
     householdId: household.id,
     userId,
   });
-  console.log(
-    JSON.stringify({
-      event: "member_removed",
-      householdId: household.id,
-      userId,
-      byUserId: currentUser.id,
-    }),
-  );
+  logEvent("info", "member_removed", {
+    householdId: household.id,
+    userId,
+    byUserId: currentUser.id,
+  });
   await audit(c, "member.removed", "user", userId);
 
   return c.json({ ok: true });

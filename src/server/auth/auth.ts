@@ -6,6 +6,7 @@ import { twoFactor } from "better-auth/plugins";
 import { dbForEnv } from "../db/client";
 import * as schema from "../db/schema";
 import { sendPasswordResetEmail } from "../email/sender";
+import { logEvent } from "../runtime/log";
 
 function getRpId(url: string) {
   // APP_URL is validated at the edge (see runtime/env.ts); a bad value here
@@ -45,13 +46,10 @@ function createAuth(env: Env, options: { disableSignUp: boolean }) {
             resetUrl: url,
           });
         } catch (error) {
-          console.error(
-            JSON.stringify({
-              event: "password_reset_email_failed",
-              userId: user.id,
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
+          logEvent("error", "password_reset_email_failed", {
+            userId: user.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
           throw error;
         }
       },

@@ -11,6 +11,7 @@ import {
   refreshExpiredInvitations,
 } from "../db/repositories/invitations";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
+import { logEvent } from "../runtime/log";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 import { hashInvitationToken } from "../security/tokens";
 
@@ -205,13 +206,10 @@ invitationRoutes.post("/:token/accept", async (c) => {
 
     return response;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "invitation_accept_failed",
-        invitationId: invitation.id,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    logEvent("error", "invitation_accept_failed", {
+      invitationId: invitation.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
 
     // Compensate: the sign-up succeeded but the membership did not; remove the
     // half-created account so the invitee can simply retry the link.
