@@ -36,11 +36,22 @@ function createAuth(env: Env, options: { disableSignUp: boolean }) {
       minPasswordLength: 12,
       maxPasswordLength: 128,
       sendResetPassword: async ({ user, url }) => {
-        void sendPasswordResetEmail(env, {
-          to: user.email,
-          recipientName: user.name,
-          resetUrl: url,
-        });
+        try {
+          await sendPasswordResetEmail(env, {
+            to: user.email,
+            recipientName: user.name,
+            resetUrl: url,
+          });
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              event: "password_reset_email_failed",
+              userId: user.id,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+          throw error;
+        }
       },
     },
     user: {

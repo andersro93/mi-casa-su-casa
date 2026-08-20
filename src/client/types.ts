@@ -223,3 +223,10 @@ export type CreateHouseholdFormState = {
   displayName: string;
   slug: string;
 };
+
+export type InvitationDeliveryResponse = {
+  invitation: InvitationSummary;
+  inviteUrl: string;
+  emailSent: boolean;
+  emailError?: string;
+};

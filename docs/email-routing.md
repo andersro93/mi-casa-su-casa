@@ -96,6 +96,15 @@ Cloudflare Email Routing can coexist with another provider if you:
 
 > **Warning**: Enabling Email Routing changes MX records to point to Cloudflare. All mail for the domain flows through Cloudflare first. Make sure the fallback address is configured correctly or you may lose mail intended for your primary provider.
 
+## Sending email (invitations and password resets)
+
+The Worker sends invitation and password-reset emails through the `send_email` binding (`EMAIL` in `wrangler.jsonc`). For that to work:
+
+1. Set `OUTBOUND_EMAIL_FROM` on the Worker (Cloudflare dashboard → Settings → Variables) to an address on a domain where Email Routing is enabled, e.g. `noreply@home.yourdomain.com`. Cloudflare only allows sending from addresses on your Email Routing domains.
+2. While the destination domain is not yet verified for sending, Cloudflare may reject sends to arbitrary addresses; add verified destination addresses under **Email → Email Routing → Destination addresses** if you hit rejections.
+
+If an invitation email cannot be delivered, the API still creates the invitation and returns `emailSent: false` together with the `inviteUrl`; the app shows a **Copy invite link** action so the owner can share it directly. Delivery failures are logged as `{"event":"invitation_email_failed", ...}` in Workers Logs.
+
 ## Local development
 
 Email routing is a Cloudflare infrastructure feature and does not run locally. To test the email pipeline during development, post a raw RFC 5322 message to the Wrangler dev endpoint:

@@ -43,6 +43,58 @@ import {
 import { sendHouseholdInvitationEmail } from "../email/sender";
 import { createInvitationToken } from "../security/tokens";
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(value: string) {
+  return EMAIL_PATTERN.test(value) && value.length <= 254;
+}
+
+function buildInviteUrl(env: Env, token: string) {
+  return `${env.APP_URL.replace(/\/$/, "")}/invite/${token}`;
+}
+
+/**
+ * Sends the invitation email and reports whether it was delivered to the
+ * email binding. Failures are logged and surfaced to the caller instead of
+ * being swallowed, so the owner can fall back to sharing the link manually.
+ */
+async function deliverInvitationEmail(
+  env: Env,
+  input: {
+    invitationId: string;
+    to: string;
+    inviteeName: string;
+    inviter: { name: string; email: string };
+    inviteUrl: string;
+    expiresAt: string;
+    role: InvitationRole;
+  },
+): Promise<{ emailSent: boolean; emailError?: string }> {
+  try {
+    await sendHouseholdInvitationEmail(env, {
+      to: input.to,
+      inviteeName: input.inviteeName,
+      inviterName: input.inviter.name,
+      inviterEmail: input.inviter.email,
+      inviteUrl: input.inviteUrl,
+      expiresAt: input.expiresAt,
+      role: input.role,
+    });
+    return { emailSent: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      JSON.stringify({
+        event: "invitation_email_failed",
+        invitationId: input.invitationId,
+        to: input.to,
+        error: message,
+      }),
+    );
+    return { emailSent: false, emailError: message };
+  }
+}
+
 type AccessPayload = {
   providerKey?: string;
 };
@@ -463,6 +515,10 @@ adminRoutes.post("/:slug/invitations", async (c) => {
     return c.json({ error: "email and name are required" }, 400);
   }
 
+  if (!isValidEmail(email)) {
+    return c.json({ error: "email must be a valid email address" }, 400);
+  }
+
   const providersBelong = await assertProvidersBelongToHousehold(
     c.env.DB,
     household.id,
@@ -505,17 +561,18 @@ adminRoutes.post("/:slug/invitations", async (c) => {
     return c.json({ error: "Unable to create invitation" }, 500);
   }
 
-  void sendHouseholdInvitationEmail(c.env, {
+  const inviteUrl = buildInviteUrl(c.env, token);
+  const delivery = await deliverInvitationEmail(c.env, {
+    invitationId,
     to: email,
     inviteeName: name,
-    inviterName: inviter.email,
-    inviterEmail: inviter.email,
-    inviteUrl: `${c.env.APP_URL.replace(/\/$/, "")}/invite/${token}`,
+    inviter,
+    inviteUrl,
     expiresAt,
     role,
   });
 
-  return c.json({ invitation }, 201);
+  return c.json({ invitation, inviteUrl, ...delivery }, 201);
 });
 
 adminRoutes.post("/:slug/invitations/:invitationId/resend", async (c) => {
@@ -564,17 +621,18 @@ adminRoutes.post("/:slug/invitations/:invitationId/resend", async (c) => {
     return c.json({ error: "Unable to resend invitation" }, 500);
   }
 
-  void sendHouseholdInvitationEmail(c.env, {
+  const inviteUrl = buildInviteUrl(c.env, token);
+  const delivery = await deliverInvitationEmail(c.env, {
+    invitationId: replacementId,
     to: replacement.email,
     inviteeName: replacement.name,
-    inviterName: inviter.email,
-    inviterEmail: inviter.email,
-    inviteUrl: `${c.env.APP_URL.replace(/\/$/, "")}/invite/${token}`,
+    inviter,
+    inviteUrl,
     expiresAt,
     role: replacement.role,
   });
 
-  return c.json({ invitation: replacement });
+  return c.json({ invitation: replacement, inviteUrl, ...delivery });
 });
 
 adminRoutes.delete("/:slug/invitations/:invitationId", async (c) => {
@@ -606,6 +664,12 @@ adminRoutes.post("/:slug/members", async (c) => {
     return c.json({ error: "email and name are required" }, 400);
   }
 
+  const memberEmail = normalizeEmail(payload.email);
+
+  if (!isValidEmail(memberEmail)) {
+    return c.json({ error: "email must be a valid email address" }, 400);
+  }
+
   const inviter = c.get("user");
 
   if (!inviter) {
@@ -621,7 +685,7 @@ adminRoutes.post("/:slug/members", async (c) => {
 
   const invitationId = await createHouseholdInvitation(c.env.DB, {
     householdId: household.id,
-    email: normalizeEmail(payload.email),
+    email: memberEmail,
     name: payload.name.trim(),
     role: invitationRole,
     tokenHash,
@@ -636,17 +700,18 @@ adminRoutes.post("/:slug/members", async (c) => {
     return c.json({ error: "Unable to create invitation" }, 500);
   }
 
-  void sendHouseholdInvitationEmail(c.env, {
+  const inviteUrl = buildInviteUrl(c.env, token);
+  const delivery = await deliverInvitationEmail(c.env, {
+    invitationId,
     to: invitation.email,
     inviteeName: invitation.name,
-    inviterName: inviter.email,
-    inviterEmail: inviter.email,
-    inviteUrl: `${c.env.APP_URL.replace(/\/$/, "")}/invite/${token}`,
+    inviter,
+    inviteUrl,
     expiresAt,
     role: invitation.role,
   });
 
-  return c.json({ invitation }, 201);
+  return c.json({ invitation, inviteUrl, ...delivery }, 201);
 });
 
 adminRoutes.patch("/:slug/members/:userId/role", async (c) => {

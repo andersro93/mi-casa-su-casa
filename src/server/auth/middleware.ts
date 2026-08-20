@@ -29,6 +29,10 @@ export const loadAuthSession: MiddlewareHandler<{
       ? {
           id: result.user.id,
           email: result.user.email,
+          name:
+            typeof result.user.name === "string" && result.user.name.trim()
+              ? result.user.name.trim()
+              : result.user.email,
           role,
           households,
         }
