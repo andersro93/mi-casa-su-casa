@@ -128,25 +128,26 @@ export async function createHousehold(
   },
 ) {
   const householdId = crypto.randomUUID();
+  const database = dbForDatabase(db);
 
-  await dbForDatabase(db).transaction(async (tx) => {
-    await tx.insert(households).values({
+  // D1 does not support SQL transactions (BEGIN/COMMIT); `batch` is atomic.
+  await database.batch([
+    database.insert(households).values({
       id: householdId,
       slug: input.slug,
       displayName: input.displayName,
       createdAt: sql`CURRENT_TIMESTAMP`,
       updatedAt: sql`CURRENT_TIMESTAMP`,
-    });
-
-    await tx.insert(householdMemberships).values({
+    }),
+    database.insert(householdMemberships).values({
       id: crypto.randomUUID(),
       householdId,
       userId: input.ownerUserId,
       role: "owner",
       createdAt: sql`CURRENT_TIMESTAMP`,
       updatedAt: sql`CURRENT_TIMESTAMP`,
-    });
-  });
+    }),
+  ]);
 
   return getHouseholdBySlug(db, input.slug);
 }
