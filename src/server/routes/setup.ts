@@ -2,6 +2,7 @@ import { isAPIError } from "better-auth/api";
 import { Hono } from "hono";
 
 import { provisioningAuthForEnv } from "../auth/auth";
+import { isUniqueViolation } from "../db/errors";
 import {
   createHousehold,
   listHouseholdsForUser,
@@ -44,23 +45,6 @@ function mapInstallationStatus(
     status: row.status,
     ownerEmail: row.owner_email,
   };
-}
-
-function isUniqueConstraintError(error: unknown): boolean {
-  const seen = new Set<unknown>();
-  let current: unknown = error;
-  while (current && typeof current === "object" && !seen.has(current)) {
-    seen.add(current);
-    const message = (current as { message?: unknown }).message;
-    if (
-      typeof message === "string" &&
-      /UNIQUE constraint failed/.test(message)
-    ) {
-      return true;
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
 }
 
 function normalizeSlug(value: string | undefined) {
@@ -263,7 +247,7 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
 
     await resetInstallationSetup(c.env.DB);
 
-    if (isUniqueConstraintError(error)) {
+    if (isUniqueViolation(error)) {
       return c.json(
         { error: "A household with that slug already exists" },
         409,

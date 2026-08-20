@@ -1,6 +1,11 @@
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { dbForDatabase } from "../client";
+import { unwrapDatabaseError } from "../errors";
+import {
+  messages as messagesTable,
+  quarantineMessages as quarantineTable,
+} from "../schema";
 import type {
   ClassificationResult,
   InboxMessageRow,
@@ -48,20 +53,6 @@ function isDuplicateMessageError(
       `UNIQUE constraint failed: ${tableName}.household_id, ${tableName}.message_id`,
     )
   );
-}
-
-function unwrapDatabaseError(error: unknown): unknown {
-  if (!(error instanceof Error)) {
-    return error;
-  }
-
-  let current: unknown = error;
-
-  while (current instanceof Error && current.cause instanceof Error) {
-    current = current.cause;
-  }
-
-  return current;
 }
 
 export async function insertMessage(
@@ -264,6 +255,7 @@ type QuarantineMessageRecord = {
   raw_size: number;
   received_at: string;
   delete_after: string;
+  date_header: string | null;
   reviewed_at: string | null;
 };
 
@@ -275,7 +267,7 @@ async function findQuarantineMessageRecord(
   return dbForDatabase(db).get<QuarantineMessageRecord>(sql`
     SELECT id, household_id, message_id, envelope_from, envelope_to, from_header, subject,
             text_body, extracted_code, quarantine_reason, raw_size,
-            received_at, delete_after, reviewed_at
+            received_at, delete_after, date_header, reviewed_at
     FROM quarantine_messages
     WHERE household_id = ${householdId} AND id = ${messageId}
     LIMIT 1
@@ -308,18 +300,42 @@ export async function reviewQuarantineMessage(
       );
     }
 
-    await database.run(sql`
-      INSERT INTO messages (
-        id, household_id, message_id, provider_id, envelope_from, envelope_to, from_header, subject,
-        text_body, extracted_code, status, classification_reason, raw_size, received_at, delete_after
-      ) VALUES (
-        ${crypto.randomUUID()}, ${record.household_id}, ${record.message_id}, ${review.providerId}, ${record.envelope_from},
-        ${record.envelope_to}, ${record.from_header}, ${record.subject}, ${record.text_body},
-        ${record.extracted_code}, ${"new"},
-        ${`Released from quarantine by owner review. Original reason: ${record.quarantine_reason}`},
-        ${record.raw_size}, ${record.received_at}, ${record.delete_after}
-      )
-    `);
+    // Insert the released copy and mark the quarantine row reviewed in one
+    // atomic batch. If a message with the same Message-ID already exists in
+    // this household (e.g. a duplicate delivery that was classified after a
+    // rule change), keep the existing row instead of failing.
+    await database.batch([
+      database
+        .insert(messagesTable)
+        .values({
+          id: crypto.randomUUID(),
+          householdId: record.household_id,
+          messageId: record.message_id,
+          providerId: review.providerId,
+          envelopeFrom: record.envelope_from,
+          envelopeTo: record.envelope_to,
+          fromHeader: record.from_header,
+          subject: record.subject,
+          textBody: record.text_body,
+          extractedCode: record.extracted_code,
+          status: "new",
+          classificationReason: `Released from quarantine by owner review. Original reason: ${record.quarantine_reason}`,
+          rawSize: record.raw_size,
+          dateHeader: record.date_header,
+          receivedAt: record.received_at,
+          deleteAfter: record.delete_after,
+        })
+        .onConflictDoNothing(),
+      database
+        .update(quarantineTable)
+        .set({ reviewedAt })
+        .where(
+          and(
+            eq(quarantineTable.householdId, householdId),
+            eq(quarantineTable.id, messageId),
+          ),
+        ),
+    ]);
 
     const result = await database.get<InboxMessageRow>(sql`
       SELECT messages.id, households.slug AS household_slug, providers.provider_key, providers.display_name AS provider_display_name,
@@ -334,6 +350,7 @@ export async function reviewQuarantineMessage(
     `);
 
     releasedMessage = result ?? null;
+    return { reviewedAt, releasedMessage };
   }
 
   await database.run(sql`
