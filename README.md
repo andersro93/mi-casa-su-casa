@@ -151,8 +151,10 @@ Cloudflare Email Workers can be tested locally by posting a raw RFC 5322 message
 `/cdn-cgi/handler/email` is a Cloudflare/Wrangler development and testing endpoint that forwards a request to the Worker `email()` handler locally. It is not a normal application API route.
 
 ```bash
-curl -X POST 'http://localhost:8787/cdn-cgi/handler/email?from=sender@example.com&to=codes@example.com' \
-  --data-raw $'From: sender@example.com\nTo: codes@example.com\nSubject: Your verification code\nMessage-ID: <example-1@test>\n\nYour verification code is 123456'
+# The recipient's local part must be the slug of an existing household
+# (the one you chose during /setup, e.g. `casa`); other addresses are dropped.
+curl -X POST 'http://localhost:8787/cdn-cgi/handler/email?from=sender@example.com&to=casa@example.com' \
+  --data-raw $'From: sender@example.com\nTo: casa@example.com\nSubject: Your verification code\nMessage-ID: <example-1@test>\n\nYour verification code is 123456'
 ```
 
 ### Test scheduled cleanup locally
@@ -290,7 +292,7 @@ In the Cloudflare dashboard:
 1. Go to your domain → **Email → Email Routing → Overview**
 2. Enable Email Routing if not already active — accept the MX and SPF DNS record changes Cloudflare proposes
 3. Go to the **Routing rules** tab → **Create address**
-4. Set the custom address to the local part you want (e.g. `codes` for `codes@yourdomain.com`)
+4. Set the custom address to your **household slug** — the local part of the address must equal the slug chosen during `/setup` (e.g. household slug `casa` → `casa@yourdomain.com`). Mail to any other local part is dropped. Add one routing rule per household.
 5. Under **Action**, select **Send to a Worker** and choose your deployed Worker (`mi-casa-su-casa`)
 6. Save the rule
 

@@ -27,7 +27,7 @@ sender → Cloudflare Email Routing → Worker email() handler
 ```
 
 1. An external service (e.g. Netflix, Google) sends a verification email to your shared address.
-2. Cloudflare Email Routing matches the recipient and forwards the raw RFC 5322 message to the Worker.
+2. Cloudflare Email Routing matches the recipient and forwards the raw RFC 5322 message to the Worker. The Worker resolves the household from the recipient's local part (`casa@…` → household `casa`); unknown local parts are dropped.
 3. The Worker parses headers and body using PostalMime.
 4. The sender address is checked against `sender_rules` in D1.
    - **Match**: the message is stored in `messages` with any extracted verification code.
@@ -49,7 +49,7 @@ sender → Cloudflare Email Routing → Worker email() handler
 
 1. Still on **Email → Email Routing**, go to the **Routing rules** tab.
 2. Click **Create address**.
-3. Set the **Custom address** to the local part you want to use (e.g. `codes`). This creates the address `codes@yourdomain.com`.
+3. Set the **Custom address** to your **household slug**. The Worker routes mail by the recipient's local part, which must equal the slug of an existing household (chosen during `/setup`, e.g. `casa` → `casa@yourdomain.com`). Mail to any other local part is dropped. Create one routing rule per household.
 4. Under **Action**, select **Send to a Worker**.
 5. Choose your deployed Worker from the dropdown:
    - Production: `mi-casa-su-casa`
@@ -69,7 +69,7 @@ These records are managed by Cloudflare and were added when you enabled Email Ro
 
 ### 4. Send a test email
 
-1. Send an email from an external address to your configured address (e.g. `codes@yourdomain.com`).
+1. Send an email from an external address to your configured address (e.g. `casa@yourdomain.com`, where `casa` is your household slug).
 2. Check your application:
    - If the sender matches a `sender_rules` entry, the message appears in the inbox.
    - If not, it appears in the quarantine view (owner-only).
@@ -85,7 +85,7 @@ Use a subdomain like `home.yourdomain.com` for Email Routing and keep the root d
 
 1. Add the subdomain to Cloudflare if it is not already there.
 2. Enable Email Routing on the subdomain.
-3. Your shared address becomes `codes@home.yourdomain.com`.
+3. Your shared address becomes `<household-slug>@home.yourdomain.com`.
 
 **Option B — Catch-all on root domain**:
 
@@ -110,8 +110,9 @@ If an invitation email cannot be delivered, the API still creates the invitation
 Email routing is a Cloudflare infrastructure feature and does not run locally. To test the email pipeline during development, post a raw RFC 5322 message to the Wrangler dev endpoint:
 
 ```bash
-curl -X POST 'http://localhost:8787/cdn-cgi/handler/email?from=sender@example.com&to=codes@example.com' \
-  --data-raw $'From: sender@example.com\nTo: codes@example.com\nSubject: Your verification code\nMessage-ID: <test-1@dev>\n\nYour verification code is 123456'
+# `casa` must be the slug of an existing household in your local database.
+curl -X POST 'http://localhost:8787/cdn-cgi/handler/email?from=sender@example.com&to=casa@example.com' \
+  --data-raw $'From: sender@example.com\nTo: casa@example.com\nSubject: Your verification code\nMessage-ID: <test-1@dev>\n\nYour verification code is 123456'
 ```
 
 `/cdn-cgi/handler/email` is a Cloudflare/Wrangler development endpoint that forwards a request to the Worker `email()` handler locally. It is not a normal application API route. See the [README](../README.md#test-email-ingestion-locally) for more examples.

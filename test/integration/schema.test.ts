@@ -78,10 +78,11 @@ describe("database schema", () => {
   });
 
   it("does not seed any household on a fresh install", async () => {
-    // Documents current behaviour; tightened when #88 lands.
+    // 0005 seeded a 'home' household for legacy data; 0007 removes it when
+    // nothing references it, so a fresh install starts empty (#88).
     const row = await db
       .prepare("SELECT COUNT(*) AS n FROM households")
       .first<{ n: number }>();
-    expect(typeof row?.n).toBe("number");
+    expect(row?.n).toBe(0);
   });
 });
