@@ -11,9 +11,11 @@ permissions:
   contents: read
   pull-requests: write
 
+# A superseded push may cancel validation, but never a migration/deploy that
+# has already started against the shared preview database.
 concurrency:
   group: preview-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy-preview:
@@ -80,7 +82,14 @@ jobs:
         if: env.HAS_CLOUDFLARE_API_TOKEN == 'true' && env.HAS_CLOUDFLARE_ACCOUNT_ID == 'true' && env.HAS_D1_DATABASE_ID_PREVIEW == 'true'
         env:
           D1_DATABASE_ID_PREVIEW: ${{ secrets.D1_DATABASE_ID_PREVIEW }}
-        run: sed -i 's/PLACEHOLDER_PREVIEW_D1_DATABASE_ID/'"$D1_DATABASE_ID_PREVIEW"'/' wrangler.jsonc
+        run: |
+          set -euo pipefail
+          grep -q PLACEHOLDER_PREVIEW_D1_DATABASE_ID wrangler.jsonc || {
+            echo "::error::wrangler.jsonc no longer contains PLACEHOLDER_PREVIEW_D1_DATABASE_ID"; exit 1; }
+          sed -i 's/PLACEHOLDER_PREVIEW_D1_DATABASE_ID/'"${D1_DATABASE_ID_PREVIEW}"'/' wrangler.jsonc
+          if grep -q PLACEHOLDER_PREVIEW_D1_DATABASE_ID wrangler.jsonc; then
+            echo "::error::Placeholder injection failed"; exit 1
+          fi
 
       - name: Apply preview D1 migrations
         if: env.HAS_CLOUDFLARE_API_TOKEN == 'true' && env.HAS_CLOUDFLARE_ACCOUNT_ID == 'true' && env.HAS_D1_DATABASE_ID_PREVIEW == 'true'

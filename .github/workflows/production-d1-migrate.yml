@@ -1,5 +1,8 @@
 name: Production D1 Migrate
 
+# Manual/recovery path: normally migrations are applied by "Production Deploy"
+# on every push to main. Use this to re-apply or inspect migrations for a
+# specific ref (e.g. after a failed deploy) behind the protected environment.
 on:
   workflow_dispatch:
     inputs:
@@ -15,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-d1-migrate
+  group: production-d1
   cancel-in-progress: false
 
 jobs:
@@ -39,14 +42,29 @@ jobs:
         run: npm ci
 
       - name: Record migration request
+        env:
+          MIGRATE_REF: ${{ inputs.ref }}
+          MIGRATE_REASON: ${{ inputs.reason }}
         run: |
-          echo "Running production migrations for ref: ${{ inputs.ref }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Reason: ${{ inputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "Running production migrations for ref: ${MIGRATE_REF}"
+            echo "Reason: ${MIGRATE_REASON}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Inject production D1 database ID into Wrangler config
         env:
           D1_DATABASE_ID_PRODUCTION: ${{ secrets.D1_DATABASE_ID_PRODUCTION }}
-        run: sed -i 's/PLACEHOLDER_PRODUCTION_D1_DATABASE_ID/'"$D1_DATABASE_ID_PRODUCTION"'/' wrangler.jsonc
+        run: |
+          set -euo pipefail
+          if [ -z "${D1_DATABASE_ID_PRODUCTION}" ]; then
+            echo "::error::Secret D1_DATABASE_ID_PRODUCTION is not set"; exit 1
+          fi
+          grep -q PLACEHOLDER_PRODUCTION_D1_DATABASE_ID wrangler.jsonc || {
+            echo "::error::wrangler.jsonc no longer contains PLACEHOLDER_PRODUCTION_D1_DATABASE_ID"; exit 1; }
+          sed -i 's/PLACEHOLDER_PRODUCTION_D1_DATABASE_ID/'"${D1_DATABASE_ID_PRODUCTION}"'/' wrangler.jsonc
+          if grep -q PLACEHOLDER_PRODUCTION_D1_DATABASE_ID wrangler.jsonc; then
+            echo "::error::Placeholder injection failed"; exit 1
+          fi
 
       - name: Apply production D1 migrations
         env:

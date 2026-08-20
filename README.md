@@ -189,8 +189,8 @@ The repository now includes a Cloudflare-focused CI/CD baseline for issue #8:
 
 - `CI` validates pull requests and pushes to `main`
 - `Preview Deploy` deploys pull requests to a preview Worker and preview D1 database
-- `Production Deploy` automatically deploys Worker code from `main`
-- `Production D1 Migrate` is a separate, manually approved workflow for production schema changes
+- `Production Deploy` applies pending D1 migrations and deploys the Worker from `main` (queued, never cancelled mid-run)
+- `Production D1 Migrate` is a manual recovery workflow behind a protected environment
 
 See [`docs/ci-cd-architecture.md`](./docs/ci-cd-architecture.md) for the required GitHub secrets, Cloudflare setup, repository variables, environment protection rules, and the production migration workflow.
 
