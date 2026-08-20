@@ -134,7 +134,7 @@ Add as **encrypted secrets**:
 | Secret | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Random string used by Better Auth to sign sessions (generate with `openssl rand -base64 32`) |
-| `SETUP_SECRET` | One-time setup passphrase for initial owner account creation |
+| `SETUP_SECRET` | One-time setup passphrase for initial owner account creation — delete it from the Worker after `/setup` succeeds |
 
 Repeat for both production (`mi-casa-su-casa`) and preview (`mi-casa-su-casa-preview`) Workers. Use the appropriate URL for `APP_URL` in each.
 

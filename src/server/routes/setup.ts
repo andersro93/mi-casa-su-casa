@@ -14,6 +14,7 @@ import {
   resetInstallationSetup,
 } from "../db/repositories/installation-state";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
+import { secretsEqual } from "../security/compare";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 
 type SetupPayload = {
@@ -38,12 +39,12 @@ function mapInstallationStatus(
   const isConfigured = Boolean(env.OWNER_EMAIL && env.SETUP_SECRET);
   const needsSetup = isConfigured && row.status !== "complete";
 
+  // Deliberately no owner email here: this endpoint is public.
   return {
     needsSetup,
     setupLocked: row.status === "complete",
     isConfigured,
     status: row.status,
-    ownerEmail: row.owner_email,
   };
 }
 
@@ -57,6 +58,14 @@ setupRoutes.get("/status", async (c) => {
 });
 
 setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
+  // Once setup is complete, every call gets the same answer regardless of
+  // the supplied secret, so the endpoint cannot be used as a secret oracle.
+  const state = await getInstallationState(c.env.DB);
+
+  if (state.status === "complete") {
+    return c.json({ error: "Setup has already been completed" }, 409);
+  }
+
   if (!c.env.OWNER_EMAIL || !c.env.SETUP_SECRET) {
     return c.json(
       {
@@ -95,7 +104,7 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
   const requestedEmail = normalizeEmail(payload.email);
   const ownerEmail = normalizeEmail(c.env.OWNER_EMAIL);
 
-  if (payload.setupSecret !== c.env.SETUP_SECRET) {
+  if (!(await secretsEqual(payload.setupSecret, c.env.SETUP_SECRET))) {
     return c.json({ error: "Invalid setup secret" }, 403);
   }
 
@@ -117,12 +126,6 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
       },
       400,
     );
-  }
-
-  const state = await getInstallationState(c.env.DB);
-
-  if (state.status === "complete") {
-    return c.json({ error: "Setup has already been completed" }, 409);
   }
 
   const claimed = await beginInstallationSetup(c.env.DB);

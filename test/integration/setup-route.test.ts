@@ -66,4 +66,27 @@ describe("first-run setup (end-to-end against D1)", () => {
     expect(await count("user")).toBe(0);
     expect(await count("households")).toBe(0);
   });
+
+  it("never reveals the owner email publicly and answers identically to any secret once locked", async () => {
+    const before = await (
+      await SELF.fetch("http://localhost:8787/api/setup/status")
+    ).json();
+    expect(before).not.toHaveProperty("ownerEmail");
+
+    expect((await postSetup(setupPayload)).status).toBe(201);
+
+    const after = await (
+      await SELF.fetch("http://localhost:8787/api/setup/status")
+    ).json();
+    expect(after).not.toHaveProperty("ownerEmail");
+
+    const withRightSecret = await postSetup(setupPayload);
+    const withWrongSecret = await postSetup({
+      ...setupPayload,
+      setupSecret: "nope",
+    });
+    expect(withRightSecret.status).toBe(409);
+    expect(withWrongSecret.status).toBe(409);
+    expect(await withRightSecret.text()).toBe(await withWrongSecret.text());
+  });
 });
