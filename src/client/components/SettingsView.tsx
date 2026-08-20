@@ -20,6 +20,7 @@ import type {
   AccountProfile,
   AccountSession,
   AccountSettingsFormState,
+  TwoFactorSetup,
 } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -35,6 +36,9 @@ interface SettingsViewProps {
   onRequestPasswordReset: (e: FormEvent<HTMLFormElement>) => void;
   onEnable2FA: (e: FormEvent<HTMLFormElement>) => void;
   onDisable2FA: () => Promise<boolean>;
+  twoFactorSetup: TwoFactorSetup | null;
+  onVerify2FA: (e: FormEvent<HTMLFormElement>) => void;
+  onCancel2FASetup: () => void;
   onAddPasskey: (e: FormEvent<HTMLFormElement>) => void;
   onRevokeSession: (sessionId: string) => Promise<boolean>;
   onRevokeOtherSessions: () => Promise<boolean>;
@@ -53,6 +57,9 @@ export function SettingsView({
   onRequestPasswordReset,
   onEnable2FA,
   onDisable2FA,
+  twoFactorSetup,
+  onVerify2FA,
+  onCancel2FASetup,
   onAddPasskey,
   onRevokeSession,
   onRevokeOtherSessions,
@@ -258,7 +265,83 @@ export function SettingsView({
         <CardHeader title="Two-Factor Authentication" />
         <Divider />
         <CardContent>
-          {profile.twoFactorEnabled ? (
+          {twoFactorSetup ? (
+            <Box component="form" onSubmit={onVerify2FA}>
+              <Typography variant="body1" sx={{ mb: 2 }}>
+                Scan the QR code with your authenticator app (or enter the key
+                manually), save the backup codes somewhere safe, then enter the
+                current 6-digit code to finish enabling two-factor
+                authentication.
+              </Typography>
+              <Stack spacing={2}>
+                {twoFactorSetup.qrDataUrl ? (
+                  <Box>
+                    <img
+                      src={twoFactorSetup.qrDataUrl}
+                      alt="Authenticator QR code"
+                      width={192}
+                      height={192}
+                      style={{ display: "block", borderRadius: 8 }}
+                    />
+                  </Box>
+                ) : null}
+                {twoFactorSetup.secret ? (
+                  <Typography
+                    variant="body2"
+                    sx={{ fontFamily: "monospace", wordBreak: "break-all" }}
+                  >
+                    Manual key: {twoFactorSetup.secret}
+                  </Typography>
+                ) : null}
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Backup codes (each works once)
+                  </Typography>
+                  <Box
+                    component="ul"
+                    sx={{
+                      m: 0,
+                      pl: 2,
+                      columns: 2,
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    {twoFactorSetup.backupCodes.map((backupCode) => (
+                      <li key={backupCode}>{backupCode}</li>
+                    ))}
+                  </Box>
+                </Box>
+                <TextField
+                  fullWidth
+                  label="Code from your authenticator app"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={formState.twoFactorCode}
+                  onChange={(e) =>
+                    onFormChange({ twoFactorCode: e.target.value })
+                  }
+                  required
+                />
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={isSaving || formState.twoFactorCode.trim() === ""}
+                  >
+                    Verify and enable
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="text"
+                    disabled={isSaving}
+                    onClick={onCancel2FASetup}
+                  >
+                    Cancel
+                  </Button>
+                </Stack>
+              </Stack>
+            </Box>
+          ) : profile.twoFactorEnabled ? (
             <Box
               component="form"
               onSubmit={(e) => {

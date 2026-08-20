@@ -47,6 +47,9 @@ describe("SettingsView", () => {
         onRequestPasswordReset={vi.fn()}
         onEnable2FA={vi.fn()}
         onDisable2FA={vi.fn()}
+        twoFactorSetup={null}
+        onVerify2FA={vi.fn()}
+        onCancel2FASetup={vi.fn()}
         onAddPasskey={vi.fn()}
         onRevokeSession={vi.fn()}
         onRevokeOtherSessions={vi.fn()}
@@ -99,6 +102,9 @@ describe("SettingsView", () => {
         onRequestPasswordReset={vi.fn()}
         onEnable2FA={vi.fn()}
         onDisable2FA={vi.fn()}
+        twoFactorSetup={null}
+        onVerify2FA={vi.fn()}
+        onCancel2FASetup={vi.fn()}
         onAddPasskey={vi.fn()}
         onRevokeSession={vi.fn()}
         onRevokeOtherSessions={vi.fn()}
@@ -108,5 +114,60 @@ describe("SettingsView", () => {
 
     expect(html).toContain("Disable 2FA");
     expect(html).not.toContain("Enable 2FA");
+  });
+
+  it("shows the enrolment step (QR, manual key, backup codes, verify) while 2FA setup is pending", () => {
+    const html = renderToStaticMarkup(
+      <SettingsView
+        profile={{
+          id: "user-1",
+          email: "member@example.com",
+          name: "Member Person",
+          image: null,
+          role: "user",
+          twoFactorEnabled: false,
+          households: [],
+        }}
+        sessions={[]}
+        isLoading={false}
+        error={null}
+        formState={{
+          name: "Member Person",
+          image: "",
+          currentPassword: "",
+          newPassword: "",
+          forgotPasswordEmail: "",
+          twoFactorPassword: "",
+          twoFactorCode: "",
+          twoFactorBackupCode: "",
+          passkeyName: "",
+        }}
+        onFormChange={vi.fn()}
+        onUpdateProfile={vi.fn()}
+        onChangePassword={vi.fn()}
+        onRequestPasswordReset={vi.fn()}
+        onEnable2FA={vi.fn()}
+        onDisable2FA={vi.fn()}
+        twoFactorSetup={{
+          totpURI:
+            "otpauth://totp/Mi%20Casa:member@example.com?secret=JBSWY3DPEHPK3PXP",
+          qrDataUrl: "data:image/png;base64,AAAA",
+          secret: "JBSWY3DPEHPK3PXP",
+          backupCodes: ["aaaa-bbbb", "cccc-dddd"],
+        }}
+        onVerify2FA={vi.fn()}
+        onCancel2FASetup={vi.fn()}
+        onAddPasskey={vi.fn()}
+        onRevokeSession={vi.fn()}
+        onRevokeOtherSessions={vi.fn()}
+        isSaving={false}
+      />,
+    );
+
+    expect(html).toContain("Authenticator QR code");
+    expect(html).toContain("JBSWY3DPEHPK3PXP");
+    expect(html).toContain("aaaa-bbbb");
+    expect(html).toContain("Verify and enable");
+    expect(html).not.toContain(">Enable 2FA<");
   });
 });

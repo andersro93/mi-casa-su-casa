@@ -7,7 +7,10 @@ export const authClient = createAuthClient({
     adminClient(),
     passkeyClient(),
     twoFactorClient({
-      twoFactorPage: "/",
+      twoFactorPage: "/two-factor",
+      // The login page inspects `twoFactorRedirect` itself and navigates with
+      // the router, so the plugin must not hard-redirect the window.
+      onTwoFactorRedirect() {},
     }),
   ],
   sessionOptions: {

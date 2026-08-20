@@ -58,10 +58,12 @@
     "@mui/icons-material": "^9.3.1",
     "@mui/material": "^9.3.1",
     "@mui/x-data-grid": "^9.11.0",
+    "@types/qrcode": "^1.5.6",
     "better-auth": "1.7.1",
     "drizzle-orm": "^0.45.2",
     "hono": "4.13.3",
     "postal-mime": "3.0.0",
+    "qrcode": "1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-router-dom": "^7.18.2"
