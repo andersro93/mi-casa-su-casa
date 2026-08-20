@@ -18,6 +18,7 @@ import {
   normalizeHouseholdSlug,
   validateHouseholdSlug,
 } from "../domain/household-slug";
+import { logEvent } from "../runtime/log";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 
 type CreateHouseholdPayload = {
@@ -161,13 +162,10 @@ householdRoutes.post("/:slug/leave", requireHouseholdContext, async (c) => {
     householdId: household.id,
     userId: user.id,
   });
-  console.log(
-    JSON.stringify({
-      event: "member_left",
-      householdId: household.id,
-      userId: user.id,
-    }),
-  );
+  logEvent("info", "member_left", {
+    householdId: household.id,
+    userId: user.id,
+  });
   await recordAuditEvent(c.env.DB, {
     actorUserId: user.id,
     householdId: household.id,

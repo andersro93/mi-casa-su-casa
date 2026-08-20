@@ -1,5 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
-
+import { logEvent } from "../../runtime/log";
 import { dbForDatabase } from "../client";
 import { auditEvents } from "../schema";
 
@@ -34,13 +34,10 @@ export async function recordAuditEvent(
         createdAt: sql`CURRENT_TIMESTAMP`,
       });
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "audit_write_failed",
-        action: input.action,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    logEvent("error", "audit_write_failed", {
+      action: input.action,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

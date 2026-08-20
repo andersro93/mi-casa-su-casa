@@ -2,6 +2,7 @@ import { recordRetentionRun } from "../db/repositories/installation-state";
 import { refreshExpiredInvitations } from "../db/repositories/invitations";
 import { purgeExpired } from "../db/repositories/messages";
 import type { AppContext } from "../runtime/context";
+import { logEvent } from "../runtime/log";
 
 /**
  * Daily retention job: purges expired inbox/quarantine messages in bounded
@@ -22,27 +23,21 @@ export async function purgeExpiredMessages(
     await refreshExpiredInvitations(appContext.env.DB, now);
     await recordRetentionRun(appContext.env.DB, nowIso);
 
-    console.log(
-      JSON.stringify({
-        event: "retention_completed",
-        scheduledFor: nowIso,
-        messagesPurged: purged.messages,
-        quarantinePurged: purged.quarantine,
-        batches: purged.batches,
-        durationMs: Date.now() - startedAt,
-      }),
-    );
+    logEvent("info", "retention_completed", {
+      scheduledFor: nowIso,
+      messagesPurged: purged.messages,
+      quarantinePurged: purged.quarantine,
+      batches: purged.batches,
+      durationMs: Date.now() - startedAt,
+    });
 
     return purged;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "retention_failed",
-        scheduledFor: nowIso,
-        durationMs: Date.now() - startedAt,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    logEvent("error", "retention_failed", {
+      scheduledFor: nowIso,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 }

@@ -5,6 +5,7 @@ import {
 } from "../db/repositories/messages";
 import { classifyEmail } from "../domain/classify-email";
 import type { AppContext } from "../runtime/context";
+import { logEvent } from "../runtime/log";
 import { parseIncomingEmail } from "./parse";
 
 /** Email Routing accepts up to 25 MB; OTP mail is tiny. Reject the rest early. */
@@ -13,11 +14,11 @@ export const MAX_RAW_MESSAGE_BYTES = 2 * 1024 * 1024;
 export const MAX_UNREVIEWED_QUARANTINE = 200;
 
 function log(event: string, fields: Record<string, unknown>) {
-  console.log(JSON.stringify({ event, ...fields }));
+  logEvent("info", event, fields);
 }
 
 function logError(event: string, fields: Record<string, unknown>) {
-  console.error(JSON.stringify({ event, ...fields }));
+  logEvent("error", event, fields);
 }
 
 function errorMessage(error: unknown) {
