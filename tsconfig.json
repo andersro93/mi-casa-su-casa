@@ -14,11 +14,10 @@
     "resolveJsonModule": true,
     "ignoreDeprecations": "6.0",
     "types": ["@cloudflare/workers-types", "vitest/globals"],
-    "baseUrl": ".",
     "paths": {
-      "@client/*": ["src/client/*"],
-      "@server/*": ["src/server/*"],
-      "@test/*": ["test/*"]
+      "@client/*": ["./src/client/*"],
+      "@server/*": ["./src/server/*"],
+      "@test/*": ["./test/*"]
     }
   },
   "include": [
