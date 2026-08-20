@@ -93,6 +93,7 @@ describe("messages repository inserts", () => {
         "household-1",
         {
           kind: "quarantine",
+          householdId: "household-1",
           reason: "No sender rule matched the inbound email.",
           code: "123456",
         },

@@ -1,52 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ParsedIncomingEmail } from "../src/server/db/types";
-import { classifyEmail } from "../src/server/domain/classify-email";
 
-function createDbStub(
-  match: {
+const repoState = vi.hoisted(() => ({
+  household: null as { id: string; slug: string; displayName: string } | null,
+  match: null as {
     householdId: string;
     householdSlug: string;
     providerId: string;
     providerKey: string;
   } | null,
-): D1Database {
-  let call = 0;
+}));
 
-  const nextResult = () => {
-    call += 1;
+vi.mock("../src/server/db/repositories/households", () => ({
+  getHouseholdBySlug: vi.fn(async () => repoState.household),
+}));
 
-    if (call === 1) {
-      return { id: "household-1", slug: "codes", displayName: "Codes" };
-    }
+vi.mock("../src/server/db/repositories/provider-rules", () => ({
+  findProviderMatch: vi.fn(async () => repoState.match),
+}));
 
-    return match;
-  };
-
-  return {
-    prepare: () => ({
-      bind: () => ({
-        all: async () => {
-          const result = nextResult();
-          return { results: result ? [result] : [] };
-        },
-        first: async () => nextResult(),
-        raw: async () => {
-          const result = nextResult();
-          return result ? [result] : [];
-        },
-      }),
-    }),
-  } as unknown as D1Database;
-}
+const { classifyEmail } = await import("../src/server/domain/classify-email");
 
 function createParsedEmail(
   overrides?: Partial<ParsedIncomingEmail>,
 ): ParsedIncomingEmail {
   return {
     envelopeFrom: "login@service.example",
-    envelopeTo: "codes@example.com",
-    householdSlug: "codes",
+    envelopeTo: "casa@example.com",
+    householdSlug: "casa",
     fromHeader: "Service <login@service.example>",
     subject: "Your verification code",
     messageId: "<test-1@example.com>",
@@ -57,22 +39,30 @@ function createParsedEmail(
   };
 }
 
-describe("classifyEmail", () => {
-  it("matches a configured provider and extracts the code", async () => {
-    const result = await classifyEmail(
-      createDbStub({
-        householdId: "household-1",
-        householdSlug: "codes",
-        providerId: "provider-1",
-        providerKey: "netflix",
-      }),
-      createParsedEmail(),
-    );
+const db = {} as D1Database;
 
-    expect(result).toEqual({
+describe("classifyEmail", () => {
+  beforeEach(() => {
+    repoState.household = {
+      id: "household-1",
+      slug: "casa",
+      displayName: "Casa",
+    };
+    repoState.match = null;
+  });
+
+  it("matches a configured provider and extracts the code", async () => {
+    repoState.match = {
+      householdId: "household-1",
+      householdSlug: "casa",
+      providerId: "provider-1",
+      providerKey: "netflix",
+    };
+
+    await expect(classifyEmail(db, createParsedEmail())).resolves.toEqual({
       kind: "matched",
       householdId: "household-1",
-      householdSlug: "codes",
+      householdSlug: "casa",
       providerId: "provider-1",
       providerKey: "netflix",
       code: "123456",
@@ -81,14 +71,30 @@ describe("classifyEmail", () => {
     });
   });
 
-  it("quarantines when there is no sender rule match", async () => {
-    const result = await classifyEmail(createDbStub(null), createParsedEmail());
-
-    expect(result).toEqual({
+  it("quarantines within the household when there is no sender rule match", async () => {
+    await expect(classifyEmail(db, createParsedEmail())).resolves.toEqual({
       kind: "quarantine",
+      householdId: "household-1",
       reason:
         "No sender rule matched the inbound email within the addressed household.",
       code: "123456",
     });
+  });
+
+  it("reports an unknown household (no householdId) when the slug does not resolve", async () => {
+    repoState.household = null;
+
+    await expect(classifyEmail(db, createParsedEmail())).resolves.toMatchObject(
+      {
+        kind: "quarantine",
+        householdId: null,
+      },
+    );
+  });
+
+  it("reports an unknown household when the recipient has no usable slug", async () => {
+    await expect(
+      classifyEmail(db, createParsedEmail({ householdSlug: null })),
+    ).resolves.toMatchObject({ kind: "quarantine", householdId: null });
   });
 });

@@ -182,6 +182,18 @@ export async function listProviderSummariesForUser(
   return result;
 }
 
+export async function countUnreviewedQuarantine(
+  db: D1Database,
+  householdId: string,
+): Promise<number> {
+  const row = await dbForDatabase(db).get<{ total: number }>(sql`
+    SELECT COUNT(*) AS total
+    FROM quarantine_messages
+    WHERE household_id = ${householdId} AND reviewed_at IS NULL
+  `);
+  return Number(row?.total ?? 0);
+}
+
 export async function listQuarantineMessages(
   db: D1Database,
   householdId: string,

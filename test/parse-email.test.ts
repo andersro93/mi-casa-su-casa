@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parseIncomingEmail } from "../src/server/email/parse";
+import {
+  MAX_TEXT_BODY_CHARS,
+  parseIncomingEmail,
+} from "../src/server/email/parse";
 
 function createMessage(
   raw: string,
@@ -60,5 +63,51 @@ describe("parseIncomingEmail", () => {
     );
 
     expect(parsed.textBody).toBe("[empty email body]");
+  });
+
+  it("truncates very large bodies and flags it", async () => {
+    const body = `Your verification code is 123456 ${"x".repeat(MAX_TEXT_BODY_CHARS + 500)}`;
+    const parsed = await parseIncomingEmail(
+      createMessage(
+        [
+          "From: Service <login@service.example>",
+          "To: casa@example.com",
+          "Subject: Big",
+          "",
+          body,
+        ].join("\n"),
+      ),
+    );
+
+    expect(parsed.textBodyTruncated).toBe(true);
+    expect(parsed.textBody.length).toBeLessThanOrEqual(
+      MAX_TEXT_BODY_CHARS + 20,
+    );
+    expect(parsed.textBody.endsWith("[truncated]")).toBe(true);
+    expect(parsed.textBody).toContain("123456");
+  });
+
+  it("derives a stable synthetic Message-ID when the header is missing", async () => {
+    const raw = [
+      "From: Service <login@service.example>",
+      "To: casa@example.com",
+      "Subject: No id",
+      "Date: Sun, 10 May 2026 12:00:00 +0000",
+      "",
+      "Your code is 424242",
+    ].join("\n");
+
+    const first = await parseIncomingEmail(createMessage(raw));
+    const again = await parseIncomingEmail(createMessage(raw));
+    const different = await parseIncomingEmail(
+      createMessage(raw.replace("424242", "999999")),
+    );
+
+    expect(first.messageId).toMatch(
+      /^<synthetic-[0-9a-f]{32}@mi-casa-su-casa>$/,
+    );
+    expect(again.messageId).toBe(first.messageId);
+    expect(different.messageId).not.toBe(first.messageId);
+    expect(first.textBodyTruncated).toBe(false);
   });
 });

@@ -10,6 +10,8 @@ export type ClassificationResult =
     }
   | {
       kind: "quarantine";
+      /** Resolved household, or null when the recipient is unknown. */
+      householdId: string | null;
       reason: string;
       code: string | null;
     };
@@ -23,6 +25,8 @@ export type ParsedIncomingEmail = {
   messageId: string | null;
   dateHeader: string | null;
   textBody: string;
+  /** True when textBody was cut to MAX_TEXT_BODY_CHARS. */
+  textBodyTruncated?: boolean;
   rawSize: number;
 };
 

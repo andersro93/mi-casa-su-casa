@@ -116,14 +116,24 @@ describe("messages repository (D1)", () => {
       db,
       parsedEmail({ messageId: "<q-1@test>" }),
       household.id,
-      { kind: "quarantine", reason: "no rule", code: null },
+      {
+        kind: "quarantine",
+        householdId: household.id,
+        reason: "no rule",
+        code: null,
+      },
       new Date("2020-01-01T00:00:00Z"),
     );
     await insertQuarantineMessage(
       db,
       parsedEmail({ messageId: "<q-2@test>" }),
       household.id,
-      { kind: "quarantine", reason: "no rule", code: null },
+      {
+        kind: "quarantine",
+        householdId: household.id,
+        reason: "no rule",
+        code: null,
+      },
     );
 
     expect(await listQuarantineMessages(db, household.id)).toHaveLength(2);
