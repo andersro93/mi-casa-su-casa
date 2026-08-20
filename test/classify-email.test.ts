@@ -9,6 +9,9 @@ const repoState = vi.hoisted(() => ({
     householdSlug: string;
     providerId: string;
     providerKey: string;
+    matchedAddress: string;
+    matchedSource: "header" | "envelope";
+    matchType: "exact" | "domain";
   } | null,
 }));
 
@@ -20,7 +23,9 @@ vi.mock("../src/server/db/repositories/provider-rules", () => ({
   findProviderMatch: vi.fn(async () => repoState.match),
 }));
 
-const { classifyEmail } = await import("../src/server/domain/classify-email");
+const { classifyEmail, authenticationVerdict } = await import(
+  "../src/server/domain/classify-email"
+);
 
 function createParsedEmail(
   overrides?: Partial<ParsedIncomingEmail>,
@@ -57,6 +62,9 @@ describe("classifyEmail", () => {
       householdSlug: "casa",
       providerId: "provider-1",
       providerKey: "netflix",
+      matchedAddress: "login@service.example",
+      matchedSource: "envelope",
+      matchType: "domain",
     };
 
     await expect(classifyEmail(db, createParsedEmail())).resolves.toEqual({
@@ -96,5 +104,77 @@ describe("classifyEmail", () => {
     await expect(
       classifyEmail(db, createParsedEmail({ householdSlug: null })),
     ).resolves.toMatchObject({ kind: "quarantine", householdId: null });
+  });
+
+  it("quarantines a rule match whose sender failed authentication", async () => {
+    repoState.match = {
+      householdId: "household-1",
+      householdSlug: "casa",
+      providerId: "provider-1",
+      providerKey: "netflix",
+      matchedAddress: "codes@netflix.com",
+      matchedSource: "envelope",
+      matchType: "domain",
+    };
+
+    await expect(
+      classifyEmail(
+        db,
+        createParsedEmail({
+          envelopeFrom: "codes@netflix.com",
+          fromAddress: "attacker@attacker.example",
+          authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
+        }),
+      ),
+    ).resolves.toMatchObject({
+      kind: "quarantine",
+      householdId: "household-1",
+      reason: expect.stringMatching(/authentication failed.*spf=fail/),
+    });
+  });
+});
+
+describe("authenticationVerdict", () => {
+  it("trusts everything when no Authentication-Results header is present", () => {
+    expect(authenticationVerdict(null, "header")).toEqual({ trusted: true });
+    expect(authenticationVerdict(undefined, "envelope")).toEqual({
+      trusted: true,
+    });
+  });
+
+  it("never trusts dmarc=fail", () => {
+    expect(
+      authenticationVerdict(
+        { spf: "pass", dkim: "pass", dmarc: "fail" },
+        "envelope",
+      ),
+    ).toMatchObject({ trusted: false, reason: "dmarc=fail" });
+  });
+
+  it("requires DKIM or DMARC for header-From matches and SPF for envelope matches", () => {
+    expect(
+      authenticationVerdict(
+        { spf: "fail", dkim: "pass", dmarc: "none" },
+        "header",
+      ),
+    ).toEqual({ trusted: true });
+    expect(
+      authenticationVerdict(
+        { spf: "pass", dkim: "none", dmarc: "none" },
+        "header",
+      ),
+    ).toMatchObject({ trusted: false });
+    expect(
+      authenticationVerdict(
+        { spf: "pass", dkim: "none", dmarc: "none" },
+        "envelope",
+      ),
+    ).toEqual({ trusted: true });
+    expect(
+      authenticationVerdict(
+        { spf: "softfail", dkim: "pass", dmarc: "none" },
+        "envelope",
+      ),
+    ).toMatchObject({ trusted: false });
   });
 });

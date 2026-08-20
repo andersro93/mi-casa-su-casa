@@ -217,7 +217,7 @@ export function QuarantineView({
                                 whiteSpace: "nowrap",
                               }}
                             >
-                              {message.envelope_from}
+                              {message.from_header ?? message.envelope_from}
                             </Typography>
                             <Typography
                               variant="caption"
@@ -289,8 +289,16 @@ export function QuarantineView({
                   {selectedQuarantineMessage.subject ?? "Untitled message"}
                 </Typography>
                 <Typography variant="body1" color="text.secondary">
-                  {selectedQuarantineMessage.envelope_from}
+                  {selectedQuarantineMessage.from_header ??
+                    selectedQuarantineMessage.envelope_from}
                 </Typography>
+                {selectedQuarantineMessage.from_header &&
+                selectedQuarantineMessage.from_header !==
+                  selectedQuarantineMessage.envelope_from ? (
+                  <Typography variant="caption" color="text.disabled">
+                    Envelope sender: {selectedQuarantineMessage.envelope_from}
+                  </Typography>
+                ) : null}
               </Box>
               <Chip
                 icon={<WarningAmberOutlined />}

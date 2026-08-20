@@ -814,8 +814,8 @@ export function ProvidersRulesView({
                   size="small"
                   helperText={
                     ruleFormState.matchType === "domain"
-                      ? "Example: netflix.com"
-                      : "Example: login@netflix.com"
+                      ? "Example: netflix.com — also matches subdomains such as em.netflix.com. Checked against the visible From address and the envelope sender."
+                      : "Example: login@netflix.com — checked against the visible From address and the envelope sender."
                   }
                   value={ruleFormState.matchValue}
                   onChange={(event) =>

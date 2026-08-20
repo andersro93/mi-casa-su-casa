@@ -1,6 +1,6 @@
 import PostalMime from "postal-mime";
 
-import type { ParsedIncomingEmail } from "../db/types";
+import type { ParsedIncomingEmail, SenderAuthentication } from "../db/types";
 
 /** Bodies beyond this are cut; verification codes live in the first few KB. */
 export const MAX_TEXT_BODY_CHARS = 64 * 1024;
@@ -49,6 +49,32 @@ function extractHouseholdSlug(address: string): string | null {
   return /^[a-z0-9-]+$/.test(localPart) ? localPart : null;
 }
 
+/**
+ * Reads spf= / dkim= / dmarc= results from Authentication-Results headers
+ * (Cloudflare Email Routing adds one). Returns null when none is present.
+ */
+export function parseAuthenticationResults(
+  values: string[],
+): SenderAuthentication | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const result: SenderAuthentication = { spf: null, dkim: null, dmarc: null };
+
+  for (const value of values) {
+    for (const match of value.matchAll(/\b(spf|dkim|dmarc)=([a-z]+)/gi)) {
+      const mechanism = match[1]?.toLowerCase() as keyof SenderAuthentication;
+      const verdict = match[2]?.toLowerCase() ?? null;
+      if (mechanism && result[mechanism] === null) {
+        result[mechanism] = verdict;
+      }
+    }
+  }
+
+  return result;
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<[^>]+>/g, " ")
@@ -75,6 +101,14 @@ export async function parseIncomingEmail(
   const header = (name: string) =>
     parsed.headers.find((entry) => entry.key.toLowerCase() === name)?.value ??
     null;
+  const headersNamed = (name: string) =>
+    parsed.headers
+      .filter((entry) => entry.key.toLowerCase() === name)
+      .map((entry) => entry.value);
+  const fromAddress = parsed.from?.address?.trim().toLowerCase() || null;
+  const authentication = parseAuthenticationResults(
+    headersNamed("authentication-results"),
+  );
   const subject = parsed.subject ?? null;
   const dateHeader = header("date");
   const messageId =
@@ -92,6 +126,8 @@ export async function parseIncomingEmail(
     envelopeTo: message.to,
     householdSlug: extractHouseholdSlug(message.to),
     fromHeader: header("from"),
+    fromAddress,
+    authentication,
     subject,
     messageId,
     dateHeader,

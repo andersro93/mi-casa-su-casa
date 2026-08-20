@@ -14,50 +14,101 @@ export type SenderRuleMatch = {
   providerKey: string;
 };
 
+export type SenderCandidate = {
+  address: string;
+  /** Where the address came from; reported back so policy can be applied. */
+  source: "header" | "envelope";
+};
+
+export type SenderRuleMatchWithSource = SenderRuleMatch & {
+  matchedAddress: string;
+  matchedSource: SenderCandidate["source"];
+  matchType: "exact" | "domain";
+};
+
+function senderMatchColumns() {
+  return sql`
+    SELECT providers.id AS providerId,
+           providers.provider_key AS providerKey,
+           providers.household_id AS householdId,
+           households.slug AS householdSlug
+    FROM sender_rules
+    INNER JOIN providers ON providers.id = sender_rules.provider_id
+    INNER JOIN households ON households.id = providers.household_id`;
+}
+
+/**
+ * Finds the provider whose sender rule matches one of the candidate sender
+ * addresses. Exact-address rules win over domain rules; within each type the
+ * candidates are tried in the given order. Domain rules match the domain
+ * itself and any subdomain (`netflix.com` matches `em.netflix.com`).
+ */
 export async function findProviderMatch(
   db: D1Database,
   householdId: string,
-  fromAddress: string,
-): Promise<SenderRuleMatch | null> {
+  candidates: SenderCandidate[] | string,
+): Promise<SenderRuleMatchWithSource | null> {
   const database = dbForDatabase(db);
-  const exact = await database.get<SenderRuleMatch>(sql`
-    SELECT providers.id AS providerId,
-           providers.provider_key AS providerKey,
-           providers.household_id AS householdId,
-           households.slug AS householdSlug
-    FROM sender_rules
-    INNER JOIN providers ON providers.id = sender_rules.provider_id
-    INNER JOIN households ON households.id = providers.household_id
-    WHERE sender_rules.household_id = ${householdId}
-      AND sender_rules.match_type = 'exact'
-      AND lower(sender_rules.match_value) = lower(${fromAddress})
-    LIMIT 1
-  `);
+  const list: SenderCandidate[] =
+    typeof candidates === "string"
+      ? [{ address: candidates, source: "envelope" }]
+      : candidates;
+  const seen = new Set<string>();
+  const normalized = list
+    .map((candidate) => ({
+      ...candidate,
+      address: candidate.address.trim().toLowerCase(),
+    }))
+    .filter((candidate) => {
+      if (!candidate.address || seen.has(candidate.address)) return false;
+      seen.add(candidate.address);
+      return true;
+    });
 
-  if (exact) {
-    return exact;
+  for (const candidate of normalized) {
+    const exact = await database.get<SenderRuleMatch>(sql`
+      ${senderMatchColumns()}
+      WHERE sender_rules.household_id = ${householdId}
+        AND sender_rules.match_type = 'exact'
+        AND lower(sender_rules.match_value) = ${candidate.address}
+      LIMIT 1
+    `);
+    if (exact) {
+      return {
+        ...exact,
+        matchedAddress: candidate.address,
+        matchedSource: candidate.source,
+        matchType: "exact",
+      };
+    }
   }
 
-  const domain = fromAddress.split("@")[1]?.toLowerCase();
-  if (!domain) {
-    return null;
+  for (const candidate of normalized) {
+    const domain = candidate.address.split("@")[1];
+    if (!domain) continue;
+
+    const byDomain = await database.get<SenderRuleMatch>(sql`
+      ${senderMatchColumns()}
+      WHERE sender_rules.household_id = ${householdId}
+        AND sender_rules.match_type = 'domain'
+        AND (
+          lower(sender_rules.match_value) = ${domain}
+          OR ${domain} LIKE '%.' || lower(sender_rules.match_value)
+        )
+      ORDER BY length(sender_rules.match_value) DESC
+      LIMIT 1
+    `);
+    if (byDomain) {
+      return {
+        ...byDomain,
+        matchedAddress: candidate.address,
+        matchedSource: candidate.source,
+        matchType: "domain",
+      };
+    }
   }
 
-  const byDomain = await database.get<SenderRuleMatch>(sql`
-    SELECT providers.id AS providerId,
-           providers.provider_key AS providerKey,
-           providers.household_id AS householdId,
-           households.slug AS householdSlug
-    FROM sender_rules
-    INNER JOIN providers ON providers.id = sender_rules.provider_id
-    INNER JOIN households ON households.id = providers.household_id
-    WHERE sender_rules.household_id = ${householdId}
-      AND sender_rules.match_type = 'domain'
-      AND lower(sender_rules.match_value) = lower(${domain})
-    LIMIT 1
-  `);
-
-  return byDomain ?? null;
+  return null;
 }
 
 export async function userHasProviderAccess(
