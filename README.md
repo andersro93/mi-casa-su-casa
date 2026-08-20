@@ -315,9 +315,17 @@ For full CI/CD details, see [`docs/ci-cd-architecture.md`](./docs/ci-cd-architec
 
 The default test pyramid for Mi Casa Su Casa is:
 
-- **Unit tests**: parser rules, provider routing, permission logic, retention logic
-- **Integration tests**: Hono routes, Better Auth behavior, D1-backed flows, Worker handlers
+- **Unit tests** (`test/**/*.test.ts(x)`, Node environment): parser rules, provider routing, permission logic, retention logic, component rendering
+- **Integration tests** (`test/integration/**`, run inside the Workers runtime via `@cloudflare/vitest-pool-workers`): repositories, Better Auth and Worker handlers against a real local D1 with every migration in `migrations/` applied; the database is emptied before each test
 - **End-to-end tests**: invite/login, provider-scoped inbox access, owner quarantine review
+
+```bash
+npm test                 # both projects
+npm run test:unit        # Node-only unit tests
+npm run test:integration # D1-backed tests in workerd
+```
+
+`test/integration/schema.test.ts` also asserts that every column Better Auth expects (for the configured plugins) exists in the migrated database, so schema drift fails CI instead of production.
 
 No feature is considered done without tests.
 

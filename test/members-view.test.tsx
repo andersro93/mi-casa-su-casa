@@ -59,7 +59,6 @@ describe("MembersView", () => {
         memberFormState={{
           email: "",
           name: "",
-          password: "",
           role: "member",
         }}
         onMemberFormChange={vi.fn()}
