@@ -278,3 +278,34 @@ export async function assertSenderRuleBelongsToHousehold(
 
   return Boolean(rows[0]);
 }
+
+export async function countHouseholdOwners(
+  db: D1Database,
+  householdId: string,
+) {
+  const rows = await dbForDatabase(db)
+    .select({ total: sql<number>`count(*)` })
+    .from(householdMemberships)
+    .where(
+      and(
+        eq(householdMemberships.householdId, householdId),
+        eq(householdMemberships.role, "owner"),
+      ),
+    );
+  return Number(rows[0]?.total ?? 0);
+}
+
+/** Removes a membership; provider access rows cascade. */
+export async function removeUserFromHousehold(
+  db: D1Database,
+  input: { householdId: string; userId: string },
+) {
+  await dbForDatabase(db)
+    .delete(householdMemberships)
+    .where(
+      and(
+        eq(householdMemberships.householdId, input.householdId),
+        eq(householdMemberships.userId, input.userId),
+      ),
+    );
+}

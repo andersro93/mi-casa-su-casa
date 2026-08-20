@@ -7,8 +7,10 @@ import {
 } from "../auth/middleware";
 import {
   assertProvidersBelongToHousehold,
+  countHouseholdOwners,
   getHouseholdMembership,
   getHouseholdSettings,
+  removeUserFromHousehold,
   updateHouseholdDisplayName,
   updateHouseholdMembershipRole,
 } from "../db/repositories/households";
@@ -721,6 +723,52 @@ adminRoutes.post("/:slug/members", async (c) => {
   });
 
   return c.json({ invitation, inviteUrl, ...delivery }, 201);
+});
+
+adminRoutes.delete("/:slug/members/:userId", async (c) => {
+  const household = c.get("household");
+  const currentUser = c.get("user");
+  const userId = c.req.param("userId");
+
+  if (!household || !currentUser) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  if (currentUser.id === userId) {
+    return c.json({ error: "Use 'Leave household' to remove yourself." }, 400);
+  }
+
+  const membership = await getHouseholdMembership(
+    c.env.DB,
+    userId,
+    household.id,
+  );
+
+  if (!membership) {
+    return c.json({ error: "Member not found" }, 404);
+  }
+
+  if (
+    membership.role === "owner" &&
+    (await countHouseholdOwners(c.env.DB, household.id)) <= 1
+  ) {
+    return c.json({ error: "A household must keep at least one owner." }, 409);
+  }
+
+  await removeUserFromHousehold(c.env.DB, {
+    householdId: household.id,
+    userId,
+  });
+  console.log(
+    JSON.stringify({
+      event: "member_removed",
+      householdId: household.id,
+      userId,
+      byUserId: currentUser.id,
+    }),
+  );
+
+  return c.json({ ok: true });
 });
 
 adminRoutes.patch("/:slug/members/:userId/role", async (c) => {

@@ -73,6 +73,7 @@ interface MembersViewProps {
   onCancelInvitation: (invitationId: string) => Promise<boolean>;
   isSavingInvitation: boolean;
   onRoleChange: (userId: string, role: MemberSummary["role"]) => void;
+  onRemoveMember: (userId: string) => Promise<boolean>;
   onProviderAccessToggle: (
     userId: string,
     providerKey: string,
@@ -133,9 +134,12 @@ export function MembersView({
   onCancelInvitation,
   isSavingInvitation,
   onRoleChange,
+  onRemoveMember,
   onProviderAccessToggle,
 }: MembersViewProps) {
   const selectedMember = members.find((m) => m.id === selectedMemberId);
+  const [isRemoveMemberOpen, setIsRemoveMemberOpen] = useState(false);
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
   const [isCreateMemberOpen, setIsCreateMemberOpen] = useState(false);
   const [isInviteMemberOpen, setIsInviteMemberOpen] = useState(false);
   const [invitationToCancel, setInvitationToCancel] =
@@ -1017,6 +1021,15 @@ export function MembersView({
                       <MenuItem value="owner">Owner</MenuItem>
                     </Select>
                   </FormControl>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    size="small"
+                    sx={{ mt: 2 }}
+                    onClick={() => setIsRemoveMemberOpen(true)}
+                  >
+                    Remove from household
+                  </Button>
                 </Card>
               </Box>
 
@@ -1126,6 +1139,28 @@ export function MembersView({
         isLoading={isSavingInvitation}
         onClose={() => setInvitationToCancel(null)}
         onConfirm={handleCancelInvitationConfirm}
+      />
+      <ConfirmDialog
+        open={isRemoveMemberOpen}
+        title="Remove member"
+        description={
+          <>
+            Remove <strong>{selectedMember?.name}</strong> from this household?
+            They lose access to every provider inbox here immediately. You can
+            invite them again later.
+          </>
+        }
+        confirmLabel="Remove member"
+        confirmColor="error"
+        isLoading={isRemovingMember}
+        onClose={() => setIsRemoveMemberOpen(false)}
+        onConfirm={async () => {
+          if (!selectedMember) return;
+          setIsRemovingMember(true);
+          const removed = await onRemoveMember(selectedMember.id);
+          setIsRemovingMember(false);
+          if (removed) setIsRemoveMemberOpen(false);
+        }}
       />
     </Box>
   );
