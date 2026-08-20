@@ -230,3 +230,9 @@ export type InvitationDeliveryResponse = {
   emailSent: boolean;
   emailError?: string;
 };
+
+export type InvitationLookupResponse = {
+  invitation: InvitationSummary;
+  accountExists: boolean;
+  viewer: { email: string; emailMatches: boolean } | null;
+};

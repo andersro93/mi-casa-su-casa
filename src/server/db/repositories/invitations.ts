@@ -246,6 +246,18 @@ export async function acceptInvitation(
       })
       .where(eq(householdInvitations.id, input.invitationId)),
   ]);
+
+  // Carry the invitation's provider scope over to the new membership.
+  // Idempotent (INSERT OR IGNORE), so a retry after a failure here is safe.
+  await database.run(sql`
+    INSERT OR IGNORE INTO household_member_provider_access (id, household_membership_id, provider_id)
+    SELECT lower(hex(randomblob(16))), household_memberships.id, household_invitation_provider_access.provider_id
+    FROM household_invitation_provider_access
+    INNER JOIN household_memberships
+      ON household_memberships.household_id = ${input.householdId}
+     AND household_memberships.user_id = ${input.acceptedByUserId}
+    WHERE household_invitation_provider_access.invitation_id = ${input.invitationId}
+  `);
 }
 
 export async function refreshExpiredInvitations(db: D1Database) {
