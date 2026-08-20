@@ -977,7 +977,7 @@ describe("worker routes", () => {
         status: "pending",
         invitedByUserId: "owner-home",
         acceptedByUserId: null,
-        expiresAt: "2026-05-31T12:00:00.000Z",
+        expiresAt: "2099-05-31T12:00:00.000Z",
         acceptedAt: null,
         cancelledAt: null,
         createdAt: "2026-05-10T12:00:00.000Z",
