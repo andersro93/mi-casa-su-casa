@@ -67,7 +67,7 @@ export function CreateHouseholdPage({ onCreated }: CreateHouseholdPageProps) {
           required
           fullWidth
           label="Household slug"
-          helperText="Lowercase letters, numbers, and hyphens only. This cannot be changed later."
+          helperText="2–40 lowercase letters, numbers, and hyphens; also the inbound address local part (slug@your-domain). Cannot be changed later."
           value={formState.slug}
           onChange={(e) =>
             setFormState((current) => ({

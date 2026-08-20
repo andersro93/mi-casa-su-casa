@@ -14,6 +14,10 @@ import {
   resetInstallationSetup,
 } from "../db/repositories/installation-state";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
+import {
+  normalizeHouseholdSlug,
+  validateHouseholdSlug,
+} from "../domain/household-slug";
 import { secretsEqual } from "../security/compare";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 
@@ -46,10 +50,6 @@ function mapInstallationStatus(
     isConfigured,
     status: row.status,
   };
-}
-
-function normalizeSlug(value: string | undefined) {
-  return value?.trim().toLowerCase() ?? "";
 }
 
 setupRoutes.get("/status", async (c) => {
@@ -116,16 +116,11 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
     return c.json({ error: "Password must be at least 12 characters" }, 400);
   }
 
-  const householdSlug = normalizeSlug(payload.householdSlug);
+  const householdSlug = normalizeHouseholdSlug(payload.householdSlug);
+  const slugCheck = validateHouseholdSlug(householdSlug);
 
-  if (!/^[a-z0-9-]+$/.test(householdSlug)) {
-    return c.json(
-      {
-        error:
-          "householdSlug may only contain lowercase letters, numbers, and hyphens",
-      },
-      400,
-    );
+  if (!slugCheck.ok) {
+    return c.json({ error: `householdSlug: ${slugCheck.error}` }, 400);
   }
 
   const claimed = await beginInstallationSetup(c.env.DB);

@@ -68,22 +68,15 @@ import {
 type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
 
 function getActiveView(pathname: string): ViewType {
-  if (pathname === "/settings" || pathname.endsWith("/settings")) {
-    return "settings";
-  }
+  // Match on path segments (/:slug/:view), not substrings, so a household slug
+  // that happens to contain a view name does not change the active view.
+  const segments = pathname.split("/").filter(Boolean);
+  const view = segments.length === 1 ? segments[0] : segments[1];
 
-  if (pathname.includes("/quarantine")) {
-    return "quarantine";
-  }
-
-  if (pathname.includes("/members")) {
-    return "members";
-  }
-
-  if (pathname.includes("/providers")) {
-    return "providers";
-  }
-
+  if (view === "settings") return "settings";
+  if (view === "quarantine") return "quarantine";
+  if (view === "members") return "members";
+  if (view === "providers") return "providers";
   return "inbox";
 }
 
@@ -165,11 +158,13 @@ export function App() {
       "forgot-password",
       "reset-password",
       "two-factor",
+      "new-household",
     ].includes(routeSegments[0])
       ? routeSegments[0]
       : null;
 
-  const isInvitePath = routeSegments[0] === "invite";
+  const isInvitePath =
+    routeSegments[0] === "invite" || routeSegments[0] === "new-household";
   const activeView = getActiveView(location.pathname);
   const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [isLoadingHouseholds, setIsLoadingHouseholds] = useState(false);
@@ -1825,7 +1820,7 @@ export function App() {
 
   function handleCreateHousehold() {
     setViewError(null);
-    setStatusMessage("Household creation walkthrough coming soon.");
+    navigate("/new-household");
   }
 
   if (
@@ -1949,6 +1944,22 @@ export function App() {
         <Route
           path="/invite/:token"
           element={<InviteRoute onAccepted={handleInviteAccepted} />}
+        />
+        <Route
+          path="/new-household"
+          element={
+            <CreateHouseholdPage
+              onCreated={(household) => {
+                setHouseholds((current) => [...current, household]);
+                setStatusMessage(
+                  `Household "${household.displayName}" created.`,
+                );
+                navigate(buildHouseholdPath(household.slug, "/inbox"), {
+                  replace: true,
+                });
+              }}
+            />
+          }
         />
         <Route
           path="/"
