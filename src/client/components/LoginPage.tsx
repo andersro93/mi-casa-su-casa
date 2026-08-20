@@ -1,7 +1,7 @@
 import { Alert, Box, Button, Link as MuiLink, TextField } from "@mui/material";
 import { authClient } from "@server/auth/client";
 import { type FormEvent, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import type { LoginState, SetupStatus } from "../types";
 import { PublicEntryShell } from "./PublicEntryShell";
 
@@ -16,6 +16,7 @@ export function LoginPage({
   setupError,
   onLoginSuccess,
 }: LoginPageProps) {
+  const navigate = useNavigate();
   const [loginState, setLoginState] = useState<LoginState>({
     email: "",
     password: "",
@@ -28,7 +29,7 @@ export function LoginPage({
     setLoginError(null);
     setIsLoggingIn(true);
 
-    const { error } = await authClient.signIn.email({
+    const { data, error } = await authClient.signIn.email({
       email: loginState.email,
       password: loginState.password,
       rememberMe: true,
@@ -42,6 +43,14 @@ export function LoginPage({
     }
 
     setLoginState({ email: "", password: "" });
+
+    // Accounts with two-factor enabled get no session yet; finish on the
+    // challenge page.
+    if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
+      navigate("/two-factor");
+      return;
+    }
+
     onLoginSuccess();
   };
 

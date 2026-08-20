@@ -236,3 +236,10 @@ export type InvitationLookupResponse = {
   accountExists: boolean;
   viewer: { email: string; emailMatches: boolean } | null;
 };
+
+export type TwoFactorSetup = {
+  totpURI: string;
+  qrDataUrl: string | null;
+  secret: string | null;
+  backupCodes: string[];
+};

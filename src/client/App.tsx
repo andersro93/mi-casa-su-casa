@@ -7,6 +7,7 @@ import {
   Typography,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
+import QRCode from "qrcode";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import {
   Navigate,
@@ -29,6 +30,7 @@ import { QuarantineView } from "./components/QuarantineView";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { SettingsView } from "./components/SettingsView";
 import { SetupPage } from "./components/SetupPage";
+import { TwoFactorPage } from "./components/TwoFactorPage";
 import type {
   AccountProfile,
   AccountSession,
@@ -54,6 +56,7 @@ import type {
   SenderRule,
   SenderRuleFormState,
   SetupStatus,
+  TwoFactorSetup,
 } from "./types";
 import {
   buildHouseholdApiPath,
@@ -161,6 +164,7 @@ export function App() {
       "settings",
       "forgot-password",
       "reset-password",
+      "two-factor",
     ].includes(routeSegments[0])
       ? routeSegments[0]
       : null;
@@ -614,6 +618,10 @@ export function App() {
     }
   }
 
+  const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetup | null>(
+    null,
+  );
+
   async function handleEnable2FA(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSavingSettings(true);
@@ -621,20 +629,38 @@ export function App() {
     setViewError(null);
 
     try {
-      const { error } = await authClient.twoFactor.enable({
+      const { data, error } = await authClient.twoFactor.enable({
         password: settingsFormState.twoFactorPassword,
       });
 
-      if (error) {
-        throw new Error(error.message || "Failed to enable 2FA");
+      if (error || !data || !("totpURI" in data)) {
+        throw new Error(error?.message || "Failed to start 2FA setup");
       }
 
+      // Enabling only creates the secret; it becomes active once a code from
+      // the authenticator app is verified.
+      let qrDataUrl: string | null = null;
+      try {
+        qrDataUrl = await QRCode.toDataURL(data.totpURI, { margin: 1 });
+      } catch {
+        qrDataUrl = null;
+      }
+      const secret = new URL(data.totpURI).searchParams.get("secret") ?? null;
+
+      setTwoFactorSetup({
+        totpURI: data.totpURI,
+        qrDataUrl,
+        secret,
+        backupCodes: data.backupCodes,
+      });
       setSettingsFormState((current) => ({
         ...current,
         twoFactorPassword: "",
+        twoFactorCode: "",
       }));
-      setStatusMessage("Two-factor authentication enabled.");
-      await refreshSettings();
+      setStatusMessage(
+        "Scan the QR code and enter a code to finish enabling two-factor authentication.",
+      );
     } catch (error) {
       setViewError(
         error instanceof Error ? error.message : "Unable to enable 2FA",
@@ -642,6 +668,42 @@ export function App() {
     } finally {
       setIsSavingSettings(false);
     }
+  }
+
+  async function handleVerify2FA(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingSettings(true);
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      const { error } = await authClient.twoFactor.verifyTotp({
+        code: settingsFormState.twoFactorCode.trim(),
+      });
+
+      if (error) {
+        throw new Error(
+          error.message || "That code was not accepted. Try the next one.",
+        );
+      }
+
+      setTwoFactorSetup(null);
+      setSettingsFormState((current) => ({ ...current, twoFactorCode: "" }));
+      setStatusMessage("Two-factor authentication enabled.");
+      await refreshSettings();
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to verify the code",
+      );
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  function handleCancel2FASetup() {
+    setTwoFactorSetup(null);
+    setSettingsFormState((current) => ({ ...current, twoFactorCode: "" }));
+    setStatusMessage(null);
   }
 
   async function handleDisable2FA(): Promise<boolean> {
@@ -1831,6 +1893,17 @@ export function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route
+          path="/two-factor"
+          element={
+            <TwoFactorPage
+              onVerified={() => {
+                void refetch();
+                navigate("/", { replace: true });
+              }}
+            />
+          }
+        />
+        <Route
           path="*"
           element={
             <Navigate
@@ -1919,6 +1992,9 @@ export function App() {
               onRequestPasswordReset={handleRequestPasswordReset}
               onEnable2FA={handleEnable2FA}
               onDisable2FA={handleDisable2FA}
+              twoFactorSetup={twoFactorSetup}
+              onVerify2FA={handleVerify2FA}
+              onCancel2FASetup={handleCancel2FASetup}
               onAddPasskey={handleAddPasskey}
               onRevokeSession={handleRevokeSession}
               onRevokeOtherSessions={handleRevokeOtherSessions}
