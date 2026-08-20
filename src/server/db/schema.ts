@@ -368,6 +368,7 @@ export const appInstallation = sqliteTable(
     completedAt: text("completed_at"),
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
     updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    lastRetentionRunAt: text("last_retention_run_at"),
   },
   (table) => [
     check("app_installation_singleton_check", sql`${table.id} = 1`),
