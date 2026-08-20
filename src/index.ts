@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { authForEnv } from "./server/auth/auth";
 import { loadAuthSession } from "./server/auth/middleware";
 import { handleIncomingEmail } from "./server/email/handler";
+import { handleApiError } from "./server/http/errors";
 import { purgeExpiredMessages } from "./server/jobs/retention";
 import { adminRoutes } from "./server/routes/admin";
 import { healthRoutes } from "./server/routes/health";
@@ -78,6 +79,9 @@ app.route("/api/setup", setupRoutes);
 app.get("*", async (c) => {
   return c.env.ASSETS.fetch(c.req.raw);
 });
+
+app.notFound((c) => c.json({ error: "Not found" }, 404));
+app.onError(handleApiError);
 
 const worker: ExportedHandler<Env> = {
   fetch(request, env, ctx) {
