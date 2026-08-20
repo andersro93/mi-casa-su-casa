@@ -44,31 +44,25 @@ Fork pull requests do not get preview deploys by default because GitHub does not
 
 File: `.github/workflows/production-deploy.yml`
 
-Runs automatically on pushes to `main`.
+Runs automatically on pushes to `main`, in the `production` GitHub environment (add required reviewers there if you want a manual gate).
 
 Flow:
 
 1. install dependencies
 2. run `npm run ci`
-3. deploy Worker code with `npm run deploy:production`
+3. inject the production D1 id (fails loudly if the secret or placeholder is missing)
+4. **apply production D1 migrations** (`npm run db:apply:production`)
+5. deploy the Worker (`npm run deploy:production`)
 
-This keeps application deployments automatic when `main` is green.
+Migrations are applied immediately before the matching code ships, so they must be **expand/contract-safe**: the previous Worker version keeps running for a few seconds against the new schema. Add columns/tables before code depends on them; only drop or rename once no deployed code references them. Migrations are append-only.
+
+The workflow uses `concurrency: { group: production-d1, cancel-in-progress: false }`: a second push queues instead of cancelling a migration or deploy half-way, and it shares the group with `Production D1 Migrate`, so two migration runs can never overlap.
 
 ### 4. `Production D1 Migrate`
 
 File: `.github/workflows/production-d1-migrate.yml`
 
-Runs only through `workflow_dispatch` and targets the protected GitHub environment `production-migrations`.
-
-Flow:
-
-1. choose the git ref to migrate
-2. require environment approval in GitHub
-3. install dependencies
-4. run `npm run db:apply:production`
-5. list production migrations afterward for audit visibility
-
-This is the explicit production schema step required by issue #8.
+Manual recovery path (`workflow_dispatch`) behind the protected `production-migrations` environment. Normal releases do **not** need it — `Production Deploy` applies migrations. Use it to re-apply migrations for a specific ref after a failed deploy, or to list the applied migrations for an audit. It shares the `production-d1` concurrency group.
 
 ## Wrangler environment model
 
@@ -160,18 +154,15 @@ Recommended settings:
 
 ## D1 rollout guidance
 
-Production app deploys and production D1 migrations are intentionally separate.
+Merging to `main` applies pending migrations and then deploys the Worker, in that order, in one queued run.
 
-Use this operating model:
+For schema changes, always use expand/contract rollouts:
 
-1. merge to `main`
-2. let `Production Deploy` ship the Worker code automatically
-3. review the release and run `Production D1 Migrate` when a schema change is intended
+- additive columns/tables/indexes in one PR, with code that tolerates both shapes
+- backfills as idempotent statements
+- cleanup and destructive changes (drop/rename) only in a later PR, after compatible code is live
 
-For schema changes, prefer backward-compatible rollouts:
-
-- additive columns/tables before code depends on them
-- cleanup and destructive changes only after compatible code is already live
+If a migration fails, the Worker is **not** deployed; fix forward with a new migration and re-run via a new push or `Production D1 Migrate`.
 
 ## Local commands
 
