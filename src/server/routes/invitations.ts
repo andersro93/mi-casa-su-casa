@@ -9,6 +9,7 @@ import {
   getInvitationByTokenHash,
   refreshExpiredInvitations,
 } from "../db/repositories/invitations";
+import { deleteUserById, findUserByEmail } from "../db/repositories/users";
 import { hashInvitationToken } from "../security/tokens";
 
 type AcceptInvitationPayload = {
@@ -109,6 +110,23 @@ invitationRoutes.post("/:token/accept", async (c) => {
     );
   }
 
+  // An account for the invited address already exists (e.g. an earlier
+  // attempt was interrupted after sign-up, or the person already has an
+  // account): they must sign in and accept, instead of a confusing
+  // USER_ALREADY_EXISTS from sign-up.
+  if (await findUserByEmail(c.env.DB, invitation.email)) {
+    return c.json(
+      {
+        error:
+          "An account with the invited email already exists. Sign in with it, then open the invitation link again.",
+        code: "ACCOUNT_EXISTS",
+      },
+      409,
+    );
+  }
+
+  let createdUserId: string | null = null;
+
   try {
     const signUpResult = await auth.api.signUpEmail({
       body: {
@@ -121,6 +139,7 @@ invitationRoutes.post("/:token/accept", async (c) => {
     });
 
     const createdUser = signUpResult.response.user;
+    createdUserId = createdUser.id;
 
     await acceptInvitation(c.env.DB, {
       invitationId: invitation.id,
@@ -151,9 +170,23 @@ invitationRoutes.post("/:token/accept", async (c) => {
 
     return response;
   } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "invitation_accept_failed",
+        invitationId: invitation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+
+    // Compensate: the sign-up succeeded but the membership did not; remove the
+    // half-created account so the invitee can simply retry the link.
+    if (createdUserId) {
+      await deleteUserById(c.env.DB, createdUserId).catch(() => undefined);
+    }
+
     if (isAPIError(error)) {
-      c.status(typeof error.status === "number" ? 400 : 400);
-      return c.json({ error: error.message });
+      const status = typeof error.status === "number" ? error.status : 400;
+      return c.json({ error: error.message }, status as 400);
     }
 
     return c.json({ error: "Unable to accept invitation" }, 500);

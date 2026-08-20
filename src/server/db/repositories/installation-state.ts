@@ -32,14 +32,25 @@ export async function getInstallationState(
   return row;
 }
 
+/**
+ * An in-progress claim older than this is considered abandoned (the isolate
+ * died mid-setup) and may be reclaimed by a new attempt.
+ */
+export const SETUP_CLAIM_TIMEOUT_MINUTES = 10;
+
 export async function beginInstallationSetup(db: D1Database) {
   await ensureInstallationState(db);
 
+  const staleBefore = `-${SETUP_CLAIM_TIMEOUT_MINUTES} minutes`;
   const result = await dbForDatabase(db).run(sql`
     UPDATE app_installation
     SET status = 'in_progress',
         updated_at = CURRENT_TIMESTAMP
-    WHERE id = 1 AND status = 'pending'
+    WHERE id = 1
+      AND (
+        status = 'pending'
+        OR (status = 'in_progress' AND updated_at < datetime('now', ${staleBefore}))
+      )
   `);
 
   return Number(result.meta.changes ?? 0) > 0;
