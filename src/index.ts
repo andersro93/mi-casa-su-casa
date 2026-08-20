@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 
 import { authForEnv } from "./server/auth/auth";
 import { loadAuthSession } from "./server/auth/middleware";
@@ -21,6 +22,40 @@ import {
 } from "./server/security/origin";
 
 const app = new Hono<{ Bindings: Env }>();
+
+// Security headers for every response (API and static assets alike — all
+// requests pass through the Worker, see run_worker_first in wrangler.jsonc).
+// The inbox shows one-time codes, so framing is denied outright. Emotion/MUI
+// inject inline <style> elements, hence 'unsafe-inline' for styles only; the
+// QR code for 2FA enrolment is a data: image.
+app.use(
+  "*",
+  secureHeaders({
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      fontSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+    strictTransportSecurity: "max-age=63072000; includeSubDomains",
+    xFrameOptions: "DENY",
+    referrerPolicy: "no-referrer",
+    crossOriginEmbedderPolicy: false,
+    permissionsPolicy: {
+      camera: [],
+      microphone: [],
+      geolocation: [],
+      payment: [],
+    },
+  }),
+);
 
 // The SPA is same-origin; credentialed CORS is only granted to APP_URL (and
 // localhost during development). Anything else gets no CORS headers at all.

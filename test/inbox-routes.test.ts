@@ -1580,3 +1580,24 @@ describe("cross-origin protections", () => {
     expect(curlLike.status).toBe(201);
   });
 });
+
+describe("security headers", () => {
+  it("sets CSP, frame, sniffing, referrer and HSTS headers on API and SPA responses", async () => {
+    for (const path of ["/api/setup/status", "/", "/casa/inbox"]) {
+      const response = await invokeWorker(path);
+      const csp = response.headers.get("content-security-policy") ?? "";
+      expect(csp, path).toContain("default-src 'self'");
+      expect(csp, path).toContain("frame-ancestors 'none'");
+      expect(csp, path).toContain("img-src 'self' data: https:");
+      expect(csp, path).toContain("script-src 'self'");
+      expect(response.headers.get("x-frame-options"), path).toBe("DENY");
+      expect(response.headers.get("x-content-type-options"), path).toBe(
+        "nosniff",
+      );
+      expect(response.headers.get("referrer-policy"), path).toBe("no-referrer");
+      expect(response.headers.get("strict-transport-security"), path).toContain(
+        "max-age=",
+      );
+    }
+  });
+});

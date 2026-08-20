@@ -13,7 +13,9 @@
     "directory": "./dist/client",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    // Every request goes through the Worker so security headers (CSP, HSTS,
+    // X-Frame-Options, …) are applied to the SPA and its assets, not only /api.
+    "run_worker_first": true
   },
   // Local development uses a local D1 file database — the database_id below is ignored.
   "d1_databases": [
