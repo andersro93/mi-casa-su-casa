@@ -140,4 +140,5 @@ export type InstallationStateRow = {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  last_retention_run_at: string | null;
 };

@@ -19,7 +19,8 @@ export async function getInstallationState(
   await ensureInstallationState(db);
 
   const row = await dbForDatabase(db).get<InstallationStateRow>(sql`
-    SELECT id, status, owner_user_id, owner_email, completed_at, created_at, updated_at
+    SELECT id, status, owner_user_id, owner_email, completed_at, created_at, updated_at,
+           last_retention_run_at
     FROM app_installation
     WHERE id = 1
     LIMIT 1
@@ -78,5 +79,14 @@ export async function resetInstallationSetup(db: D1Database) {
     SET status = 'pending',
         updated_at = CURRENT_TIMESTAMP
     WHERE id = 1 AND status = 'in_progress' AND owner_user_id IS NULL
+  `);
+}
+
+export async function recordRetentionRun(db: D1Database, ranAtIso: string) {
+  await ensureInstallationState(db);
+  await dbForDatabase(db).run(sql`
+    UPDATE app_installation
+    SET last_retention_run_at = ${ranAtIso}
+    WHERE id = 1
   `);
 }

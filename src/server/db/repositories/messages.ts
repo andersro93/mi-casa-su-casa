@@ -360,10 +360,62 @@ export async function reviewQuarantineMessage(
   return { reviewedAt, releasedMessage };
 }
 
-export async function purgeExpired(db: D1Database, nowIso: string) {
-  const database = dbForDatabase(db);
-  await database.run(sql`DELETE FROM messages WHERE delete_after <= ${nowIso}`);
-  await database.run(
-    sql`DELETE FROM quarantine_messages WHERE delete_after <= ${nowIso}`,
+export const PURGE_BATCH_SIZE = 500;
+
+export type PurgeResult = {
+  messages: number;
+  quarantine: number;
+  batches: number;
+};
+
+async function purgeTableInBatches(
+  db: D1Database,
+  table: "messages" | "quarantine_messages",
+  nowIso: string,
+  batchSize: number,
+): Promise<{ deleted: number; batches: number }> {
+  let deleted = 0;
+  let batches = 0;
+
+  // Bounded deletes keep each statement well inside D1 limits even after a
+  // long cron outage; loop until a batch comes back short.
+  while (true) {
+    const result = await db
+      .prepare(
+        `DELETE FROM ${table}
+         WHERE rowid IN (
+           SELECT rowid FROM ${table} WHERE delete_after <= ?1 LIMIT ?2
+         )`,
+      )
+      .bind(nowIso, batchSize)
+      .run();
+    const changes = Number(result.meta.changes ?? 0);
+    deleted += changes;
+    batches += 1;
+    if (changes < batchSize) {
+      break;
+    }
+  }
+
+  return { deleted, batches };
+}
+
+export async function purgeExpired(
+  db: D1Database,
+  nowIso: string,
+  batchSize: number = PURGE_BATCH_SIZE,
+): Promise<PurgeResult> {
+  const messages = await purgeTableInBatches(db, "messages", nowIso, batchSize);
+  const quarantine = await purgeTableInBatches(
+    db,
+    "quarantine_messages",
+    nowIso,
+    batchSize,
   );
+
+  return {
+    messages: messages.deleted,
+    quarantine: quarantine.deleted,
+    batches: messages.batches + quarantine.batches,
+  };
 }
