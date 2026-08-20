@@ -3,11 +3,14 @@ import { Hono } from "hono";
 import {
   type AppVariables,
   requireAuthenticatedUser,
+  requireHouseholdContext,
 } from "../auth/middleware";
 import {
+  countHouseholdOwners,
   createHousehold,
   getHouseholdBySlug,
   listHouseholdsForUser,
+  removeUserFromHousehold,
 } from "../db/repositories/households";
 import { getInstallationState } from "../db/repositories/installation-state";
 import {
@@ -121,4 +124,40 @@ householdRoutes.post("/", rateLimit(RATE_LIMITS.householdCreate), async (c) => {
 
   // Same shape as /api/households/me entries so the client can use it directly.
   return c.json({ household: { ...household, role: "owner" as const } }, 201);
+});
+
+householdRoutes.post("/:slug/leave", requireHouseholdContext, async (c) => {
+  const user = c.get("user");
+  const household = c.get("household");
+
+  if (!user || !household) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  if (
+    household.role === "owner" &&
+    (await countHouseholdOwners(c.env.DB, household.id)) <= 1
+  ) {
+    return c.json(
+      {
+        error:
+          "You are the only owner of this household. Make another member an owner first.",
+      },
+      409,
+    );
+  }
+
+  await removeUserFromHousehold(c.env.DB, {
+    householdId: household.id,
+    userId: user.id,
+  });
+  console.log(
+    JSON.stringify({
+      event: "member_left",
+      householdId: household.id,
+      userId: user.id,
+    }),
+  );
+
+  return c.json({ ok: true });
 });

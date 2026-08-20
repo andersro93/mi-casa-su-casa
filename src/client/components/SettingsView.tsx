@@ -39,6 +39,7 @@ interface SettingsViewProps {
   twoFactorSetup: TwoFactorSetup | null;
   onVerify2FA: (e: FormEvent<HTMLFormElement>) => void;
   onCancel2FASetup: () => void;
+  onLeaveHousehold: (slug: string) => Promise<boolean>;
   onAddPasskey: (e: FormEvent<HTMLFormElement>) => void;
   onRevokeSession: (sessionId: string) => Promise<boolean>;
   onRevokeOtherSessions: () => Promise<boolean>;
@@ -60,6 +61,7 @@ export function SettingsView({
   twoFactorSetup,
   onVerify2FA,
   onCancel2FASetup,
+  onLeaveHousehold,
   onAddPasskey,
   onRevokeSession,
   onRevokeOtherSessions,
@@ -70,6 +72,11 @@ export function SettingsView({
   );
   const [isRevokeOthersOpen, setIsRevokeOthersOpen] = useState(false);
   const [isDisable2FAOpen, setIsDisable2FAOpen] = useState(false);
+  const [householdToLeave, setHouseholdToLeave] = useState<{
+    slug: string;
+    displayName: string;
+  } | null>(null);
+  const [isLeaving, setIsLeaving] = useState(false);
 
   if (isLoading && !profile) {
     return (
@@ -448,6 +455,73 @@ export function SettingsView({
           </Box>
         </CardContent>
       </Card>
+
+      {/* Households */}
+      <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
+        <CardHeader title="Households" />
+        <Divider />
+        <CardContent>
+          {profile.households.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              You are not a member of any household.
+            </Typography>
+          ) : (
+            <Stack spacing={1.5}>
+              {profile.households.map((household) => (
+                <Box
+                  key={household.id}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 2,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body1">
+                      {household.displayName}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {household.slug} ·{" "}
+                      {household.role === "owner" ? "Owner" : "Member"}
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    onClick={() => setHouseholdToLeave(household)}
+                  >
+                    Leave
+                  </Button>
+                </Box>
+              ))}
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={householdToLeave !== null}
+        title="Leave household"
+        description={
+          <>
+            Leave <strong>{householdToLeave?.displayName}</strong>? You will
+            lose access to its inboxes until an owner invites you again.
+          </>
+        }
+        confirmLabel="Leave household"
+        confirmColor="error"
+        isLoading={isLeaving}
+        onClose={() => setHouseholdToLeave(null)}
+        onConfirm={async () => {
+          if (!householdToLeave) return;
+          setIsLeaving(true);
+          const left = await onLeaveHousehold(householdToLeave.slug);
+          setIsLeaving(false);
+          if (left) setHouseholdToLeave(null);
+        }}
+      />
 
       {/* Sessions Card */}
       <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>

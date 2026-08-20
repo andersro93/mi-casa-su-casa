@@ -1539,6 +1539,47 @@ export function App() {
     }
   }
 
+  async function handleRemoveMember(userId: string): Promise<boolean> {
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<{ ok: boolean }>(
+        householdApiPath(`/admin/members/${userId}`),
+        { method: "DELETE" },
+      );
+      setStatusMessage("Member removed from the household.");
+      await refreshMembers();
+      return true;
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to remove member",
+      );
+      return false;
+    }
+  }
+
+  async function handleLeaveHousehold(slug: string): Promise<boolean> {
+    setStatusMessage(null);
+    setViewError(null);
+
+    try {
+      await fetchJson<{ ok: boolean }>(`/api/households/${slug}/leave`, {
+        method: "POST",
+      });
+      setHouseholds((current) => current.filter((h) => h.slug !== slug));
+      setStatusMessage("You left the household.");
+      await Promise.all([refetch(), refreshSettings()]);
+      navigate("/", { replace: true });
+      return true;
+    } catch (error) {
+      setViewError(
+        error instanceof Error ? error.message : "Unable to leave household",
+      );
+      return false;
+    }
+  }
+
   async function handleMemberRoleChange(
     userId: string,
     role: MemberSummary["role"],
@@ -2006,6 +2047,7 @@ export function App() {
               twoFactorSetup={twoFactorSetup}
               onVerify2FA={handleVerify2FA}
               onCancel2FASetup={handleCancel2FASetup}
+              onLeaveHousehold={handleLeaveHousehold}
               onAddPasskey={handleAddPasskey}
               onRevokeSession={handleRevokeSession}
               onRevokeOtherSessions={handleRevokeOtherSessions}
@@ -2091,6 +2133,7 @@ export function App() {
                 onCancelInvitation={handleCancelInvitation}
                 isSavingInvitation={isSavingInvitation}
                 onRoleChange={handleMemberRoleChange}
+                onRemoveMember={handleRemoveMember}
                 onProviderAccessToggle={handleProviderAccessToggle}
               />
             ) : (

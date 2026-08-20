@@ -76,6 +76,7 @@ describe("MembersView", () => {
         onCancelInvitation={vi.fn()}
         isSavingInvitation={false}
         onRoleChange={vi.fn()}
+        onRemoveMember={vi.fn()}
         onProviderAccessToggle={vi.fn()}
       />,
     );
