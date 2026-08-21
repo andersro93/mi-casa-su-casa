@@ -25,10 +25,6 @@ export default defineConfig({
             return undefined;
           }
 
-          if (id.includes("@mui/x-data-grid")) {
-            return "mui-data-grid";
-          }
-
           if (id.includes("@mui/icons-material")) {
             return "mui-icons";
           }
