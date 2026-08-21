@@ -38,9 +38,24 @@ export const invitationRoutes = new Hono<{
 invitationRoutes.use("*", loadAuthSession);
 invitationRoutes.use("*", rateLimit(RATE_LIMITS.invitations));
 
-invitationRoutes.get("/:token", async (c) => {
+export const INVITATION_TOKEN_HEADER = "x-invitation-token";
+
+/**
+ * The invitation token is a secret; it travels in a header instead of the
+ * URL so it never lands in request/URL logs or referrers.
+ */
+function invitationTokenFrom(headers: Headers): string | null {
+  const value = headers.get(INVITATION_TOKEN_HEADER)?.trim();
+  return value ? value : null;
+}
+
+invitationRoutes.get("/lookup", async (c) => {
+  const token = invitationTokenFrom(c.req.raw.headers);
+  if (!token) {
+    return c.json({ error: "Invitation token header is required" }, 400);
+  }
   await refreshExpiredInvitations(c.env.DB);
-  const tokenHash = await hashInvitationToken(c.req.param("token"));
+  const tokenHash = await hashInvitationToken(token);
   const invitation = await getInvitationByTokenHash(c.env.DB, tokenHash);
 
   if (!invitation || invitation.status !== "pending") {
@@ -71,7 +86,11 @@ invitationRoutes.get("/:token", async (c) => {
   });
 });
 
-invitationRoutes.post("/:token/accept", async (c) => {
+invitationRoutes.post("/accept", async (c) => {
+  const token = invitationTokenFrom(c.req.raw.headers);
+  if (!token) {
+    return c.json({ error: "Invitation token header is required" }, 400);
+  }
   await refreshExpiredInvitations(c.env.DB);
 
   let payload: AcceptInvitationPayload = {};
@@ -83,7 +102,7 @@ invitationRoutes.post("/:token/accept", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  const tokenHash = await hashInvitationToken(c.req.param("token"));
+  const tokenHash = await hashInvitationToken(token);
   const invitation = await getInvitationByTokenHash(c.env.DB, tokenHash);
 
   if (!invitation || invitation.status !== "pending") {
