@@ -41,6 +41,13 @@ import { buildHouseholdPath, getDisplayName, getUserInitials } from "../utils";
 
 const DRAWER_WIDTH = 280;
 
+/**
+ * Account settings (profile, password, 2FA, passkeys, sessions) are a global
+ * route — not scoped to a household. Household settings live at
+ * /:slug/settings and are linked from the sidebar instead.
+ */
+export const ACCOUNT_SETTINGS_PATH = "/settings";
+
 interface LayoutProps {
   children: React.ReactNode;
   session: SessionData | null | undefined;
@@ -74,7 +81,6 @@ export function isSettingsPath(pathname: string) {
 interface UserAccountMenuProps {
   session: SessionData | null | undefined;
   mode: "light" | "dark";
-  settingsPath: string;
   onSettingsClick: () => void;
   onToggleColorMode: () => void;
   onLogout: () => void;
@@ -83,7 +89,6 @@ interface UserAccountMenuProps {
 export function UserAccountMenuContent({
   session,
   mode,
-  settingsPath,
   onSettingsClick,
   onToggleColorMode,
   onLogout,
@@ -101,7 +106,7 @@ export function UserAccountMenuContent({
       <Divider />
       <MenuItem
         component={Link}
-        to={settingsPath}
+        to={ACCOUNT_SETTINGS_PATH}
         onClick={onSettingsClick}
         sx={{ py: 1.25 }}
       >
@@ -205,7 +210,6 @@ export function Layout({
   const activeHousehold =
     households.find((household) => household.slug === householdSlug) ?? null;
   const roleLabel = householdRole === "owner" ? "Owner" : "Member";
-  const settingsPath = buildHouseholdPath(householdSlug, "/settings");
   const isHouseholdMenuOpen = Boolean(householdMenuAnchor);
   const isUserMenuOpen = Boolean(userMenuAnchor);
 
@@ -567,7 +571,6 @@ export function Layout({
             anchorEl={userMenuAnchor}
             open={isUserMenuOpen}
             mode={theme.palette.mode}
-            settingsPath={settingsPath}
             onClose={handleCloseUserMenu}
             onToggleColorMode={handleToggleColorMode}
             onLogout={handleLogoutClick}
