@@ -9,7 +9,11 @@ import {
   getInvitationByTokenHash,
   isInvitationExpired,
 } from "../db/repositories/invitations";
-import { deleteUserById, findUserByEmail } from "../db/repositories/users";
+import {
+  deleteUserById,
+  findUserByEmail,
+  findUserById,
+} from "../db/repositories/users";
 import { acceptInvitationSchema } from "../http/schemas";
 import { logEvent } from "../runtime/log";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
@@ -51,12 +55,19 @@ invitationRoutes.get("/lookup", async (c) => {
   }
 
   const currentUser = c.get("user");
-  const accountExists = Boolean(
-    await findUserByEmail(c.env.DB, invitation.email),
-  );
+  const [existingAccount, household, inviter] = await Promise.all([
+    findUserByEmail(c.env.DB, invitation.email),
+    getHouseholdById(c.env.DB, invitation.householdId),
+    findUserById(c.env.DB, invitation.invitedByUserId),
+  ]);
+  const accountExists = Boolean(existingAccount);
 
   return c.json({
     invitation,
+    // So the page can say who invited you and to what — the first thing a
+    // new family member needs to know.
+    household: household ? { displayName: household.displayName } : null,
+    invitedBy: inviter ? { name: inviter.name } : null,
     // Lets the invite page pick the right flow: create an account, sign in
     // first, or accept as the signed-in user.
     accountExists,

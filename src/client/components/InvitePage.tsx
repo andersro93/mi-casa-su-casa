@@ -2,73 +2,74 @@ import {
   Alert,
   Box,
   Button,
-  CircularProgress,
+  Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import { type FormEvent, useEffect, useState } from "react";
+import { authClient } from "@server/auth/client";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type {
   InvitationAcceptanceState,
   InvitationLookupResponse,
-  InvitationSummary,
 } from "../types";
 import { fetchJson } from "../utils";
 import { PublicEntryShell } from "./PublicEntryShell";
+import { LoadingState, PasswordField } from "./ui";
 
 interface InvitePageProps {
   token: string;
   onAcceptSuccess: (householdSlug: string) => void;
 }
 
+const MIN_PASSWORD_LENGTH = 12;
+const APP_NAME = "Mi Casa Su Casa";
+
+function roleSentence(role: string, inviter: string) {
+  return role === "owner" || role === "admin"
+    ? "As an owner you can add services and family members, and review anything that needs a second look."
+    : `As a member you'll see the login codes for the services ${inviter} shares with you.`;
+}
+
 export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
   const navigate = useNavigate();
-  const [invitation, setInvitation] = useState<InvitationSummary | null>(null);
+  const [lookup, setLookup] = useState<InvitationLookupResponse | null>(null);
   const [accountExists, setAccountExists] = useState(false);
-  const [viewer, setViewer] =
-    useState<InvitationLookupResponse["viewer"]>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAccepting, setIsAccepting] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [formState, setFormState] = useState<InvitationAcceptanceState>({
     name: "",
     password: "",
   });
+  const [fieldErrors, setFieldErrors] = useState<{
+    name?: string;
+    password?: string;
+  }>({});
+
+  const loadInvitation = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetchJson<InvitationLookupResponse>(
+        "/api/invitations/lookup",
+        { headers: { "X-Invitation-Token": token } },
+      );
+      setLookup(response);
+      setAccountExists(response.accountExists);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Unable to load invitation",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadInvitation() {
-      try {
-        const response = await fetchJson<InvitationLookupResponse>(
-          "/api/invitations/lookup",
-          { headers: { "X-Invitation-Token": token } },
-        );
-
-        if (cancelled) return;
-
-        setInvitation(response.invitation);
-        setAccountExists(response.accountExists);
-        setViewer(response.viewer);
-      } catch (err) {
-        if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : "Unable to load invitation",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
     void loadInvitation();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+  }, [loadInvitation]);
 
   async function submitAcceptance(body: Record<string, string>) {
     setError(null);
@@ -102,16 +103,16 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
 
   async function handleAccept(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!formState.name || formState.password.length < 12) {
-      setError(
-        "Please provide a name and a password of at least 12 characters.",
-      );
-      return;
+    const nextErrors: typeof fieldErrors = {};
+    if (!formState.name.trim()) nextErrors.name = "Tell us what to call you.";
+    if (formState.password.length < MIN_PASSWORD_LENGTH) {
+      nextErrors.password = `Use at least ${MIN_PASSWORD_LENGTH} characters — a short sentence works well.`;
     }
+    setFieldErrors(nextErrors);
+    if (nextErrors.name || nextErrors.password) return;
 
     await submitAcceptance({
-      name: formState.name,
+      name: formState.name.trim(),
       password: formState.password,
     });
   }
@@ -121,66 +122,69 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
     navigate("/login");
   }
 
+  async function handleSignOut() {
+    setIsSigningOut(true);
+    try {
+      await authClient.signOut();
+    } finally {
+      setIsSigningOut(false);
+    }
+    await loadInvitation();
+  }
+
   if (isLoading) {
     return (
-      <Box
-        sx={{
-          display: "flex",
-          minHeight: "100vh",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-        }}
-      >
-        <CircularProgress size={60} sx={{ mb: 4 }} />
-        <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-          Loading invitation…
-        </Typography>
-      </Box>
+      <PublicEntryShell eyebrow={APP_NAME} title="Opening your invitation…">
+        <LoadingState variant="detail" label="Loading invitation" />
+      </PublicEntryShell>
     );
   }
 
-  if (error && !invitation) {
+  if (error && !lookup) {
     return (
       <PublicEntryShell
-        eyebrow="Mi Casa Su Casa"
-        title="This invitation is not available."
-        description="The invite may have expired, already been accepted, or the link may be invalid."
+        eyebrow={APP_NAME}
+        title="This invitation isn't available any more."
+        description="It may have expired or already been used, or the link may be incomplete. Ask the person who invited you to send a new one."
       >
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+        <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
         <Button
           variant="outlined"
           fullWidth
-          onClick={() => {
-            navigate("/login", { replace: true });
-          }}
+          size="large"
+          onClick={() => navigate("/login", { replace: true })}
         >
-          Return to Login
+          Go to sign in
         </Button>
       </PublicEntryShell>
     );
   }
 
-  if (!invitation) {
+  if (!lookup) {
     return null;
   }
+
+  const { invitation, viewer } = lookup;
+  const householdName = lookup.household?.displayName ?? "the household";
+  const inviterName = lookup.invitedBy?.name ?? "Someone";
 
   if (viewer?.emailMatches) {
     return (
       <PublicEntryShell
-        eyebrow="Mi Casa Su Casa"
-        title="Accept invitation"
+        eyebrow={APP_NAME}
+        title={`Join ${householdName}`}
         description={
           <>
-            You are signed in as <strong>{viewer.email}</strong> and have been
-            invited to join as a <strong>{invitation.role}</strong>.
+            {inviterName} invited you. You're signed in as{" "}
+            <strong>{viewer.email}</strong> — accept to see the household's
+            login codes.
           </>
         }
       >
         {error && (
-          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+          <Alert severity="error" sx={{ mb: 3 }} role="alert">
             {error}
           </Alert>
         )}
@@ -190,9 +194,8 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
           size="large"
           disabled={isAccepting}
           onClick={() => void submitAcceptance({})}
-          sx={{ py: 1.5 }}
         >
-          {isAccepting ? "Accepting…" : `Accept as ${viewer.email}`}
+          {isAccepting ? "Joining…" : "Accept invitation"}
         </Button>
       </PublicEntryShell>
     );
@@ -201,23 +204,31 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
   if (viewer && !viewer.emailMatches) {
     return (
       <PublicEntryShell
-        eyebrow="Mi Casa Su Casa"
+        eyebrow={APP_NAME}
         title="This invitation is for a different account"
         description={
           <>
-            The invitation was sent to <strong>{invitation.email}</strong>, but
-            you are signed in as <strong>{viewer.email}</strong>. Sign out and
-            open the link again with the invited account.
+            {inviterName} sent this invitation to{" "}
+            <strong>{invitation.email}</strong>, but you're signed in as{" "}
+            <strong>{viewer.email}</strong>. Sign out to continue with the
+            invited address.
           </>
         }
       >
-        <Button
-          variant="outlined"
-          fullWidth
-          onClick={() => navigate("/settings")}
-        >
-          Go to account settings
-        </Button>
+        <Stack spacing={1.5}>
+          <Button
+            variant="contained"
+            size="large"
+            fullWidth
+            disabled={isSigningOut}
+            onClick={() => void handleSignOut()}
+          >
+            {isSigningOut ? "Signing out…" : "Sign out and continue"}
+          </Button>
+          <Button variant="text" fullWidth onClick={() => navigate("/")}>
+            Stay signed in as {viewer.email}
+          </Button>
+        </Stack>
       </PublicEntryShell>
     );
   }
@@ -225,28 +236,21 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
   if (accountExists) {
     return (
       <PublicEntryShell
-        eyebrow="Mi Casa Su Casa"
-        title="Sign in to accept"
+        eyebrow={APP_NAME}
+        title={`Welcome back — sign in to join ${householdName}`}
         description={
           <>
-            An account already exists for <strong>{invitation.email}</strong>.
-            Sign in with it and you will be brought back here to accept the
-            invitation.
+            There's already an account for <strong>{invitation.email}</strong>.
+            Sign in with it and we'll bring you straight back here.
           </>
         }
       >
         {error && (
-          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+          <Alert severity="error" sx={{ mb: 3 }} role="alert">
             {error}
           </Alert>
         )}
-        <Button
-          fullWidth
-          variant="contained"
-          size="large"
-          onClick={goToSignIn}
-          sx={{ py: 1.5 }}
-        >
+        <Button fullWidth variant="contained" size="large" onClick={goToSignIn}>
           Sign in to accept
         </Button>
       </PublicEntryShell>
@@ -255,63 +259,78 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
 
   return (
     <PublicEntryShell
-      eyebrow="Mi Casa Su Casa"
-      title="Accept invitation"
+      eyebrow={APP_NAME}
+      title={`${inviterName} invited you to ${householdName}`}
       description={
         <>
-          You have been invited to join as a <strong>{invitation.role}</strong>.
-          Set up your account details to continue.
+          {APP_NAME} is where your household finds the login codes for the
+          services it shares — Netflix, streaming, and the like — without
+          digging through email. {roleSentence(invitation.role, inviterName)}{" "}
+          Create your account to join.
         </>
       }
     >
       <Box component="form" onSubmit={handleAccept} noValidate>
         <TextField
           margin="normal"
-          required
           fullWidth
-          label="Email Address"
+          label="Email address"
           value={invitation.email}
-          disabled
+          helperText="This is the address the invitation was sent to."
+          slotProps={{ input: { readOnly: true } }}
         />
         <TextField
           margin="normal"
           required
           fullWidth
           id="name"
-          label="Your Name"
+          label="Your name"
           name="name"
           autoComplete="name"
           autoFocus
           value={formState.name}
-          onChange={(e) =>
-            setFormState((current) => ({
-              ...current,
-              name: e.target.value,
-            }))
+          error={Boolean(fieldErrors.name)}
+          helperText={
+            fieldErrors.name ?? "How the rest of the household will see you."
           }
+          onChange={(e) => {
+            setFormState((current) => ({ ...current, name: e.target.value }));
+            if (fieldErrors.name)
+              setFieldErrors((f) => ({ ...f, name: undefined }));
+          }}
         />
-        <TextField
+        <PasswordField
           margin="normal"
           required
           fullWidth
           name="password"
-          label="Password"
-          type="password"
+          label="Choose a password"
           id="password"
           autoComplete="new-password"
-          helperText="Must be at least 12 characters."
           value={formState.password}
-          onChange={(e) =>
+          error={Boolean(fieldErrors.password)}
+          helperText={
+            fieldErrors.password ??
+            `At least ${MIN_PASSWORD_LENGTH} characters — a short sentence works well.${
+              formState.password.length > 0 &&
+              formState.password.length < MIN_PASSWORD_LENGTH
+                ? ` (${MIN_PASSWORD_LENGTH - formState.password.length} more to go)`
+                : ""
+            }`
+          }
+          onChange={(e) => {
             setFormState((current) => ({
               ...current,
               password: e.target.value,
-            }))
-          }
+            }));
+            if (fieldErrors.password)
+              setFieldErrors((f) => ({ ...f, password: undefined }));
+          }}
           sx={{ mb: 3 }}
         />
 
         {error && (
-          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+          <Alert severity="error" sx={{ mb: 3 }} role="alert">
             {error}
           </Alert>
         )}
@@ -321,13 +340,18 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
           fullWidth
           variant="contained"
           size="large"
-          disabled={
-            isAccepting || !formState.name || formState.password.length < 12
-          }
-          sx={{ py: 1.5 }}
+          disabled={isAccepting}
         >
-          {isAccepting ? "Accepting…" : "Accept Invitation"}
+          {isAccepting ? "Creating your account…" : "Create account and join"}
         </Button>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          component="p"
+          sx={{ mt: 2, textAlign: "center" }}
+        >
+          You can add a passkey (Face ID / fingerprint) in Settings afterwards.
+        </Typography>
       </Box>
     </PublicEntryShell>
   );
