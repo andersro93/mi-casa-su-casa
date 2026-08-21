@@ -2,7 +2,6 @@ import {
   Add,
   Brightness4,
   Brightness7,
-  ExpandMore,
   HubOutlined,
   Inbox as InboxIcon,
   Logout as LogoutIcon,
@@ -10,6 +9,7 @@ import {
   Menu as MenuIcon,
   People as PeopleIcon,
   Security as SecurityIcon,
+  UnfoldMore,
 } from "@mui/icons-material";
 import {
   AppBar,
@@ -33,13 +33,15 @@ import {
   useTheme,
 } from "@mui/material";
 import type React from "react";
-import { useContext, useState } from "react";
+import { type ReactNode, useContext, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ColorModeContext } from "../theme";
 import type { HouseholdSummary, SessionData } from "../types";
 import { buildHouseholdPath, getDisplayName, getUserInitials } from "../utils";
+import { BrandLockup } from "./ui";
 
-const DRAWER_WIDTH = 280;
+const DRAWER_WIDTH = 264;
+const APP_BAR_HEIGHT = 64;
 
 /**
  * Account settings (profile, password, 2FA, passkeys, sessions) are a global
@@ -61,7 +63,9 @@ interface LayoutProps {
   onLogout: () => void;
 }
 
-function getActiveView(pathname: string) {
+type ActiveView = "inbox" | "members" | "quarantine" | "providers" | "settings";
+
+function getActiveView(pathname: string): ActiveView {
   // Match on path segments (/:slug/:view), not substrings, so a household slug
   // that happens to contain a view name does not change the active view.
   const segments = pathname.split("/").filter(Boolean);
@@ -76,6 +80,22 @@ function getActiveView(pathname: string) {
 
 export function isSettingsPath(pathname: string) {
   return getActiveView(pathname) === "settings";
+}
+
+/** Title shown in the mobile app bar. */
+export function getPageTitle(pathname: string): string {
+  const view = getActiveView(pathname);
+  if (view === "settings") {
+    return pathname === ACCOUNT_SETTINGS_PATH
+      ? "Settings"
+      : "Household settings";
+  }
+  return {
+    inbox: "Latest codes",
+    members: "Members",
+    quarantine: "Quarantine",
+    providers: "Providers & rules",
+  }[view];
 }
 
 interface UserAccountMenuProps {
@@ -183,6 +203,42 @@ function UserAccountMenu({
   );
 }
 
+interface NavItemProps {
+  to: string;
+  icon: ReactNode;
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}
+
+function NavItem({ to, icon, label, selected, onClick }: NavItemProps) {
+  return (
+    <ListItem disablePadding sx={{ mb: 0.5 }}>
+      <ListItemButton
+        selected={selected}
+        component={Link}
+        to={to}
+        onClick={onClick}
+        aria-current={selected ? "page" : undefined}
+        sx={{ minHeight: 44 }}
+      >
+        <ListItemIcon
+          sx={{ minWidth: 40, color: selected ? "primary.main" : "inherit" }}
+        >
+          {icon}
+        </ListItemIcon>
+        <ListItemText
+          primary={
+            <Typography sx={{ fontWeight: selected ? 700 : 500 }}>
+              {label}
+            </Typography>
+          }
+        />
+      </ListItemButton>
+    </ListItem>
+  );
+}
+
 export function Layout({
   children,
   session,
@@ -197,9 +253,10 @@ export function Layout({
 }: LayoutProps) {
   const location = useLocation();
   const activeView = getActiveView(location.pathname);
+  const pageTitle = getPageTitle(location.pathname);
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
-  const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
+  const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [householdMenuAnchor, setHouseholdMenuAnchor] =
     useState<null | HTMLElement>(null);
@@ -262,213 +319,75 @@ export function Layout({
   };
 
   const drawerContent = (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Toolbar>
-        <Typography
-          variant="h6"
-          noWrap
-          component="div"
-          sx={{ fontWeight: "bold" }}
-        >
-          Mi Casa Su Casa
-        </Typography>
-      </Toolbar>
-      <Divider />
-      <List sx={{ px: 2, pt: 2 }}>
-        <ListItem disablePadding sx={{ mb: 1 }}>
-          <ListItemButton
-            selected={activeView === "inbox"}
-            component={Link}
-            to={buildHouseholdPath(householdSlug, "/inbox")}
-            onClick={handleNavClick}
-            sx={{ borderRadius: 2 }}
-          >
-            <ListItemIcon>
-              <InboxIcon
-                color={activeView === "inbox" ? "primary" : "inherit"}
-              />
-            </ListItemIcon>
-            <ListItemText
-              primary={
-                <Typography
-                  sx={{
-                    fontWeight: activeView === "inbox" ? "bold" : "normal",
-                  }}
-                >
-                  Inbox
-                </Typography>
-              }
-            />
-          </ListItemButton>
-        </ListItem>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        bgcolor: "background.default",
+      }}
+    >
+      <Box
+        sx={{
+          px: 2.5,
+          height: APP_BAR_HEIGHT,
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        <BrandLockup size={30} />
+      </Box>
 
-        {isOwner && (
-          <>
-            <ListItem sx={{ px: 1, pt: 1, pb: 0.5 }}>
-              <Typography
-                variant="overline"
-                color="text.secondary"
-                sx={{ fontWeight: 700, letterSpacing: 1 }}
-              >
-                Settings
-              </Typography>
-            </ListItem>
-
-            <ListItem disablePadding sx={{ mb: 1 }}>
-              <ListItemButton
-                selected={activeView === "members"}
-                component={Link}
-                to={buildHouseholdPath(householdSlug, "/members")}
-                onClick={handleNavClick}
-                sx={{ borderRadius: 2 }}
-              >
-                <ListItemIcon>
-                  <PeopleIcon
-                    color={activeView === "members" ? "primary" : "inherit"}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={
-                    <Typography
-                      sx={{
-                        fontWeight:
-                          activeView === "members" ? "bold" : "normal",
-                      }}
-                    >
-                      Members
-                    </Typography>
-                  }
-                />
-              </ListItemButton>
-            </ListItem>
-
-            <ListItem disablePadding sx={{ mb: 1 }}>
-              <ListItemButton
-                selected={activeView === "quarantine"}
-                component={Link}
-                to={buildHouseholdPath(householdSlug, "/quarantine")}
-                onClick={handleNavClick}
-                sx={{ borderRadius: 2 }}
-              >
-                <ListItemIcon>
-                  <SecurityIcon
-                    color={activeView === "quarantine" ? "primary" : "inherit"}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={
-                    <Typography
-                      sx={{
-                        fontWeight:
-                          activeView === "quarantine" ? "bold" : "normal",
-                      }}
-                    >
-                      Quarantine
-                    </Typography>
-                  }
-                />
-              </ListItemButton>
-            </ListItem>
-
-            <ListItem disablePadding sx={{ mb: 1 }}>
-              <ListItemButton
-                selected={activeView === "providers"}
-                component={Link}
-                to={buildHouseholdPath(householdSlug, "/providers")}
-                onClick={handleNavClick}
-                sx={{ borderRadius: 2 }}
-              >
-                <ListItemIcon>
-                  <HubOutlined
-                    color={activeView === "providers" ? "primary" : "inherit"}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={
-                    <Typography
-                      sx={{
-                        fontWeight:
-                          activeView === "providers" ? "bold" : "normal",
-                      }}
-                    >
-                      Providers &amp; rules
-                    </Typography>
-                  }
-                />
-              </ListItemButton>
-            </ListItem>
-
-            <ListItem disablePadding>
-              <ListItemButton
-                selected={activeView === "settings"}
-                component={Link}
-                to={buildHouseholdPath(householdSlug, "/settings")}
-                onClick={handleNavClick}
-                sx={{ borderRadius: 2 }}
-              >
-                <ListItemIcon>
-                  <ManageAccountsIcon
-                    color={activeView === "settings" ? "primary" : "inherit"}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={
-                    <Typography
-                      sx={{
-                        fontWeight:
-                          activeView === "settings" ? "bold" : "normal",
-                      }}
-                    >
-                      Household settings
-                    </Typography>
-                  }
-                />
-              </ListItemButton>
-            </ListItem>
-          </>
-        )}
-      </List>
-      <Box sx={{ mt: "auto", px: 2, pb: 2, pt: 2 }}>
-        <Divider sx={{ mb: 2 }} />
+      {/* Household switcher: the primary context, so it sits at the top. */}
+      <Box sx={{ px: 2, pb: 1 }}>
         <ButtonBase
           onClick={handleOpenHouseholdMenu}
+          aria-haspopup="menu"
+          aria-expanded={isHouseholdMenuOpen ? "true" : undefined}
+          aria-label={`Household: ${householdName}. Switch household`}
           sx={{
             width: "100%",
             borderRadius: 3,
             border: 1,
             borderColor: "divider",
-            px: 2,
-            py: 1.5,
+            px: 1.5,
+            py: 1.25,
             textAlign: "left",
             justifyContent: "space-between",
             alignItems: "center",
             bgcolor: "background.paper",
+            gap: 1,
           }}
         >
-          <Box sx={{ minWidth: 0, pr: 2 }}>
-            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              component="div"
+              sx={{ lineHeight: 1.4 }}
+            >
+              Household
+            </Typography>
+            <Typography variant="subtitle1" noWrap>
               {householdName}
             </Typography>
-            <Chip
-              label={roleLabel}
-              size="small"
-              sx={{ mt: 0.75, fontWeight: 600, maxWidth: "100%" }}
-            />
+            <Chip label={roleLabel} size="small" sx={{ mt: 0.5, height: 22 }} />
           </Box>
-          <ExpandMore color="action" />
+          <UnfoldMore color="action" fontSize="small" />
         </ButtonBase>
         <Menu
           anchorEl={householdMenuAnchor}
           open={isHouseholdMenuOpen}
           onClose={handleCloseHouseholdMenu}
-          anchorOrigin={{ vertical: "top", horizontal: "right" }}
-          transformOrigin={{ vertical: "bottom", horizontal: "right" }}
+          anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+          transformOrigin={{ vertical: "top", horizontal: "left" }}
           slotProps={{
             paper: {
               sx: {
-                width: 320,
+                width: 300,
                 maxWidth: "calc(100vw - 32px)",
                 borderRadius: 3,
+                mt: 0.5,
               },
             },
           }}
@@ -488,10 +407,7 @@ export function Layout({
                 key={household.id}
                 selected={selected}
                 onClick={() => handleHouseholdSelect(household)}
-                sx={{
-                  alignItems: "flex-start",
-                  py: 1.25,
-                }}
+                sx={{ alignItems: "flex-start", py: 1.25 }}
               >
                 <ListItemText
                   primary={
@@ -519,6 +435,61 @@ export function Layout({
           </MenuItem>
         </Menu>
       </Box>
+
+      <List component="nav" aria-label="Main" sx={{ px: 2, pt: 1 }}>
+        <NavItem
+          to={buildHouseholdPath(householdSlug, "/inbox")}
+          icon={<InboxIcon />}
+          label="Inbox"
+          selected={activeView === "inbox"}
+          onClick={handleNavClick}
+        />
+
+        {isOwner && (
+          <>
+            <ListItem sx={{ px: 1, pt: 2, pb: 0.5 }}>
+              <Typography
+                variant="overline"
+                color="text.secondary"
+                component="div"
+              >
+                Settings
+              </Typography>
+            </ListItem>
+            <NavItem
+              to={buildHouseholdPath(householdSlug, "/members")}
+              icon={<PeopleIcon />}
+              label="Members"
+              selected={activeView === "members"}
+              onClick={handleNavClick}
+            />
+            <NavItem
+              to={buildHouseholdPath(householdSlug, "/quarantine")}
+              icon={<SecurityIcon />}
+              label="Quarantine"
+              selected={activeView === "quarantine"}
+              onClick={handleNavClick}
+            />
+            <NavItem
+              to={buildHouseholdPath(householdSlug, "/providers")}
+              icon={<HubOutlined />}
+              label="Providers & rules"
+              selected={activeView === "providers"}
+              onClick={handleNavClick}
+            />
+            <NavItem
+              to={buildHouseholdPath(householdSlug, "/settings")}
+              icon={<ManageAccountsIcon />}
+              label="Household settings"
+              selected={
+                activeView === "settings" &&
+                location.pathname !== ACCOUNT_SETTINGS_PATH
+              }
+              onClick={handleNavClick}
+            />
+          </>
+        )}
+      </List>
     </Box>
   );
 
@@ -528,26 +499,40 @@ export function Layout({
         position="fixed"
         elevation={0}
         sx={{
-          width: { lg: `calc(100% - ${DRAWER_WIDTH}px)` },
-          ml: { lg: `${DRAWER_WIDTH}px` },
+          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          ml: { md: `${DRAWER_WIDTH}px` },
           bgcolor: "background.paper",
           color: "text.primary",
           borderBottom: 1,
           borderColor: "divider",
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ minHeight: APP_BAR_HEIGHT, gap: 1 }}>
           <IconButton
             color="inherit"
-            aria-label="open drawer"
+            aria-label="Open menu"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { lg: "none" } }}
+            sx={{ display: { md: "none" } }}
           >
             <MenuIcon />
           </IconButton>
 
-          <Box sx={{ flexGrow: 1 }} />
+          <Box sx={{ flexGrow: 1, minWidth: 0, display: { md: "none" } }}>
+            <Typography variant="h6" component="div" noWrap>
+              {pageTitle}
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              noWrap
+              component="div"
+              sx={{ lineHeight: 1.2 }}
+            >
+              {householdName}
+            </Typography>
+          </Box>
+          <Box sx={{ flexGrow: 1, display: { xs: "none", md: "block" } }} />
 
           <IconButton
             onClick={handleOpenUserMenu}
@@ -580,7 +565,7 @@ export function Layout({
 
       <Box
         component="nav"
-        sx={{ width: { lg: DRAWER_WIDTH }, flexShrink: { lg: 0 } }}
+        sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}
       >
         {/* Mobile Drawer */}
         <Drawer
@@ -591,7 +576,7 @@ export function Layout({
             keepMounted: true, // Better open performance on mobile.
           }}
           sx={{
-            display: { xs: "block", lg: "none" },
+            display: { xs: "block", md: "none" },
             "& .MuiDrawer-paper": {
               boxSizing: "border-box",
               width: DRAWER_WIDTH,
@@ -604,7 +589,7 @@ export function Layout({
         <Drawer
           variant="permanent"
           sx={{
-            display: { xs: "none", lg: "block" },
+            display: { xs: "none", md: "block" },
             "& .MuiDrawer-paper": {
               boxSizing: "border-box",
               width: DRAWER_WIDTH,
@@ -624,11 +609,11 @@ export function Layout({
           flexGrow: 1,
           p: { xs: 2, sm: 3, md: 4 },
           minWidth: 0,
-          width: { lg: `calc(100% - ${DRAWER_WIDTH}px)` },
-          mt: "64px", // Toolbar height
+          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          mt: `${APP_BAR_HEIGHT}px`,
         }}
       >
-        <Box sx={{ width: "100%", maxWidth: 1600, mx: "auto", minWidth: 0 }}>
+        <Box sx={{ width: "100%", maxWidth: 1400, mx: "auto", minWidth: 0 }}>
           {children}
         </Box>
       </Box>
