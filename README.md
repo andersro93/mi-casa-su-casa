@@ -6,6 +6,20 @@ Cloudflare-native shared verification inbox for families.
 
 Mi Casa Su Casa gives invited family members a calm, mobile-friendly place to find verification emails and one-time codes for shared household accounts. Incoming email is processed directly on Cloudflare Workers, normalized into D1, grouped by sender/service, and quarantined when it cannot be classified safely.
 
+## What it looks like
+
+<p>
+  <img src="./docs/screenshots/inbox-mobile-light.png" alt="Latest codes on a phone: one card per service with its newest code and a Copy button" width="260" />
+  <img src="./docs/screenshots/inbox-mobile-dark.png" alt="The same screen in dark mode" width="260" />
+  <img src="./docs/screenshots/login-mobile-light.png" alt="Sign-in page with passkey and password options" width="260" />
+</p>
+
+![Latest codes on desktop: services on the left, the selected service's newest code and messages on the right](./docs/screenshots/inbox-desktop-light.png)
+
+![Services page: one card per service with its senders, add sender, rename and delete on the card](./docs/screenshots/services-desktop-light.png)
+
+In the app the concepts are named for families, not operators: **Services** (providers + sender rules), **Members**, **Needs review** (quarantine), **Latest codes** (inbox). The API keeps the original names.
+
 ## Why this exists
 
 Households often share streaming and similar consumer accounts. When those services ask for an email verification code, the friction is not the login itself — it is quickly finding the right message and the right code. Mi Casa Su Casa is built to reduce that friction while keeping access boundaries explicit:

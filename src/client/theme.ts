@@ -173,6 +173,14 @@ export function getTheme(mode: ColorMode) {
             outline: `2px solid ${base.palette.primary.main}`,
             outlineOffset: 2,
           },
+          "@media (prefers-reduced-motion: reduce)": {
+            "*, *::before, *::after": {
+              animationDuration: "0.01ms !important",
+              animationIterationCount: "1 !important",
+              transitionDuration: "0.01ms !important",
+              scrollBehavior: "auto !important",
+            },
+          },
         },
       },
       MuiButton: {
