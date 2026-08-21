@@ -94,7 +94,7 @@ export function getPageTitle(pathname: string): string {
     inbox: "Latest codes",
     members: "Members",
     quarantine: "Quarantine",
-    providers: "Providers & rules",
+    providers: "Services",
   }[view];
 }
 
@@ -473,7 +473,7 @@ export function Layout({
             <NavItem
               to={buildHouseholdPath(householdSlug, "/providers")}
               icon={<HubOutlined />}
-              label="Providers & rules"
+              label="Services"
               selected={activeView === "providers"}
               onClick={handleNavClick}
             />
