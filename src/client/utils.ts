@@ -229,3 +229,41 @@ export function suggestHouseholdSlug(name: string): string {
     .slice(0, 40)
     .replace(/-+$/g, "");
 }
+
+/** "Safari on iPhone", "Chrome on Windows" — enough to answer "is that me?". */
+export function describeUserAgent(
+  userAgent: string | null | undefined,
+): string {
+  const ua = userAgent ?? "";
+  if (!ua.trim()) return "Unknown device";
+  const os = /iPhone/.test(ua)
+    ? "iPhone"
+    : /iPad/.test(ua)
+      ? "iPad"
+      : /Android/.test(ua)
+        ? "Android"
+        : /Mac OS X|Macintosh/.test(ua)
+          ? "Mac"
+          : /Windows/.test(ua)
+            ? "Windows"
+            : /CrOS/.test(ua)
+              ? "Chromebook"
+              : /Linux/.test(ua)
+                ? "Linux"
+                : null;
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /OPR\/|Opera/.test(ua)
+      ? "Opera"
+      : /Firefox\//.test(ua)
+        ? "Firefox"
+        : /Chrome\/|CriOS\//.test(ua)
+          ? "Chrome"
+          : /Safari\//.test(ua)
+            ? "Safari"
+            : null;
+  if (browser && os) return `${browser} on ${os}`;
+  if (browser) return browser;
+  if (os) return os;
+  return ua.length > 40 ? `${ua.slice(0, 40)}…` : ua;
+}

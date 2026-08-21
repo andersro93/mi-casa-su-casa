@@ -6,7 +6,6 @@ import {
   Typography,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
-import QRCode from "qrcode";
 import {
   type FormEvent,
   lazy,
@@ -29,16 +28,12 @@ import { InboxPage } from "./components/inbox/InboxPage";
 import { MembersPage } from "./components/members/MembersPage";
 import { NeedsReviewPage } from "./components/review/NeedsReviewPage";
 import { ServicesPage } from "./components/services/ServicesPage";
+import { AccountSettingsPage } from "./components/settings/AccountSettingsPage";
 
 // Owner-only and rarely-visited views are code-split so the inbox loads fast.
 const HouseholdSettingsView = lazy(() =>
   import("./components/HouseholdSettingsView").then((m) => ({
     default: m.HouseholdSettingsView,
-  })),
-);
-const SettingsView = lazy(() =>
-  import("./components/SettingsView").then((m) => ({
-    default: m.SettingsView,
   })),
 );
 
@@ -58,16 +53,11 @@ import { SetupPage } from "./components/SetupPage";
 import { TwoFactorPage } from "./components/TwoFactorPage";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import type {
-  AccountProfile,
-  AccountSession,
-  AccountSettingsFormState,
-  AccountSettingsResponse,
   HouseholdSettings,
   HouseholdSettingsFormState,
   HouseholdSettingsResponse,
   HouseholdSummary,
   SetupStatus,
-  TwoFactorSetup,
 } from "./types";
 import { buildHouseholdApiPath, buildHouseholdPath, fetchJson } from "./utils";
 
@@ -85,18 +75,6 @@ function getActiveView(pathname: string): ViewType {
   if (view === "providers") return "providers";
   return "inbox";
 }
-
-const INITIAL_SETTINGS_FORM_STATE: AccountSettingsFormState = {
-  name: "",
-  image: "",
-  currentPassword: "",
-  newPassword: "",
-  forgotPasswordEmail: "",
-  twoFactorPassword: "",
-  twoFactorCode: "",
-  twoFactorBackupCode: "",
-  passkeyName: "",
-};
 
 const INITIAL_HOUSEHOLD_SETTINGS_FORM_STATE: HouseholdSettingsFormState = {
   displayName: "",
@@ -152,14 +130,6 @@ export function App() {
   const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [isLoadingHouseholds, setIsLoadingHouseholds] = useState(false);
 
-  const [profile, setProfile] = useState<AccountProfile | null>(null);
-  const [settingsSessions, setSettingsSessions] = useState<AccountSession[]>(
-    [],
-  );
-  const [settingsFormState, setSettingsFormState] =
-    useState<AccountSettingsFormState>(INITIAL_SETTINGS_FORM_STATE);
-  const [isLoadingSettings, setIsLoadingSettings] = useState(false);
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [householdSettings, setHouseholdSettings] =
     useState<HouseholdSettings | null>(null);
   const [householdSettingsFormState, setHouseholdSettingsFormState] =
@@ -308,50 +278,6 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated || activeView !== "settings") {
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadSettings = async () => {
-      setIsLoadingSettings(true);
-
-      try {
-        const response =
-          await fetchJson<AccountSettingsResponse>("/api/settings");
-
-        if (cancelled) return;
-
-        setProfile(response.profile);
-        setSettingsSessions(response.sessions);
-        setHouseholds(response.profile.households);
-        setSettingsFormState((current) => ({
-          ...current,
-          name: response.profile.name,
-          image: response.profile.image || "",
-        }));
-      } catch (error) {
-        if (!cancelled) {
-          setViewError(
-            error instanceof Error ? error.message : "Unable to load settings",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingSettings(false);
-        }
-      }
-    };
-
-    void loadSettings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeView, isAuthenticated]);
-
-  useEffect(() => {
     const isHouseholdSettingsRoute = Boolean(
       currentHousehold &&
         location.pathname ===
@@ -414,286 +340,6 @@ export function App() {
     isOwner,
     location.pathname,
   ]);
-
-  async function refreshSettings() {
-    if (!isAuthenticated) return;
-    const response = await fetchJson<AccountSettingsResponse>("/api/settings");
-    setProfile(response.profile);
-    setSettingsSessions(response.sessions);
-    setHouseholds(response.profile.households);
-  }
-
-  async function handleUpdateProfile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson<{ profile: AccountProfile }>("/api/settings/profile", {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: settingsFormState.name,
-          image: settingsFormState.image,
-        }),
-      });
-      setStatusMessage("Profile updated.");
-      await refreshSettings();
-      await refetch();
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to update profile",
-      );
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
-
-  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const { error } = await authClient.changePassword({
-        newPassword: settingsFormState.newPassword,
-        currentPassword: settingsFormState.currentPassword,
-        revokeOtherSessions: false,
-      });
-
-      if (error) {
-        throw new Error(error.message || "Failed to change password");
-      }
-
-      setSettingsFormState((current) => ({
-        ...current,
-        currentPassword: "",
-        newPassword: "",
-      }));
-      setStatusMessage("Password changed.");
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to change password",
-      );
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
-
-  async function handleRequestPasswordReset(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const { error } = await authClient.requestPasswordReset({
-        email: settingsFormState.forgotPasswordEmail,
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-
-      if (error) {
-        throw new Error(error.message || "Failed to send password reset email");
-      }
-
-      setSettingsFormState((current) => ({
-        ...current,
-        forgotPasswordEmail: "",
-      }));
-      setStatusMessage("Password reset email sent.");
-    } catch (error) {
-      setViewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to send password reset email",
-      );
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
-
-  const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetup | null>(
-    null,
-  );
-
-  async function handleEnable2FA(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const { data, error } = await authClient.twoFactor.enable({
-        password: settingsFormState.twoFactorPassword,
-      });
-
-      if (error || !data || !("totpURI" in data)) {
-        throw new Error(error?.message || "Failed to start 2FA setup");
-      }
-
-      // Enabling only creates the secret; it becomes active once a code from
-      // the authenticator app is verified.
-      let qrDataUrl: string | null = null;
-      try {
-        qrDataUrl = await QRCode.toDataURL(data.totpURI, { margin: 1 });
-      } catch {
-        qrDataUrl = null;
-      }
-      const secret = new URL(data.totpURI).searchParams.get("secret") ?? null;
-
-      setTwoFactorSetup({
-        totpURI: data.totpURI,
-        qrDataUrl,
-        secret,
-        backupCodes: data.backupCodes,
-      });
-      setSettingsFormState((current) => ({
-        ...current,
-        twoFactorPassword: "",
-        twoFactorCode: "",
-      }));
-      setStatusMessage(
-        "Scan the QR code and enter a code to finish enabling two-factor authentication.",
-      );
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to enable 2FA",
-      );
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
-
-  async function handleVerify2FA(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const { error } = await authClient.twoFactor.verifyTotp({
-        code: settingsFormState.twoFactorCode.trim(),
-      });
-
-      if (error) {
-        throw new Error(
-          error.message || "That code was not accepted. Try the next one.",
-        );
-      }
-
-      setTwoFactorSetup(null);
-      setSettingsFormState((current) => ({ ...current, twoFactorCode: "" }));
-      setStatusMessage("Two-factor authentication enabled.");
-      await refreshSettings();
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to verify the code",
-      );
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
-
-  function handleCancel2FASetup() {
-    setTwoFactorSetup(null);
-    setSettingsFormState((current) => ({ ...current, twoFactorCode: "" }));
-    setStatusMessage(null);
-  }
-
-  async function handleDisable2FA(): Promise<boolean> {
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const { error } = await authClient.twoFactor.disable({
-        password: settingsFormState.twoFactorPassword,
-      });
-
-      if (error) {
-        throw new Error(error.message || "Failed to disable 2FA");
-      }
-      setStatusMessage("Two-factor authentication disabled.");
-      await refreshSettings();
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to disable 2FA",
-      );
-      return false;
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
-
-  async function handleAddPasskey(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const { error } = await authClient.passkey.addPasskey({
-        name: settingsFormState.passkeyName,
-      });
-
-      if (error) {
-        throw new Error(error.message || "Failed to add passkey");
-      }
-
-      setSettingsFormState((current) => ({ ...current, passkeyName: "" }));
-      setStatusMessage("Passkey added.");
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to add passkey",
-      );
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
-
-  async function handleRevokeSession(sessionId: string): Promise<boolean> {
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson(`/api/settings/sessions/${sessionId}`, {
-        method: "DELETE",
-      });
-      setStatusMessage("Session revoked.");
-      await refreshSettings();
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to revoke session",
-      );
-      return false;
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
-
-  async function handleRevokeOtherSessions(): Promise<boolean> {
-    setIsSavingSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson(`/api/settings/sessions/others`, { method: "DELETE" });
-      setStatusMessage("Other sessions revoked.");
-      await refreshSettings();
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to revoke sessions",
-      );
-      return false;
-    } finally {
-      setIsSavingSettings(false);
-    }
-  }
 
   async function refreshHouseholdSettings() {
     if (!isAuthenticated || !currentHousehold || !isOwner) {
@@ -819,27 +465,6 @@ export function App() {
     setViewError(null);
     await authClient.signOut({});
     await refetch();
-  }
-
-  async function handleLeaveHousehold(slug: string): Promise<boolean> {
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson<{ ok: boolean }>(`/api/households/${slug}/leave`, {
-        method: "POST",
-      });
-      setHouseholds((current) => current.filter((h) => h.slug !== slug));
-      setStatusMessage("You left the household.");
-      await Promise.all([refetch(), refreshSettings()]);
-      navigate("/", { replace: true });
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to leave household",
-      );
-      return false;
-    }
   }
 
   function handleSelectHousehold(household: HouseholdSummary) {
@@ -1029,29 +654,16 @@ export function App() {
           <Route
             path="/settings"
             element={
-              <SettingsView
-                profile={profile}
-                sessions={settingsSessions}
-                isLoading={isLoadingSettings}
-                error={viewError}
-                formState={settingsFormState}
-                onFormChange={(update) =>
-                  setSettingsFormState((current) => ({ ...current, ...update }))
-                }
-                onUpdateProfile={handleUpdateProfile}
-                onChangePassword={handleChangePassword}
-                onRequestPasswordReset={handleRequestPasswordReset}
-                onEnable2FA={handleEnable2FA}
-                onDisable2FA={handleDisable2FA}
-                twoFactorSetup={twoFactorSetup}
-                onVerify2FA={handleVerify2FA}
-                onCancel2FASetup={handleCancel2FASetup}
-                onLeaveHousehold={handleLeaveHousehold}
-                onAddPasskey={handleAddPasskey}
-                onRevokeSession={handleRevokeSession}
-                onRevokeOtherSessions={handleRevokeOtherSessions}
-                isSaving={isSavingSettings}
+              <AccountSettingsPage
                 install={install}
+                onHouseholdLeft={(household) => {
+                  setHouseholds((current) =>
+                    current.filter((h) => h.slug !== household.slug),
+                  );
+                  setStatusMessage(`You left ${household.displayName}.`);
+                  void refetch();
+                  navigate("/", { replace: true });
+                }}
               />
             }
           />
