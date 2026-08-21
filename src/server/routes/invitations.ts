@@ -11,14 +11,10 @@ import {
   refreshExpiredInvitations,
 } from "../db/repositories/invitations";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
+import { acceptInvitationSchema } from "../http/schemas";
 import { logEvent } from "../runtime/log";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
 import { hashInvitationToken } from "../security/tokens";
-
-type AcceptInvitationPayload = {
-  name?: string;
-  password?: string;
-};
 
 export const invitationRoutes = new Hono<{
   Bindings: Env;
@@ -83,14 +79,8 @@ invitationRoutes.post("/accept", async (c) => {
   }
   await refreshExpiredInvitations(c.env.DB);
 
-  let payload: AcceptInvitationPayload = {};
-
-  try {
-    const raw = await c.req.text();
-    payload = raw.trim() ? (JSON.parse(raw) as AcceptInvitationPayload) : {};
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  // Read the raw body once; a signed-in user may send an empty body.
+  const rawBody = (await c.req.text()).trim();
 
   const tokenHash = await hashInvitationToken(token);
   const invitation = await getInvitationByTokenHash(c.env.DB, tokenHash);
@@ -107,16 +97,28 @@ invitationRoutes.post("/accept", async (c) => {
   const currentUser = c.get("user");
 
   // A signed-in user accepts with their existing account: no password, no
-  // name required.
+  // name required. Everyone else must provide both.
+  let accountDetails: { name: string; password: string } | null = null;
   if (!currentUser) {
-    if (!payload.name || !payload.password || payload.password.length < 12) {
+    let raw: unknown;
+    try {
+      raw = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = acceptInvitationSchema.safeParse(raw);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
       return c.json(
         {
-          error: "name and a password with at least 12 characters are required",
+          error: first
+            ? `${first.path.join(".")}: ${first.message}`
+            : "Invalid request",
         },
         400,
       );
     }
+    accountDetails = parsed.data;
   }
 
   if (currentUser) {
@@ -153,8 +155,8 @@ invitationRoutes.post("/accept", async (c) => {
     );
   }
 
-  const name = payload.name?.trim() ?? "";
-  const password = payload.password ?? "";
+  const name = accountDetails?.name ?? "";
+  const password = accountDetails?.password ?? "";
 
   // An account for the invited address already exists (e.g. an earlier
   // attempt was interrupted after sign-up, or the person already has an

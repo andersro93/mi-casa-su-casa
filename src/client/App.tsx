@@ -1696,11 +1696,14 @@ export function App() {
         getProviderAccessToggleRequest(shouldHaveAccess);
 
       await fetchJson<{ ok: boolean }>(
-        householdApiPath(`/admin/members/${userId}/provider-access`),
-        {
-          method,
-          body: JSON.stringify({ providerKey }),
-        },
+        householdApiPath(
+          method === "DELETE"
+            ? `/admin/members/${userId}/provider-access/${encodeURIComponent(providerKey)}`
+            : `/admin/members/${userId}/provider-access`,
+        ),
+        method === "DELETE"
+          ? { method }
+          : { method, body: JSON.stringify({ providerKey }) },
       );
 
       setStatusMessage(statusMessage);

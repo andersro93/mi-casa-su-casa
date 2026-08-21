@@ -19,14 +19,10 @@ import {
   getProviderByKey,
   userHasProviderAccess,
 } from "../db/repositories/provider-rules";
+import { messageStatusSchema, quarantineReviewSchema } from "../http/schemas";
+import { parseJsonBody } from "../http/validation";
 
 const VALID_MESSAGE_STATUSES = new Set(["new", "used", "expired"]);
-
-function isValidMessageStatus(
-  status: string,
-): status is "new" | "used" | "expired" {
-  return VALID_MESSAGE_STATUSES.has(status);
-}
 
 export const inboxRoutes = new Hono<{
   Bindings: Env;
@@ -133,17 +129,9 @@ inboxRoutes.patch("/:slug/messages/:messageId/status", async (c) => {
     }
   }
 
-  let payload: { status?: string };
-
-  try {
-    payload = await c.req.json<{ status?: string }>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (!payload.status || !isValidMessageStatus(payload.status)) {
-    return c.json({ error: "Invalid message status" }, 400);
-  }
+  const body = await parseJsonBody(c, messageStatusSchema);
+  if (!body.ok) return body.response;
+  const payload = body.data;
 
   const message = await updateMessageStatus(
     c.env.DB,
@@ -185,20 +173,9 @@ inboxRoutes.post("/:slug/quarantine/:messageId/review", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  let payload: { action?: "dismiss" | "release"; providerKey?: string };
-
-  try {
-    payload = await c.req.json<{
-      action?: "dismiss" | "release";
-      providerKey?: string;
-    }>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (payload.action !== "dismiss" && payload.action !== "release") {
-    return c.json({ error: "Invalid review action" }, 400);
-  }
+  const body = await parseJsonBody(c, quarantineReviewSchema);
+  if (!body.ok) return body.response;
+  const payload = body.data;
 
   let providerId: string | undefined;
 

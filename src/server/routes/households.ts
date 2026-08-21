@@ -14,17 +14,10 @@ import {
   removeUserFromHousehold,
 } from "../db/repositories/households";
 import { getInstallationState } from "../db/repositories/installation-state";
-import {
-  normalizeHouseholdSlug,
-  validateHouseholdSlug,
-} from "../domain/household-slug";
+import { createHouseholdSchema } from "../http/schemas";
+import { parseJsonBody } from "../http/validation";
 import { logEvent } from "../runtime/log";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
-
-type CreateHouseholdPayload = {
-  slug?: string;
-  displayName?: string;
-};
 
 /**
  * Who may create households: the installation owner and app-level admins
@@ -45,10 +38,6 @@ async function mayCreateHousehold(
   }
   const memberships = await listHouseholdsForUser(db, user.id);
   return memberships.length === 0;
-}
-
-function normalizeDisplayName(value: string | undefined) {
-  return value?.trim() ?? "";
 }
 
 export const householdRoutes = new Hono<{
@@ -75,28 +64,9 @@ householdRoutes.post("/", rateLimit(RATE_LIMITS.householdCreate), async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  let payload: CreateHouseholdPayload;
-
-  try {
-    payload = await c.req.json<CreateHouseholdPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const slug = normalizeHouseholdSlug(payload.slug);
-  const displayName = normalizeDisplayName(payload.displayName);
-  const slugCheck = validateHouseholdSlug(slug);
-
-  if (!slugCheck.ok) {
-    return c.json({ error: slugCheck.error }, 400);
-  }
-
-  if (!displayName || displayName.length > 80) {
-    return c.json(
-      { error: "displayName is required (max 80 characters)" },
-      400,
-    );
-  }
+  const body = await parseJsonBody(c, createHouseholdSchema);
+  if (!body.ok) return body.response;
+  const { slug, displayName } = body.data;
 
   if (!(await mayCreateHousehold(c.env.DB, user))) {
     return c.json(
