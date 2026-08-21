@@ -224,6 +224,7 @@ export type SetupStatus = {
   setupLocked: boolean;
   isConfigured: boolean;
   status: "pending" | "in_progress" | "complete";
+  emailDomain?: string | null;
 };
 
 export type SetupFormState = {

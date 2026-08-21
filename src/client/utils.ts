@@ -214,3 +214,18 @@ export function parseSender(fromHeader: string | null | undefined): {
   }
   return { name: raw, address: raw.includes("@") ? raw : null };
 }
+
+/**
+ * Suggest an inbox address (household slug) from a household name:
+ * "Familien Olsen" → "familien-olsen", "Casa Ramírez" → "casa-ramirez".
+ */
+export function suggestHouseholdSlug(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+}
