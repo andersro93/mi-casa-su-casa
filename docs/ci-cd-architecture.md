@@ -40,6 +40,15 @@ Flow:
 
 Fork pull requests do not get preview deploys by default because GitHub does not expose deployment secrets to fork-triggered workflows.
 
+#### The shared preview database
+
+Every pull request deploys to the **same** preview Worker and preview D1 (`mi-casa-su-casa-preview`). That keeps setup simple but has two consequences:
+
+- a PR's migrations are applied to the shared database as soon as its preview deploys, so a broken or destructive migration affects every other open PR's preview — reset it with the steps in [`runbook.md`](./runbook.md#7-reset-the-shared-preview-database);
+- two open PRs must not reuse a migration number: the `CI` workflow fails a PR whose `migrations/NNNN_*.sql` number already exists on `main` under a different name, or that is missing migrations `main` already has (rebase).
+
+If you need isolated previews, the Cloudflare way is one preview alias per PR (`wrangler versions upload --preview-alias pr-<n>`) plus a per-PR D1 created in the workflow (`wrangler d1 create preview-pr-<n>`) and deleted on PR close; the workflow is written so that swapping the injected database id is the only change needed.
+
 ### 3. `Production Deploy`
 
 File: `.github/workflows/production-deploy.yml`
