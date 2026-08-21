@@ -67,6 +67,7 @@ import { LoginPage } from "./components/LoginPage";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { SetupPage } from "./components/SetupPage";
 import { TwoFactorPage } from "./components/TwoFactorPage";
+import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import type {
   AccountProfile,
   AccountSession,
@@ -184,6 +185,7 @@ export function App() {
   );
   const navigate = useNavigate();
   const location = useLocation();
+  const install = useInstallPrompt();
   const routeSegments = location.pathname.split("/").filter(Boolean);
   const routeSlug =
     routeSegments[0] &&
@@ -2161,6 +2163,7 @@ export function App() {
                 onRevokeSession={handleRevokeSession}
                 onRevokeOtherSessions={handleRevokeOtherSessions}
                 isSaving={isSavingSettings}
+                install={install}
               />
             }
           />

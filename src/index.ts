@@ -28,7 +28,8 @@ const app = new Hono<{ Bindings: Env }>();
 // requests pass through the Worker, see run_worker_first in wrangler.jsonc).
 // The inbox shows one-time codes, so framing is denied outright. Emotion/MUI
 // inject inline <style> elements, hence 'unsafe-inline' for styles only; the
-// QR code for 2FA enrolment is a data: image.
+// QR code for 2FA enrolment is a data: image. worker-src/manifest-src cover
+// the app-shell service worker and the web app manifest (installable PWA).
 app.use(
   "*",
   secureHeaders({
@@ -39,6 +40,8 @@ app.use(
       imgSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "data:"],
       connectSrc: ["'self'"],
+      workerSrc: ["'self'"],
+      manifestSrc: ["'self'"],
       frameAncestors: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],

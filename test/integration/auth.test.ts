@@ -1,7 +1,7 @@
 import { authForEnv, provisioningAuthForEnv } from "@server/auth/auth";
 import { describe, expect, it, vi } from "vitest";
 
-import { count, testEnv } from "./helpers";
+import { count, db, testEnv } from "./helpers";
 
 describe("Better Auth against the real schema (D1)", () => {
   it("signs up a credential user through the provisioning instance and can sign in", async () => {
@@ -102,5 +102,33 @@ describe("password reset email delivery", () => {
     expect(sent).toEqual([
       { to: "owner@example.com", subject: expect.stringMatching(/reset/i) },
     ]);
+  });
+});
+
+describe("session lifetime", () => {
+  it("signs members in for 30 days so an installed home-screen app stays usable", async () => {
+    const env = testEnv();
+    await provisioningAuthForEnv(env).api.signUpEmail({
+      body: {
+        email: "owner@example.com",
+        name: "Owner",
+        password: "averylongpassword123",
+      },
+    });
+
+    const before = Date.now();
+    await authForEnv(env).api.signInEmail({
+      body: { email: "owner@example.com", password: "averylongpassword123" },
+    });
+
+    const row = await db
+      .prepare("SELECT expiresAt FROM session ORDER BY createdAt DESC LIMIT 1")
+      .first<{ expiresAt: number }>();
+    expect(row).not.toBeNull();
+
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    const lifetime = (row as { expiresAt: number }).expiresAt - before;
+    expect(lifetime).toBeGreaterThan(thirtyDays - 60_000);
+    expect(lifetime).toBeLessThanOrEqual(thirtyDays + 60_000);
   });
 });

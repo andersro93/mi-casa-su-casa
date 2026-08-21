@@ -12,6 +12,13 @@ describe("security headers (workerd)", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("permissions-policy")).toContain("camera=()");
   });
+
+  it("allow the same-origin service worker and web app manifest", async () => {
+    const response = await SELF.fetch("http://localhost:8787/api/health/live");
+    const csp = response.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("worker-src 'self'");
+    expect(csp).toContain("manifest-src 'self'");
+  });
 });
 
 describe("static asset passthrough (workerd)", () => {

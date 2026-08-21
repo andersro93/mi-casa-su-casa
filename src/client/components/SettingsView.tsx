@@ -20,6 +20,7 @@ import type {
   AccountProfile,
   AccountSession,
   AccountSettingsFormState,
+  InstallState,
   TwoFactorSetup,
 } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -44,6 +45,7 @@ interface SettingsViewProps {
   onRevokeSession: (sessionId: string) => Promise<boolean>;
   onRevokeOtherSessions: () => Promise<boolean>;
   isSaving: boolean;
+  install: InstallState;
 }
 
 export function SettingsView({
@@ -66,6 +68,7 @@ export function SettingsView({
   onRevokeSession,
   onRevokeOtherSessions,
   isSaving,
+  install,
 }: SettingsViewProps) {
   const [sessionToRevoke, setSessionToRevoke] = useState<AccountSession | null>(
     null,
@@ -522,6 +525,49 @@ export function SettingsView({
           if (left) setHouseholdToLeave(null);
         }}
       />
+
+      {/* Install Card */}
+      <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
+        <CardHeader title="Install the app" />
+        <Divider />
+        <CardContent>
+          {install.status === "installed" && (
+            <Typography variant="body2" color="text.secondary">
+              You’re using the installed app. Codes are one tap away from your
+              home screen.
+            </Typography>
+          )}
+          {install.status === "available" && (
+            <Stack spacing={2} sx={{ alignItems: "flex-start" }}>
+              <Typography variant="body2" color="text.secondary">
+                Add Mi Casa Su Casa to your home screen to open it like any
+                other app and stay signed in.
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => void install.onInstall()}
+              >
+                Install
+              </Button>
+            </Stack>
+          )}
+          {install.status === "manual" && (
+            <Stack spacing={1}>
+              <Typography variant="body2" color="text.secondary">
+                Add Mi Casa Su Casa to your home screen to open it like any
+                other app and stay signed in.
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                On iPhone or iPad: open this page in Safari, tap the Share
+                button, then choose <strong>Add to Home Screen</strong>. On
+                Android: open the browser menu and choose{" "}
+                <strong>Install app</strong> or{" "}
+                <strong>Add to Home screen</strong>.
+              </Typography>
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Sessions Card */}
       <Card sx={{ mb: 4, borderRadius: 2, overflow: "hidden" }}>
