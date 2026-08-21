@@ -44,6 +44,9 @@ interface QuarantineViewProps {
   onReleaseProviderKeyChange: (key: string) => void;
   isReviewingQuarantine: boolean;
   onQuarantineReview: (action: "dismiss" | "release") => Promise<boolean>;
+  hasOlderMessages?: boolean;
+  isLoadingOlderMessages?: boolean;
+  onLoadOlderMessages?: () => void;
 }
 
 export function QuarantineView({
@@ -56,6 +59,9 @@ export function QuarantineView({
   onReleaseProviderKeyChange,
   isReviewingQuarantine,
   onQuarantineReview,
+  hasOlderMessages = false,
+  isLoadingOlderMessages = false,
+  onLoadOlderMessages,
 }: QuarantineViewProps) {
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [reviewAction, setReviewAction] = useState<
@@ -216,6 +222,19 @@ export function QuarantineView({
                   Messages that need manual classification will appear here for
                   owner review.
                 </Typography>
+              </Box>
+            )}
+
+            {hasOlderMessages && (
+              <Box sx={{ p: 1.5, textAlign: "center" }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  disabled={isLoadingOlderMessages}
+                  onClick={onLoadOlderMessages}
+                >
+                  {isLoadingOlderMessages ? "Loading…" : "Load older messages"}
+                </Button>
               </Box>
             )}
           </List>

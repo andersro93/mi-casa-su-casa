@@ -88,7 +88,8 @@ describe("inbound email pipeline (worker.email against D1)", () => {
 
     expect(first.setReject).not.toHaveBeenCalled();
     expect(second.setReject).not.toHaveBeenCalled();
-    const rows = await listMessagesForProvider(db, household.id, "netflix");
+    const rows = (await listMessagesForProvider(db, household.id, "netflix"))
+      .items;
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       extracted_code: "482913",
@@ -153,7 +154,7 @@ describe("inbound email pipeline (worker.email against D1)", () => {
 
     expect(setReject).not.toHaveBeenCalled();
     expect(
-      (await listMessagesForProvider(db, household.id, "netflix"))[0],
+      (await listMessagesForProvider(db, household.id, "netflix")).items[0],
     ).toMatchObject({
       extracted_code: "555444",
     });
@@ -186,7 +187,7 @@ describe("inbound email pipeline (worker.email against D1)", () => {
     });
 
     expect(
-      await listMessagesForProvider(db, household.id, "netflix"),
+      (await listMessagesForProvider(db, household.id, "netflix")).items,
     ).toHaveLength(0);
     const quarantined = await db
       .prepare("SELECT quarantine_reason FROM quarantine_messages")

@@ -586,12 +586,20 @@ vi.mock("../src/server/db/repositories/messages", () => ({
     _db: D1Database,
     householdId: string,
     providerKey: string,
-  ) =>
-    repoState.messages.filter(
+  ) => ({
+    items: repoState.messages.filter(
       (message) =>
         message.householdId === householdId &&
         message.provider_key === providerKey,
     ),
+    nextBefore: null,
+  }),
+  normalizePageOptions: (
+    options: { limit?: number; before?: string | null } = {},
+  ) => ({
+    limit: Number.isFinite(options.limit) ? Number(options.limit) : 50,
+    before: options.before ?? null,
+  }),
   findMessageById: async (
     _db: D1Database,
     householdId: string,
@@ -615,10 +623,12 @@ vi.mock("../src/server/db/repositories/messages", () => ({
     message.status = status;
     return message;
   },
-  listQuarantineMessages: async (_db: D1Database, householdId: string) =>
-    repoState.quarantine.filter(
+  listQuarantineMessages: async (_db: D1Database, householdId: string) => ({
+    items: repoState.quarantine.filter(
       (message) => message.householdId === householdId && !message.reviewed,
     ),
+    nextBefore: null,
+  }),
   reviewQuarantineMessage: async (
     _db: D1Database,
     householdId: string,
