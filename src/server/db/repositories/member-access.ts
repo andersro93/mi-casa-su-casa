@@ -1,15 +1,8 @@
 import { sql } from "drizzle-orm";
 
 import { dbForDatabase } from "../client";
+import { normalizeTimestamp } from "../timestamps";
 import type { MemberAccessRow, MemberRecord, ProviderRow } from "../types";
-
-function normalizeTimestamp(value: number | string | null | undefined) {
-  if (typeof value === "number") {
-    return new Date(value).toISOString();
-  }
-
-  return value ?? new Date(0).toISOString();
-}
 
 export async function listMembers(
   db: D1Database,
@@ -39,8 +32,8 @@ export async function listMembers(
 
   return result.map((member) => ({
     ...member,
-    createdAt: normalizeTimestamp(member.createdAt),
-    updatedAt: normalizeTimestamp(member.updatedAt),
+    createdAt: normalizeTimestamp(member.createdAt) ?? "",
+    updatedAt: normalizeTimestamp(member.updatedAt) ?? "",
   }));
 }
 

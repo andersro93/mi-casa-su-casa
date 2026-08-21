@@ -2,19 +2,8 @@ import { and, eq, ne, sql } from "drizzle-orm";
 
 import { dbForDatabase } from "../client";
 import { session, user } from "../schema";
+import { normalizeTimestamp } from "../timestamps";
 import { listHouseholdsForUser } from "./households";
-
-function normalizeTimestamp(value: Date | number | null | undefined) {
-  if (!value) {
-    return null;
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-
-  return new Date(value).toISOString();
-}
 
 export async function getUserProfile(db: D1Database, userId: string) {
   const rows = await dbForDatabase(db)

@@ -127,3 +127,34 @@ export function getUserInitials(
 
   return (fallback || "FM").toUpperCase();
 }
+
+const AVATAR_COLORS = [
+  "#1976d2",
+  "#388e3c",
+  "#d32f2f",
+  "#7b1fa2",
+  "#f57c00",
+  "#0097a7",
+  "#5d4037",
+  "#455a64",
+];
+
+export function stringToColor(value: string) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = value.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return (
+    AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? AVATAR_COLORS[0]
+  );
+}
+
+/** MUI Avatar props (background colour + initials) derived from a name. */
+export function stringAvatar(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const initials = `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
+  return {
+    sx: { bgcolor: stringToColor(name) },
+    children: initials || "?",
+  };
+}
