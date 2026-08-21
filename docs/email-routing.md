@@ -137,7 +137,7 @@ To fix:
 
 ### Email arrives but no verification code is extracted
 
-The code extraction logic uses keyword-anchored regex patterns. If a service uses an unusual format, the code may not be detected. The message is still stored — only the `verification_code` field will be null.
+The code extraction logic uses keyword-anchored regex patterns. If a service uses an unusual format, the code may not be detected. The message is still stored — only the `extracted_code` field will be null.
 
 To improve extraction for a specific service, check the patterns in `src/server/domain/extract-code.ts`.
 

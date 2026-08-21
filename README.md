@@ -24,34 +24,29 @@ Households often share streaming and similar consumer accounts. When those servi
 - **Tests required**: every feature ships with tests
 - **Open source from day one**: public repo, welcoming docs, contributor guidance
 
-## Planned architecture
+## Architecture
 
-- **One Worker**
-  - Hono API
-  - Better Auth endpoints
-  - React asset serving
-  - inbound `email()` handler
-  - scheduled retention cleanup
-- **One D1 database**
-  - Better Auth tables
-  - inbox/quarantine/provider access tables
-- **One shared inbound email address** routed to the Worker
+- **One Worker** (`src/index.ts`)
+  - Hono API under `/api/*` (households, inbox, quarantine, admin, invitations, settings, setup, health)
+  - Better Auth (email + password, passkeys, TOTP two-factor, password reset) under `/api/auth/*`
+  - React/MUI single-page app served from Workers Static Assets; every request passes through the Worker so security headers apply everywhere
+  - inbound `email()` handler: parse → authenticate sender (SPF/DKIM/DMARC results) → match sender rules → store or quarantine
+  - daily `scheduled()` retention job (30-day purge, invitation expiry)
+- **One D1 database** (hand-written migrations in `migrations/`, Drizzle mirror in `src/server/db/schema.ts`, drift guarded by tests)
+  - Better Auth tables, households/memberships/invitations, providers/sender rules, messages/quarantine, audit events, rate-limit counters
+- **One inbound address per household**: `<household-slug>@your-domain` routed to the Worker via Cloudflare Email Routing
 
 ## Current status
 
-This repository is in the bootstrap phase.
+Feature-complete for a household deployment:
 
-The initial tracked work lives in GitHub issues:
+- multi-household tenancy with owner/member roles, invitations (email or shareable link), provider-scoped access, member removal and leaving
+- first-run `/setup` with recovery paths, password reset, two-factor authentication with backup codes, passkeys, session management
+- inbound mail classification with sender authentication, subdomain-aware domain rules, precise one-time-code extraction, quarantine review
+- D1-backed rate limiting, CSRF/CORS hardening, security headers, structured logging, audit log, health endpoints with retention status
+- CI (lint, typecheck, unit + real-D1 integration tests, build), preview deploys per PR, queued production deploy with migrations
 
-- #1 Establish CI, branch policy, and testing gates
-- #2 Create inbox, quarantine, and message-status UX
-- #3 Initialize Cloudflare-native app stack
-- #4 Build email ingestion, normalization, and quarantine pipeline
-- #5 Bootstrap repository foundations
-- #6 Implement invite-only auth and owner-managed access control
-- #7 Add local `.http` request files for manual dev triggers and health checks
-- #8 Implement full CI/CD for PR validation, preview deploys, and protected production release
-- #9 Add Deploy to Cloudflare onboarding flow with first-run setup for initial admin creation
+See the [production-readiness tracking issue](https://github.com/andersro93/mi-casa-su-casa/issues/121) for what was reviewed and what remains (mostly internal refactors).
 
 ## Getting started
 
@@ -167,13 +162,11 @@ curl "http://localhost:8787/__scheduled?cron=0+3+*+*+*"
 
 The project is designed so that successful checks on `main` are a strong deployment signal.
 
-Required checks are expected to include:
+Required checks:
 
-- formatting/linting
-- typecheck
-- unit tests
-- integration tests
-- end-to-end tests for critical flows
+- formatting/linting (Biome)
+- typecheck (TypeScript, including tests)
+- unit tests (Node) and integration tests against a real local D1 inside the Workers runtime
 - build verification
 
 The baseline PR validation commands are:
@@ -189,7 +182,7 @@ npm run build
 
 ## Deployment model
 
-The repository now includes a Cloudflare-focused CI/CD baseline for issue #8:
+The repository includes a Cloudflare-focused CI/CD pipeline:
 
 - `CI` validates pull requests and pushes to `main`
 - `Preview Deploy` deploys pull requests to a preview Worker and preview D1 database
@@ -308,7 +301,7 @@ Push to `main` or open a pull request — the GitHub Actions workflows will hand
 After the first successful deploy:
 
 1. Visit `https://<your-production-url>/setup`
-2. Enter the `OWNER_EMAIL` and `SETUP_SECRET` you configured
+2. Enter the `OWNER_EMAIL` and `SETUP_SECRET` you configured, choose your name and password, and pick the household name and slug (the slug becomes the inbound address local part)
 3. The initial owner account is created and the `/setup` route locks permanently
 4. Remove `SETUP_SECRET` from the Worker's secrets in the Cloudflare dashboard — it was only needed once. The route stays locked (it answers 409 for any secret after setup), so keeping the secret around only adds risk
 
@@ -322,7 +315,7 @@ The default test pyramid for Mi Casa Su Casa is:
 
 - **Unit tests** (`test/**/*.test.ts(x)`, Node environment): parser rules, provider routing, permission logic, retention logic, component rendering
 - **Integration tests** (`test/integration/**`, run inside the Workers runtime via `@cloudflare/vitest-pool-workers`): repositories, Better Auth and Worker handlers against a real local D1 with every migration in `migrations/` applied; the database is emptied before each test
-- **End-to-end tests**: invite/login, provider-scoped inbox access, owner quarantine review
+- **End-to-end flows** are covered by the integration project through the Worker entrypoints (`SELF.fetch`, `worker.email()`, `worker.scheduled()`): setup, login, 2FA, password reset, invitations, inbound mail, retention
 
 ```bash
 npm test                 # both projects
