@@ -7,6 +7,7 @@ import {
   Typography,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
+import { useQueryClient } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import {
   type FormEvent,
@@ -26,7 +27,7 @@ import {
 } from "react-router-dom";
 import { CreateHouseholdPage } from "./components/CreateHouseholdPage";
 import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
-import { InboxView } from "./components/InboxView";
+import { InboxPage } from "./components/inbox/InboxPage";
 
 // Owner-only and rarely-visited views are code-split so the inbox loads fast.
 const HouseholdSettingsView = lazy(() =>
@@ -68,6 +69,7 @@ import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { SetupPage } from "./components/SetupPage";
 import { TwoFactorPage } from "./components/TwoFactorPage";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
+import { inboxKeys, useProviderSummaries } from "./queries/inbox";
 import type {
   AccountProfile,
   AccountSession,
@@ -77,7 +79,6 @@ import type {
   HouseholdSettingsFormState,
   HouseholdSettingsResponse,
   HouseholdSummary,
-  InboxMessage,
   InvitationDeliveryResponse,
   InvitationFormState,
   InvitationSummary,
@@ -86,7 +87,6 @@ import type {
   ProviderConfiguration,
   ProviderConfigurationResponse,
   ProviderFormState,
-  ProviderMessagesResponse,
   ProviderOption,
   ProviderSummary,
   QuarantineMessage,
@@ -104,6 +104,8 @@ import {
 } from "./utils";
 
 type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
+
+const EMPTY_PROVIDERS: ProviderSummary[] = [];
 
 function getActiveView(pathname: string): ViewType {
   // Match on path segments (/:slug/:view), not substrings, so a household slug
@@ -207,11 +209,6 @@ export function App() {
   const activeView = getActiveView(location.pathname);
   const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [isLoadingHouseholds, setIsLoadingHouseholds] = useState(false);
-  const [providers, setProviders] = useState<ProviderSummary[]>([]);
-  const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(
-    null,
-  );
-  const [messages, setMessages] = useState<InboxMessage[]>([]);
 
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [settingsSessions, setSettingsSessions] = useState<AccountSession[]>(
@@ -229,10 +226,6 @@ export function App() {
     useState(false);
   const [isSavingHouseholdSettings, setIsSavingHouseholdSettings] =
     useState(false);
-
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
-    null,
-  );
 
   const [quarantineMessages, setQuarantineMessages] = useState<
     QuarantineMessage[]
@@ -266,20 +259,14 @@ export function App() {
     INITIAL_RULE_FORM_STATE,
   );
 
-  const [isLoadingInbox, setIsLoadingInbox] = useState(false);
   const [isLoadingQuarantine, setIsLoadingQuarantine] = useState(false);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
-  const [isSavingMessage, setIsSavingMessage] = useState(false);
   const [isReviewingQuarantine, setIsReviewingQuarantine] = useState(false);
   const [isSavingMember, setIsSavingMember] = useState(false);
   const [isSavingInvitation, setIsSavingInvitation] = useState(false);
   const [isSavingProviderConfiguration, setIsSavingProviderConfiguration] =
     useState(false);
 
-  const [messagesNextBefore, setMessagesNextBefore] = useState<string | null>(
-    null,
-  );
-  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const [quarantineNextBefore, setQuarantineNextBefore] = useState<
     string | null
   >(null);
@@ -328,6 +315,17 @@ export function App() {
   const isOwner = currentHousehold?.role === "owner";
   const layoutHousehold = currentHousehold ?? defaultHousehold;
   const layoutIsOwner = layoutHousehold?.role === "owner";
+  const queryClient = useQueryClient();
+  const providersQuery = useProviderSummaries(
+    isAuthenticated && currentHousehold ? currentHousehold.slug : null,
+  );
+  const providers = providersQuery.data ?? EMPTY_PROVIDERS;
+  const invalidateInbox = useCallback(async () => {
+    if (!currentHousehold) return;
+    await queryClient.invalidateQueries({
+      queryKey: inboxKeys.all(currentHousehold.slug),
+    });
+  }, [currentHousehold, queryClient]);
   const getHouseholdDestination = useCallback(
     (household: HouseholdSummary) => {
       switch (activeView) {
@@ -959,13 +957,9 @@ export function App() {
 
   useEffect(() => {
     if (!isAuthenticated || !currentHousehold) {
-      setProviders([]);
-      setMessages([]);
       setQuarantineMessages([]);
       setMembers([]);
       setProviderOptions([]);
-      setSelectedProviderKey(null);
-      setSelectedMessageId(null);
       setSelectedQuarantineId(null);
       setSelectedMemberId(null);
       setSelectedProviderId(null);
@@ -978,113 +972,17 @@ export function App() {
       setSenderRules([]);
       setProviderFormState(INITIAL_PROVIDER_FORM_STATE);
       setRuleFormState(INITIAL_RULE_FORM_STATE);
-      return;
     }
+  }, [currentHousehold, isAuthenticated]);
 
-    let cancelled = false;
-
-    const loadProviders = async () => {
-      setIsLoadingInbox(true);
-      setViewError(null);
-
-      try {
-        const response = await fetchJson<{ providers: ProviderSummary[] }>(
-          householdApiPath("/inbox/providers"),
-        );
-
-        if (cancelled) return;
-
-        setProviders(response.providers);
-        setReleaseProviderKey((current) => {
-          if (
-            current &&
-            response.providers.some((p) => p.provider_key === current)
-          ) {
-            return current;
-          }
-          return response.providers[0]?.provider_key ?? "";
-        });
-        setSelectedProviderKey((current) => {
-          if (
-            current &&
-            response.providers.some((p) => p.provider_key === current)
-          ) {
-            return current;
-          }
-          return response.providers[0]?.provider_key ?? null;
-        });
-      } catch (error) {
-        if (!cancelled) {
-          setViewError(
-            error instanceof Error ? error.message : "Unable to load providers",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingInbox(false);
-        }
-      }
-    };
-
-    void loadProviders();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentHousehold, householdApiPath, isAuthenticated]);
-
+  // Quarantine's "release to" picker defaults to the first service.
   useEffect(() => {
-    if (!isAuthenticated || !currentHousehold || !selectedProviderKey) {
-      setMessages([]);
-      setSelectedMessageId(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadMessages = async () => {
-      setIsLoadingInbox(true);
-      setViewError(null);
-
-      try {
-        const response = await fetchJson<ProviderMessagesResponse>(
-          householdApiPath(`/inbox/providers/${selectedProviderKey}?limit=50`),
-        );
-
-        if (cancelled) return;
-
-        setMessages(response.messages);
-        setMessagesNextBefore(response.page?.nextBefore ?? null);
-        setSelectedMessageId((current) => {
-          if (current && response.messages.some((m) => m.id === current)) {
-            return current;
-          }
-          return response.messages[0]?.id ?? null;
-        });
-      } catch (error) {
-        if (!cancelled) {
-          setViewError(
-            error instanceof Error ? error.message : "Unable to load messages",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingInbox(false);
-        }
-      }
-    };
-
-    void loadMessages();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    currentHousehold,
-    householdApiPath,
-    isAuthenticated,
-    selectedProviderKey,
-  ]);
+    setReleaseProviderKey((current) =>
+      current && providers.some((p) => p.provider_key === current)
+        ? current
+        : (providers[0]?.provider_key ?? ""),
+    );
+  }, [providers]);
 
   useEffect(() => {
     if (
@@ -1303,53 +1201,6 @@ export function App() {
     isOwner,
   ]);
 
-  async function refreshProviders() {
-    if (!isAuthenticated || !currentHousehold) return;
-    const response = await fetchJson<{ providers: ProviderSummary[] }>(
-      householdApiPath("/inbox/providers"),
-    );
-    setProviders(response.providers);
-    setReleaseProviderKey((current) => {
-      if (
-        current &&
-        response.providers.some((p) => p.provider_key === current)
-      ) {
-        return current;
-      }
-      return response.providers[0]?.provider_key ?? "";
-    });
-  }
-
-  async function loadOlderMessages() {
-    if (!messagesNextBefore || !selectedProviderKey || isLoadingOlderMessages) {
-      return;
-    }
-    setIsLoadingOlderMessages(true);
-    try {
-      const response = await fetchJson<ProviderMessagesResponse>(
-        householdApiPath(
-          `/inbox/providers/${selectedProviderKey}?limit=50&before=${encodeURIComponent(messagesNextBefore)}`,
-        ),
-      );
-      setMessages((current) => {
-        const seen = new Set(current.map((m) => m.id));
-        return [
-          ...current,
-          ...response.messages.filter((m) => !seen.has(m.id)),
-        ];
-      });
-      setMessagesNextBefore(response.page?.nextBefore ?? null);
-    } catch (error) {
-      setViewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load older messages",
-      );
-    } finally {
-      setIsLoadingOlderMessages(false);
-    }
-  }
-
   async function loadOlderQuarantine() {
     if (!quarantineNextBefore || isLoadingOlderQuarantine) {
       return;
@@ -1456,40 +1307,6 @@ export function App() {
     await refetch();
   }
 
-  async function handleStatusChange(nextStatus: InboxMessage["status"]) {
-    if (!selectedMessageId) return;
-
-    setIsSavingMessage(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const response = await fetchJson<{ message: InboxMessage }>(
-        householdApiPath(`/inbox/messages/${selectedMessageId}/status`),
-        {
-          method: "PATCH",
-          body: JSON.stringify({ status: nextStatus }),
-        },
-      );
-
-      setMessages((current) =>
-        current.map((m) =>
-          m.id === response.message.id ? response.message : m,
-        ),
-      );
-      setStatusMessage(`Marked message as ${nextStatus}.`);
-      await refreshProviders();
-    } catch (error) {
-      setViewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to update the message status",
-      );
-    } finally {
-      setIsSavingMessage(false);
-    }
-  }
-
   async function handleQuarantineReview(
     action: "dismiss" | "release",
   ): Promise<boolean> {
@@ -1518,7 +1335,7 @@ export function App() {
           : "Quarantined message dismissed.",
       );
 
-      await Promise.all([refreshQuarantine(), refreshProviders()]);
+      await Promise.all([refreshQuarantine(), invalidateInbox()]);
       return true;
     } catch (error) {
       setViewError(
@@ -1739,7 +1556,7 @@ export function App() {
 
       setStatusMessage(statusMessage);
       await refreshMembers();
-      await refreshProviders();
+      await invalidateInbox();
     } catch (error) {
       setViewError(
         error instanceof Error
@@ -1770,7 +1587,7 @@ export function App() {
       setStatusMessage("Provider created.");
       await Promise.all([
         refreshProviderConfigurations(),
-        refreshProviders(),
+        invalidateInbox(),
         refreshMembers(),
       ]);
       return true;
@@ -1803,7 +1620,7 @@ export function App() {
       setStatusMessage("Provider updated.");
       await Promise.all([
         refreshProviderConfigurations(),
-        refreshProviders(),
+        invalidateInbox(),
         refreshMembers(),
       ]);
       return true;
@@ -1837,7 +1654,7 @@ export function App() {
       setStatusMessage("Provider deleted.");
       await Promise.all([
         refreshProviderConfigurations(),
-        refreshProviders(),
+        invalidateInbox(),
         refreshMembers(),
       ]);
       return true;
@@ -1875,7 +1692,7 @@ export function App() {
       setStatusMessage("Sender rule created.");
       await Promise.all([
         refreshProviderConfigurations(),
-        refreshProviders(),
+        invalidateInbox(),
         refreshMembers(),
       ]);
       return true;
@@ -1908,7 +1725,7 @@ export function App() {
       setStatusMessage("Sender rule updated.");
       await Promise.all([
         refreshProviderConfigurations(),
-        refreshProviders(),
+        invalidateInbox(),
         refreshMembers(),
       ]);
       return true;
@@ -1944,7 +1761,7 @@ export function App() {
       setStatusMessage("Sender rule deleted.");
       await Promise.all([
         refreshProviderConfigurations(),
-        refreshProviders(),
+        invalidateInbox(),
         refreshMembers(),
       ]);
       return true;
@@ -2122,19 +1939,20 @@ export function App() {
           <Route
             path="/:slug/inbox"
             element={
-              <InboxView
-                providers={providers}
-                selectedProviderKey={selectedProviderKey}
-                onSelectProvider={setSelectedProviderKey}
-                messages={messages}
-                selectedMessageId={selectedMessageId}
-                onSelectMessage={setSelectedMessageId}
-                isLoadingInbox={isLoadingInbox}
-                isSavingMessage={isSavingMessage}
-                onStatusChange={handleStatusChange}
-                hasOlderMessages={messagesNextBefore !== null}
-                isLoadingOlderMessages={isLoadingOlderMessages}
-                onLoadOlderMessages={loadOlderMessages}
+              <InboxPage
+                slug={layoutHousehold.slug}
+                householdName={layoutHousehold.displayName}
+                isOwner={layoutIsOwner}
+              />
+            }
+          />
+          <Route
+            path="/:slug/inbox/:providerKey"
+            element={
+              <InboxPage
+                slug={layoutHousehold.slug}
+                householdName={layoutHousehold.displayName}
+                isOwner={layoutIsOwner}
               />
             }
           />

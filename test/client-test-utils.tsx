@@ -9,11 +9,19 @@
  * static-markup tests stay untouched.
  */
 import { CssBaseline, ThemeProvider } from "@mui/material";
-import { type RenderOptions, render } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, type RenderOptions, render } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { afterEach } from "vitest";
 
 import { ColorModeContext, getTheme } from "../src/client/theme";
+
+// Vitest has no global afterEach here, so Testing Library cannot auto-clean;
+// unmount between tests ourselves or renders pile up in the same document.
+afterEach(() => {
+  cleanup();
+});
 
 export * from "@testing-library/react";
 export { default as userEvent } from "@testing-library/user-event";
@@ -22,6 +30,16 @@ interface RenderClientOptions extends Omit<RenderOptions, "wrapper"> {
   /** Initial router entries; defaults to the inbox of a household "home". */
   initialEntries?: string[];
   mode?: "light" | "dark";
+  /** Supply a client to inspect/prime the cache; defaults to a fresh one with retries off. */
+  queryClient?: QueryClient;
+}
+
+export function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: Number.POSITIVE_INFINITY },
+    },
+  });
 }
 
 /** Render a client component inside the theme + router providers the app uses. */
@@ -30,19 +48,22 @@ export function renderClient(
   {
     initialEntries = ["/home/inbox"],
     mode = "light",
+    queryClient = createTestQueryClient(),
     ...options
   }: RenderClientOptions = {},
 ) {
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <MemoryRouter initialEntries={initialEntries}>
-        <ColorModeContext.Provider value={{ toggleColorMode: () => {} }}>
-          <ThemeProvider theme={getTheme(mode)}>
-            <CssBaseline />
-            {children}
-          </ThemeProvider>
-        </ColorModeContext.Provider>
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={initialEntries}>
+          <ColorModeContext.Provider value={{ toggleColorMode: () => {} }}>
+            <ThemeProvider theme={getTheme(mode)}>
+              <CssBaseline />
+              {children}
+            </ThemeProvider>
+          </ColorModeContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>
     );
   }
 

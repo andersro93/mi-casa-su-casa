@@ -24,6 +24,10 @@ export type ProviderSummary = {
   message_count: number;
   new_count: number;
   latest_received_at: string | null;
+  latest_message_id: string | null;
+  latest_subject: string | null;
+  latest_code: string | null;
+  latest_status: InboxMessage["status"] | null;
 };
 
 export type InboxMessage = {
