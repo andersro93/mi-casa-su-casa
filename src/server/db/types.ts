@@ -60,6 +60,11 @@ export type ProviderSummaryRow = {
   message_count: number;
   new_count: number;
   latest_received_at: string | null;
+  /** Newest message for the provider, so the inbox can show the latest code without a second request. */
+  latest_message_id: string | null;
+  latest_subject: string | null;
+  latest_code: string | null;
+  latest_status: MessageStatus | null;
 };
 
 export type QuarantineMessageRow = {

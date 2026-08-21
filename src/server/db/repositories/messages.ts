@@ -197,7 +197,11 @@ export async function listProviderSummariesForUser(
             providers.display_name,
             CAST(COUNT(messages.id) AS INTEGER) AS message_count,
             CAST(COALESCE(SUM(CASE WHEN messages.status = 'new' THEN 1 ELSE 0 END), 0) AS INTEGER) AS new_count,
-            MAX(messages.received_at) AS latest_received_at
+            MAX(messages.received_at) AS latest_received_at,
+            latest.id AS latest_message_id,
+            latest.subject AS latest_subject,
+            latest.extracted_code AS latest_code,
+            latest.status AS latest_status
     FROM providers
     INNER JOIN households ON households.id = providers.household_id
     INNER JOIN household_memberships
@@ -209,9 +213,17 @@ export async function listProviderSummariesForUser(
     LEFT JOIN messages
       ON messages.provider_id = providers.id
       AND messages.household_id = providers.household_id
+    LEFT JOIN messages AS latest
+      ON latest.id = (
+        SELECT newest.id FROM messages AS newest
+        WHERE newest.provider_id = providers.id AND newest.household_id = providers.household_id
+        ORDER BY newest.received_at DESC, newest.id DESC
+        LIMIT 1
+      )
     WHERE providers.household_id = ${householdId}
       AND (household_memberships.role = 'owner' OR household_member_provider_access.id IS NOT NULL)
-    GROUP BY households.slug, providers.id, providers.provider_key, providers.display_name, providers.created_at
+    GROUP BY households.slug, providers.id, providers.provider_key, providers.display_name, providers.created_at,
+             latest.id, latest.subject, latest.extracted_code, latest.status
     ORDER BY COALESCE(MAX(messages.received_at), providers.created_at) DESC, providers.display_name ASC
   `);
 

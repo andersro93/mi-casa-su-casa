@@ -63,6 +63,7 @@
     "@mui/icons-material": "^9.3.1",
     "@mui/material": "^9.3.1",
     "@mui/x-data-grid": "^9.11.0",
+    "@tanstack/react-query": "^5.101.4",
     "@types/qrcode": "^1.5.6",
     "better-auth": "1.7.1",
     "drizzle-orm": "^0.45.2",

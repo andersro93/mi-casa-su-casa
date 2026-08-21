@@ -198,3 +198,19 @@ export function formatRelativeTime(
     dateStyle: "medium",
   }).format(date);
 }
+
+/** Split "Netflix <info@account.netflix.com>" into a display name and address. */
+export function parseSender(fromHeader: string | null | undefined): {
+  name: string;
+  address: string | null;
+} {
+  const raw = (fromHeader ?? "").trim();
+  if (!raw) return { name: "Unknown sender", address: null };
+  const match = raw.match(/^"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+  if (match) {
+    const name = match[1].trim();
+    const address = match[2].trim();
+    return { name: name || address, address };
+  }
+  return { name: raw, address: raw.includes("@") ? raw : null };
+}

@@ -579,6 +579,10 @@ vi.mock("../src/server/db/repositories/messages", () => ({
           (message) => message.status === "new",
         ).length,
         latest_received_at: providerMessages[0]?.received_at ?? null,
+        latest_message_id: providerMessages[0]?.id ?? null,
+        latest_subject: providerMessages[0]?.subject ?? null,
+        latest_code: providerMessages[0]?.extracted_code ?? null,
+        latest_status: providerMessages[0]?.status ?? null,
       };
     });
   },
@@ -1043,6 +1047,10 @@ describe("worker routes", () => {
           message_count: 1,
           new_count: 1,
           latest_received_at: "2026-05-10T12:00:00.000Z",
+          latest_message_id: "msg-home-1",
+          latest_subject: "Your code",
+          latest_code: "123456",
+          latest_status: "new",
         },
       ],
     });
