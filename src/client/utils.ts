@@ -158,3 +158,43 @@ export function stringAvatar(name: string) {
     children: initials || "?",
   };
 }
+
+/**
+ * Human relative time for message ages: "just now", "5 min ago", "2 hr ago",
+ * "yesterday 10:44", then a short date. Codes are only useful for minutes,
+ * so the near end of the scale is the precise one.
+ */
+export function formatRelativeTime(
+  value: string,
+  now: number = Date.now(),
+): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const diffSeconds = Math.round((now - date.getTime()) / 1000);
+  if (diffSeconds < 45) return "just now";
+  const minutes = Math.round(diffSeconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const time = new Intl.DateTimeFormat(undefined, {
+    timeStyle: "short",
+  }).format(date);
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfYesterday = startOfToday.getTime() - 86_400_000;
+  if (date.getTime() >= startOfYesterday) return `yesterday ${time}`;
+  const days = Math.round(
+    (startOfToday.getTime() - date.getTime()) / 86_400_000,
+  );
+  if (days < 7) {
+    const weekday = new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+    }).format(date);
+    return `${weekday} ${time}`;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  }).format(date);
+}

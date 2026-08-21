@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Dialog,
   DialogActions,
@@ -6,7 +7,7 @@ import {
   DialogTitle,
   Typography,
 } from "@mui/material";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -18,7 +19,12 @@ interface ConfirmDialogProps {
   confirmColor?: "primary" | "error" | "warning" | "info" | "success";
   confirmVariant?: "contained" | "outlined" | "text";
   isLoading?: boolean;
+  /** Label shown on the confirm button while `isLoading`, e.g. "Removing…". */
+  loadingLabel?: string;
   confirmDisabled?: boolean;
+  cancelLabel?: string;
+  /** Shown inside the dialog so a failed action is visible where the user is. */
+  error?: string | null;
 }
 
 export function ConfirmDialog({
@@ -31,17 +37,25 @@ export function ConfirmDialog({
   confirmColor = "primary",
   confirmVariant = "contained",
   isLoading = false,
+  loadingLabel = "Working…",
   confirmDisabled = false,
+  cancelLabel = "Cancel",
+  error = null,
 }: ConfirmDialogProps) {
+  const titleId = useId();
+  const descriptionId = useId();
+
   return (
     <Dialog
       open={open}
       onClose={isLoading ? undefined : onClose}
       fullWidth
       maxWidth="xs"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
     >
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
+      <DialogTitle id={titleId}>{title}</DialogTitle>
+      <DialogContent id={descriptionId}>
         {typeof description === "string" ? (
           <Typography variant="body2" color="text.secondary">
             {description}
@@ -49,10 +63,20 @@ export function ConfirmDialog({
         ) : (
           description
         )}
+        {error ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        ) : null}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 3 }}>
-        <Button onClick={onClose} disabled={isLoading}>
-          Cancel
+        <Button
+          onClick={onClose}
+          disabled={isLoading}
+          variant="outlined"
+          color="inherit"
+        >
+          {cancelLabel}
         </Button>
         <Button
           onClick={() => void onConfirm()}
@@ -60,7 +84,7 @@ export function ConfirmDialog({
           variant={confirmVariant}
           disabled={isLoading || confirmDisabled}
         >
-          {isLoading ? "Working…" : confirmLabel}
+          {isLoading ? loadingLabel : confirmLabel}
         </Button>
       </DialogActions>
     </Dialog>
