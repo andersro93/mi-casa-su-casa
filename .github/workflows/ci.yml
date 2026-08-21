@@ -24,6 +24,36 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # All pull requests deploy to one shared preview D1. Two open PRs that
+      # both add "0012_*.sql" with different names would be applied in PR
+      # order and never match main, so refuse migration numbers that already
+      # exist on main under another name, and require the branch to continue
+      # main's sequence.
+      - name: Check migration numbering against main
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin main
+          mapfile -t main_files < <(git ls-tree --name-only origin/main migrations/ | xargs -n1 basename | grep -E '^[0-9]{4}_.*\.sql$' | sort)
+          mapfile -t branch_files < <(ls migrations | grep -E '^[0-9]{4}_.*\.sql$' | sort)
+          declare -A main_by_number
+          for f in "${main_files[@]}"; do main_by_number["${f:0:4}"]="$f"; done
+          status=0
+          for f in "${branch_files[@]}"; do
+            n="${f:0:4}"
+            if [[ -n "${main_by_number[$n]:-}" && "${main_by_number[$n]}" != "$f" ]]; then
+              echo "::error::migrations/$f reuses number $n which main already has as ${main_by_number[$n]}; renumber it"
+              status=1
+            fi
+          done
+          for f in "${main_files[@]}"; do
+            if [[ ! -f "migrations/$f" ]]; then
+              echo "::error::migrations/$f exists on main but not on this branch; rebase onto main"
+              status=1
+            fi
+          done
+          exit $status
+
       - name: Lint and format check
         run: npm run check
 
