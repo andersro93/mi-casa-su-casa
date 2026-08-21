@@ -122,11 +122,54 @@ export async function insertQuarantineMessage(
   return { id, receivedAt, deleteAfter };
 }
 
+export const DEFAULT_PAGE_SIZE = 50;
+export const MAX_PAGE_SIZE = 200;
+
+export type PageOptions = {
+  /** Maximum rows to return (1..MAX_PAGE_SIZE). */
+  limit?: number;
+  /** Only rows received strictly before this ISO timestamp (keyset cursor). */
+  before?: string | null;
+};
+
+export type Page<T> = {
+  items: T[];
+  /** Cursor for the next (older) page, or null when this was the last page. */
+  nextBefore: string | null;
+};
+
+export function normalizePageOptions(options: PageOptions = {}) {
+  const requested = Number(options.limit ?? DEFAULT_PAGE_SIZE);
+  const limit = Number.isFinite(requested)
+    ? Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(requested)))
+    : DEFAULT_PAGE_SIZE;
+  const before =
+    options.before && !Number.isNaN(Date.parse(options.before))
+      ? new Date(options.before).toISOString()
+      : null;
+  return { limit, before };
+}
+
+function toPage<T extends { received_at: string }>(
+  rows: T[],
+  limit: number,
+): Page<T> {
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+  return {
+    items,
+    nextBefore: hasMore ? (items[items.length - 1]?.received_at ?? null) : null,
+  };
+}
+
 export async function listMessagesForProvider(
   db: D1Database,
   householdId: string,
   providerKey: string,
-): Promise<InboxMessageRow[]> {
+  options: PageOptions = {},
+): Promise<Page<InboxMessageRow>> {
+  const { limit, before } = normalizePageOptions(options);
+  // Fetch one extra row to know whether an older page exists.
   const result = await dbForDatabase(db).all<InboxMessageRow>(sql`
     SELECT messages.id, households.slug AS household_slug, providers.provider_key, providers.display_name AS provider_display_name,
             messages.subject, messages.from_header, messages.text_body,
@@ -135,10 +178,12 @@ export async function listMessagesForProvider(
     INNER JOIN providers ON providers.id = messages.provider_id
     INNER JOIN households ON households.id = messages.household_id
     WHERE messages.household_id = ${householdId} AND providers.provider_key = ${providerKey}
-    ORDER BY messages.received_at DESC
+      AND (${before} IS NULL OR messages.received_at < ${before})
+    ORDER BY messages.received_at DESC, messages.id DESC
+    LIMIT ${limit + 1}
   `);
 
-  return result;
+  return toPage(result, limit);
 }
 
 export async function listProviderSummariesForUser(
@@ -188,7 +233,9 @@ export async function countUnreviewedQuarantine(
 export async function listQuarantineMessages(
   db: D1Database,
   householdId: string,
-): Promise<QuarantineMessageRow[]> {
+  options: PageOptions = {},
+): Promise<Page<QuarantineMessageRow>> {
+  const { limit, before } = normalizePageOptions(options);
   const result = await dbForDatabase(db).all<QuarantineMessageRow>(sql`
     SELECT quarantine_messages.id,
             households.slug AS household_slug,
@@ -205,10 +252,12 @@ export async function listQuarantineMessages(
     FROM quarantine_messages
     INNER JOIN households ON households.id = quarantine_messages.household_id
     WHERE quarantine_messages.household_id = ${householdId} AND reviewed_at IS NULL
-    ORDER BY received_at DESC
+      AND (${before} IS NULL OR received_at < ${before})
+    ORDER BY received_at DESC, quarantine_messages.id DESC
+    LIMIT ${limit + 1}
   `);
 
-  return result;
+  return toPage(result, limit);
 }
 
 export async function updateMessageStatus(

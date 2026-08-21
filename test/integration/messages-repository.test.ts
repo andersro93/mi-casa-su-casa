@@ -48,7 +48,8 @@ describe("messages repository (D1)", () => {
       reason: "matched",
     });
 
-    const rows = await listMessagesForProvider(db, household.id, "netflix");
+    const rows = (await listMessagesForProvider(db, household.id, "netflix"))
+      .items;
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       household_slug: "casa",
@@ -136,11 +137,13 @@ describe("messages repository (D1)", () => {
       },
     );
 
-    expect(await listQuarantineMessages(db, household.id)).toHaveLength(2);
+    expect((await listQuarantineMessages(db, household.id)).items).toHaveLength(
+      2,
+    );
 
     await purgeExpired(db, new Date().toISOString());
 
-    const remaining = await listQuarantineMessages(db, household.id);
+    const remaining = (await listQuarantineMessages(db, household.id)).items;
     expect(remaining).toHaveLength(1);
   });
 });
@@ -188,7 +191,8 @@ describe("received_at is server time, not the Date: header (D1)", () => {
       new Date("2026-05-10T12:05:00Z"),
     );
 
-    const rows = await listMessagesForProvider(db, household.id, "netflix");
+    const rows = (await listMessagesForProvider(db, household.id, "netflix"))
+      .items;
     expect(rows.map((row) => row.received_at)).toEqual([
       "2026-05-10T12:05:00.000Z",
       "2026-05-10T12:00:00.000Z",

@@ -11,6 +11,7 @@ import {
   listMessagesForProvider,
   listProviderSummariesForUser,
   listQuarantineMessages,
+  normalizePageOptions,
   reviewQuarantineMessage,
   updateMessageStatus,
 } from "../db/repositories/messages";
@@ -80,17 +81,23 @@ inboxRoutes.get("/:slug/providers/:providerKey", async (c) => {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const messages = await listMessagesForProvider(
+  const page = normalizePageOptions({
+    limit: Number(c.req.query("limit") ?? Number.NaN),
+    before: c.req.query("before") ?? null,
+  });
+  const result = await listMessagesForProvider(
     c.env.DB,
     household.id,
     providerKey,
+    page,
   );
   return c.json({
     provider: {
       providerKey: provider.provider_key,
       displayName: provider.display_name,
     },
-    messages,
+    messages: result.items,
+    page: { limit: page.limit, nextBefore: result.nextBefore },
   });
 });
 
@@ -159,8 +166,15 @@ inboxRoutes.get("/:slug/quarantine", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const messages = await listQuarantineMessages(c.env.DB, household.id);
-  return c.json({ messages });
+  const page = normalizePageOptions({
+    limit: Number(c.req.query("limit") ?? Number.NaN),
+    before: c.req.query("before") ?? null,
+  });
+  const result = await listQuarantineMessages(c.env.DB, household.id, page);
+  return c.json({
+    messages: result.items,
+    page: { limit: page.limit, nextBefore: result.nextBefore },
+  });
 });
 
 inboxRoutes.post("/:slug/quarantine/:messageId/review", async (c) => {

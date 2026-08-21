@@ -53,6 +53,7 @@ import type {
   ProviderOption,
   ProviderSummary,
   QuarantineMessage,
+  QuarantineMessagesResponse,
   SenderRule,
   SenderRuleFormState,
   SetupStatus,
@@ -237,6 +238,15 @@ export function App() {
   const [isSavingProviderConfiguration, setIsSavingProviderConfiguration] =
     useState(false);
 
+  const [messagesNextBefore, setMessagesNextBefore] = useState<string | null>(
+    null,
+  );
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
+  const [quarantineNextBefore, setQuarantineNextBefore] = useState<
+    string | null
+  >(null);
+  const [isLoadingOlderQuarantine, setIsLoadingOlderQuarantine] =
+    useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
   const [pendingInviteLink, setPendingInviteLink] = useState<string | null>(
@@ -1000,12 +1010,13 @@ export function App() {
 
       try {
         const response = await fetchJson<ProviderMessagesResponse>(
-          householdApiPath(`/inbox/providers/${selectedProviderKey}`),
+          householdApiPath(`/inbox/providers/${selectedProviderKey}?limit=50`),
         );
 
         if (cancelled) return;
 
         setMessages(response.messages);
+        setMessagesNextBefore(response.page?.nextBefore ?? null);
         setSelectedMessageId((current) => {
           if (current && response.messages.some((m) => m.id === current)) {
             return current;
@@ -1053,13 +1064,14 @@ export function App() {
       setIsLoadingQuarantine(true);
 
       try {
-        const response = await fetchJson<{ messages: QuarantineMessage[] }>(
-          householdApiPath("/inbox/quarantine"),
+        const response = await fetchJson<QuarantineMessagesResponse>(
+          householdApiPath("/inbox/quarantine?limit=50"),
         );
 
         if (cancelled) return;
 
         setQuarantineMessages(response.messages);
+        setQuarantineNextBefore(response.page?.nextBefore ?? null);
         setSelectedQuarantineId((current) => {
           if (current && response.messages.some((m) => m.id === current)) {
             return current;
@@ -1277,12 +1289,73 @@ export function App() {
     });
   }
 
+  async function loadOlderMessages() {
+    if (!messagesNextBefore || !selectedProviderKey || isLoadingOlderMessages) {
+      return;
+    }
+    setIsLoadingOlderMessages(true);
+    try {
+      const response = await fetchJson<ProviderMessagesResponse>(
+        householdApiPath(
+          `/inbox/providers/${selectedProviderKey}?limit=50&before=${encodeURIComponent(messagesNextBefore)}`,
+        ),
+      );
+      setMessages((current) => {
+        const seen = new Set(current.map((m) => m.id));
+        return [
+          ...current,
+          ...response.messages.filter((m) => !seen.has(m.id)),
+        ];
+      });
+      setMessagesNextBefore(response.page?.nextBefore ?? null);
+    } catch (error) {
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load older messages",
+      );
+    } finally {
+      setIsLoadingOlderMessages(false);
+    }
+  }
+
+  async function loadOlderQuarantine() {
+    if (!quarantineNextBefore || isLoadingOlderQuarantine) {
+      return;
+    }
+    setIsLoadingOlderQuarantine(true);
+    try {
+      const response = await fetchJson<QuarantineMessagesResponse>(
+        householdApiPath(
+          `/inbox/quarantine?limit=50&before=${encodeURIComponent(quarantineNextBefore)}`,
+        ),
+      );
+      setQuarantineMessages((current) => {
+        const seen = new Set(current.map((m) => m.id));
+        return [
+          ...current,
+          ...response.messages.filter((m) => !seen.has(m.id)),
+        ];
+      });
+      setQuarantineNextBefore(response.page?.nextBefore ?? null);
+    } catch (error) {
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load older quarantined messages",
+      );
+    } finally {
+      setIsLoadingOlderQuarantine(false);
+    }
+  }
+
   async function refreshQuarantine() {
     if (!isAuthenticated || !isOwner || !currentHousehold) return;
-    const response = await fetchJson<{ messages: QuarantineMessage[] }>(
-      householdApiPath("/inbox/quarantine"),
+    const response = await fetchJson<QuarantineMessagesResponse>(
+      householdApiPath("/inbox/quarantine?limit=50"),
     );
     setQuarantineMessages(response.messages);
+    setQuarantineNextBefore(response.page?.nextBefore ?? null);
     setSelectedQuarantineId((current) => {
       if (current && response.messages.some((m) => m.id === current)) {
         return current;
@@ -2024,6 +2097,9 @@ export function App() {
               isLoadingInbox={isLoadingInbox}
               isSavingMessage={isSavingMessage}
               onStatusChange={handleStatusChange}
+              hasOlderMessages={messagesNextBefore !== null}
+              isLoadingOlderMessages={isLoadingOlderMessages}
+              onLoadOlderMessages={loadOlderMessages}
             />
           }
         />
@@ -2095,6 +2171,9 @@ export function App() {
                 onReleaseProviderKeyChange={setReleaseProviderKey}
                 isReviewingQuarantine={isReviewingQuarantine}
                 onQuarantineReview={handleQuarantineReview}
+                hasOlderMessages={quarantineNextBefore !== null}
+                isLoadingOlderMessages={isLoadingOlderQuarantine}
+                onLoadOlderMessages={loadOlderQuarantine}
               />
             ) : (
               <Navigate

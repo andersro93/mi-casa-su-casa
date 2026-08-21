@@ -145,9 +145,11 @@ describe("quarantine release", () => {
 
     expect(result?.releasedMessage).toMatchObject({ provider_key: "netflix" });
     expect(await count("messages")).toBe(1);
-    expect(await listQuarantineMessages(db, household.id)).toHaveLength(0);
+    expect((await listQuarantineMessages(db, household.id)).items).toHaveLength(
+      0,
+    );
     expect(
-      await listMessagesForProvider(db, household.id, "netflix"),
+      (await listMessagesForProvider(db, household.id, "netflix")).items,
     ).toHaveLength(1);
   });
 });

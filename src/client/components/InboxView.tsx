@@ -40,6 +40,9 @@ interface InboxViewProps {
   isLoadingInbox: boolean;
   isSavingMessage: boolean;
   onStatusChange: (status: InboxMessage["status"]) => void;
+  hasOlderMessages?: boolean;
+  isLoadingOlderMessages?: boolean;
+  onLoadOlderMessages?: () => void;
 }
 
 export function InboxView({
@@ -52,6 +55,9 @@ export function InboxView({
   isLoadingInbox,
   isSavingMessage,
   onStatusChange,
+  hasOlderMessages = false,
+  isLoadingOlderMessages = false,
+  onLoadOlderMessages,
 }: InboxViewProps) {
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
@@ -353,6 +359,19 @@ export function InboxView({
                   Select another provider or wait for the next verification
                   email.
                 </Typography>
+              </Box>
+            )}
+
+            {hasOlderMessages && (
+              <Box sx={{ p: 1.5, textAlign: "center" }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  disabled={isLoadingOlderMessages}
+                  onClick={onLoadOlderMessages}
+                >
+                  {isLoadingOlderMessages ? "Loading…" : "Load older messages"}
+                </Button>
               </Box>
             )}
           </List>

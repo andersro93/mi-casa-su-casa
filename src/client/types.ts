@@ -190,12 +190,24 @@ export type InvitationAcceptanceState = {
   password: string;
 };
 
+export type PageInfo = {
+  limit: number;
+  /** Cursor for older items, null when everything has been loaded. */
+  nextBefore: string | null;
+};
+
 export type ProviderMessagesResponse = {
   provider: {
     providerKey: string;
     displayName: string;
   };
   messages: InboxMessage[];
+  page: PageInfo;
+};
+
+export type QuarantineMessagesResponse = {
+  messages: QuarantineMessage[];
+  page: PageInfo;
 };
 
 export type LoginState = {
