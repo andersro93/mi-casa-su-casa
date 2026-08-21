@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
+import { registerServiceWorker } from "./service-worker";
 import { ColorModeContext, getTheme } from "./theme";
 
 function AppWrapper() {
@@ -47,3 +48,7 @@ createRoot(container).render(
     <AppWrapper />
   </StrictMode>,
 );
+
+if (import.meta.env.PROD) {
+  registerServiceWorker();
+}

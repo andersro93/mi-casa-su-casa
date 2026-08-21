@@ -55,6 +55,7 @@ describe("SettingsView", () => {
         onRevokeSession={vi.fn()}
         onRevokeOtherSessions={vi.fn()}
         isSaving={false}
+        install={{ status: "manual", onInstall: vi.fn() }}
       />,
     );
 
@@ -111,6 +112,7 @@ describe("SettingsView", () => {
         onRevokeSession={vi.fn()}
         onRevokeOtherSessions={vi.fn()}
         isSaving={false}
+        install={{ status: "manual", onInstall: vi.fn() }}
       />,
     );
 
@@ -164,6 +166,7 @@ describe("SettingsView", () => {
         onRevokeSession={vi.fn()}
         onRevokeOtherSessions={vi.fn()}
         isSaving={false}
+        install={{ status: "manual", onInstall: vi.fn() }}
       />,
     );
 
@@ -172,5 +175,72 @@ describe("SettingsView", () => {
     expect(html).toContain("aaaa-bbbb");
     expect(html).toContain("Verify and enable");
     expect(html).not.toContain(">Enable 2FA<");
+  });
+});
+
+describe("SettingsView install card", () => {
+  function render(install: Parameters<typeof SettingsView>[0]["install"]) {
+    return renderToStaticMarkup(
+      <SettingsView
+        profile={{
+          id: "user-1",
+          email: "member@example.com",
+          name: "Member Person",
+          image: null,
+          role: "user",
+          twoFactorEnabled: false,
+          households: [],
+        }}
+        sessions={[]}
+        isLoading={false}
+        error={null}
+        formState={{
+          name: "Member Person",
+          image: "",
+          currentPassword: "",
+          newPassword: "",
+          forgotPasswordEmail: "member@example.com",
+          twoFactorPassword: "",
+          twoFactorCode: "",
+          twoFactorBackupCode: "",
+          passkeyName: "",
+        }}
+        onFormChange={vi.fn()}
+        onUpdateProfile={vi.fn()}
+        onChangePassword={vi.fn()}
+        onRequestPasswordReset={vi.fn()}
+        onEnable2FA={vi.fn()}
+        onDisable2FA={vi.fn()}
+        twoFactorSetup={null}
+        onVerify2FA={vi.fn()}
+        onCancel2FASetup={vi.fn()}
+        onLeaveHousehold={vi.fn()}
+        onAddPasskey={vi.fn()}
+        onRevokeSession={vi.fn()}
+        onRevokeOtherSessions={vi.fn()}
+        isSaving={false}
+        install={install}
+      />,
+    );
+  }
+
+  it("offers an Install button when the browser exposes an install prompt", () => {
+    const html = render({ status: "available", onInstall: vi.fn() });
+    expect(html).toContain("Install the app");
+    expect(html).toContain("Install");
+    expect(html).not.toContain("Add to Home Screen");
+  });
+
+  it("explains Add to Home Screen when no prompt is available (iOS Safari)", () => {
+    const html = render({ status: "manual", onInstall: vi.fn() });
+    expect(html).toContain("Install the app");
+    expect(html).toContain("Add to Home Screen");
+  });
+
+  it("confirms when the app is already running installed", () => {
+    const html = render({ status: "installed", onInstall: vi.fn() });
+    expect(html).toContain("Install the app");
+    expect(html).toContain("installed");
+    expect(html).not.toContain("Add to Home Screen");
   });
 });

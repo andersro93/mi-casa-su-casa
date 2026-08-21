@@ -54,6 +54,13 @@ function createAuth(env: Env, options: { disableSignUp: boolean }) {
         }
       },
     },
+    // Members open the app from a phone home screen; a 7-day session (Better
+    // Auth's default) means a weekly re-login at the worst moment. 2FA,
+    // passkeys and per-session revocation already protect the account.
+    session: {
+      expiresIn: 60 * 60 * 24 * 30, // 30 days
+      updateAge: 60 * 60 * 24, // extend at most once a day
+    },
     user: {
       additionalFields: {
         role: {

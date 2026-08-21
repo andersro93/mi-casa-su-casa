@@ -255,3 +255,12 @@ export type TwoFactorSetup = {
   secret: string | null;
   backupCodes: string[];
 };
+
+/** Whether the app can be installed to the home screen from this browser. */
+export type InstallStatus = "installed" | "available" | "manual";
+
+export interface InstallState {
+  status: InstallStatus;
+  /** Opens the browser's install prompt; no-op unless status is "available". */
+  onInstall: () => void | Promise<void>;
+}

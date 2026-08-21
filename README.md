@@ -29,7 +29,7 @@ Households often share streaming and similar consumer accounts. When those servi
 - **One Worker** (`src/index.ts`)
   - Hono API under `/api/*` (households, inbox, quarantine, admin, invitations, settings, setup, health)
   - Better Auth (email + password, passkeys, TOTP two-factor, password reset) under `/api/auth/*`
-  - React/MUI single-page app served from Workers Static Assets; every request passes through the Worker so security headers apply everywhere
+  - React/MUI single-page app served from Workers Static Assets (installable PWA: `src/client/public/manifest.webmanifest`, `sw.js`, icons); every request passes through the Worker so security headers apply everywhere
   - inbound `email()` handler: parse → authenticate sender (SPF/DKIM/DMARC results) → match sender rules → store or quarantine
   - daily `scheduled()` retention job (30-day purge, invitation expiry)
 - **One D1 database** (hand-written migrations in `migrations/`, Drizzle mirror in `src/server/db/schema.ts`, drift guarded by tests)
@@ -42,6 +42,7 @@ Feature-complete for a household deployment:
 
 - multi-household tenancy with owner/member roles, invitations (email or shareable link), provider-scoped access, member removal and leaving
 - first-run `/setup` with recovery paths, password reset, two-factor authentication with backup codes, passkeys, session management
+- installable home-screen app (PWA manifest + app-shell service worker that never caches API data) with 30-day sliding sessions, so phones stay signed in
 - inbound mail classification with sender authentication, subdomain-aware domain rules, precise one-time-code extraction, quarantine review
 - D1-backed rate limiting, CSRF/CORS hardening, security headers, structured logging, audit log, health endpoints with retention status
 - CI (lint, typecheck, unit + real-D1 integration tests, build), preview deploys per PR, queued production deploy with migrations
