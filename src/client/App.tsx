@@ -1826,6 +1826,7 @@ export function App() {
           element={
             setupStatus?.needsSetup ? (
               <SetupPage
+                emailDomain={setupStatus?.emailDomain ?? null}
                 setupError={setupError}
                 onSetupError={setSetupError}
                 onSetupComplete={async () => {
@@ -1879,6 +1880,7 @@ export function App() {
   if (households.length === 0) {
     return (
       <CreateHouseholdPage
+        emailDomain={setupStatus?.emailDomain ?? null}
         onCreated={(household) => {
           setHouseholds([household]);
           navigate(buildHouseholdPath(household.slug, "/inbox"), {
@@ -1915,6 +1917,7 @@ export function App() {
             path="/new-household"
             element={
               <CreateHouseholdPage
+                emailDomain={setupStatus?.emailDomain ?? null}
                 onCreated={(household) => {
                   setHouseholds((current) => [...current, household]);
                   setStatusMessage(

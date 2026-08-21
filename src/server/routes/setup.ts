@@ -34,12 +34,15 @@ function mapInstallationStatus(
   const isConfigured = Boolean(env.OWNER_EMAIL && env.SETUP_SECRET);
   const needsSetup = isConfigured && row.status !== "complete";
 
-  // Deliberately no owner email here: this endpoint is public.
+  // Deliberately no owner email here: this endpoint is public. The inbox
+  // domain is not secret (every household address ends with it) and lets
+  // the client preview "name@domain" while a household is being named.
   return {
     needsSetup,
     setupLocked: row.status === "complete",
     isConfigured,
     status: row.status,
+    emailDomain: env.EMAIL_DOMAIN?.trim() || null,
   };
 }
 
