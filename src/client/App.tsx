@@ -8,7 +8,14 @@ import {
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
 import QRCode from "qrcode";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import {
   Navigate,
   Route,
@@ -19,16 +26,45 @@ import {
 } from "react-router-dom";
 import { CreateHouseholdPage } from "./components/CreateHouseholdPage";
 import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
-import { HouseholdSettingsView } from "./components/HouseholdSettingsView";
 import { InboxView } from "./components/InboxView";
+
+// Owner-only and rarely-visited views are code-split so the inbox loads fast.
+const HouseholdSettingsView = lazy(() =>
+  import("./components/HouseholdSettingsView").then((m) => ({
+    default: m.HouseholdSettingsView,
+  })),
+);
+const MembersView = lazy(() =>
+  import("./components/MembersView").then((m) => ({ default: m.MembersView })),
+);
+const ProvidersRulesView = lazy(() =>
+  import("./components/ProvidersRulesView").then((m) => ({
+    default: m.ProvidersRulesView,
+  })),
+);
+const QuarantineView = lazy(() =>
+  import("./components/QuarantineView").then((m) => ({
+    default: m.QuarantineView,
+  })),
+);
+const SettingsView = lazy(() =>
+  import("./components/SettingsView").then((m) => ({
+    default: m.SettingsView,
+  })),
+);
+
+function ViewFallback() {
+  return (
+    <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+      <CircularProgress />
+    </Box>
+  );
+}
+
 import { InvitePage } from "./components/InvitePage";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./components/LoginPage";
-import { MembersView } from "./components/MembersView";
-import { ProvidersRulesView } from "./components/ProvidersRulesView";
-import { QuarantineView } from "./components/QuarantineView";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
-import { SettingsView } from "./components/SettingsView";
 import { SetupPage } from "./components/SetupPage";
 import { TwoFactorPage } from "./components/TwoFactorPage";
 import type {
@@ -1106,6 +1142,9 @@ export function App() {
     isOwner,
   ]);
 
+  // Load provider configuration when the view/household changes — not on
+  // every selection change, so an in-progress edit is never overwritten by a
+  // background refetch.
   useEffect(() => {
     if (
       !isAuthenticated ||
@@ -1130,55 +1169,17 @@ export function App() {
 
         setProviderConfigurations(response.providers);
         setSenderRules(response.rules);
-
-        const nextProviderId =
-          selectedProviderId &&
-          response.providers.some(
-            (provider) => provider.id === selectedProviderId,
-          )
-            ? selectedProviderId
-            : (response.providers[0]?.id ?? null);
-
-        setSelectedProviderId(nextProviderId);
-
-        const selectedProvider = response.providers.find(
-          (provider) => provider.id === nextProviderId,
+        // Keep the current selection when it still exists; otherwise pick
+        // the first provider and its first rule.
+        setSelectedProviderId((current) =>
+          current && response.providers.some((p) => p.id === current)
+            ? current
+            : (response.providers[0]?.id ?? null),
         );
-
-        setProviderFormState(
-          selectedProvider
-            ? {
-                providerKey: selectedProvider.provider_key,
-                displayName: selectedProvider.display_name,
-              }
-            : INITIAL_PROVIDER_FORM_STATE,
-        );
-
-        const nextRuleId =
-          selectedRuleId &&
-          response.rules.some((rule) => rule.id === selectedRuleId)
-            ? selectedRuleId
-            : (response.rules.find(
-                (rule) => rule.provider_id === nextProviderId,
-              )?.id ?? null);
-
-        setSelectedRuleId(nextRuleId);
-
-        const selectedRule = response.rules.find(
-          (rule) => rule.id === nextRuleId,
-        );
-
-        setRuleFormState(
-          selectedRule
-            ? {
-                providerId: selectedRule.provider_id,
-                matchType: selectedRule.match_type,
-                matchValue: selectedRule.match_value,
-              }
-            : {
-                ...INITIAL_RULE_FORM_STATE,
-                providerId: nextProviderId ?? "",
-              },
+        setSelectedRuleId((current) =>
+          current && response.rules.some((r) => r.id === current)
+            ? current
+            : null,
         );
       } catch (error) {
         if (!cancelled) {
@@ -1201,10 +1202,38 @@ export function App() {
     isOwner,
     currentHousehold,
     activeView,
-    selectedProviderId,
-    selectedRuleId,
     householdApiPath,
   ]);
+
+  // Derive the edit forms from the selected provider/rule. Runs when the
+  // selection (or the loaded data behind it) changes — never on its own.
+  useEffect(() => {
+    const selectedProvider = providerConfigurations.find(
+      (provider) => provider.id === selectedProviderId,
+    );
+    setProviderFormState(
+      selectedProvider
+        ? {
+            providerKey: selectedProvider.provider_key,
+            displayName: selectedProvider.display_name,
+          }
+        : INITIAL_PROVIDER_FORM_STATE,
+    );
+
+    const selectedRule = senderRules.find((rule) => rule.id === selectedRuleId);
+    setRuleFormState(
+      selectedRule
+        ? {
+            providerId: selectedRule.provider_id,
+            matchType: selectedRule.match_type,
+            matchValue: selectedRule.match_value,
+          }
+        : {
+            ...INITIAL_RULE_FORM_STATE,
+            providerId: selectedProviderId ?? "",
+          },
+    );
+  }, [providerConfigurations, senderRules, selectedProviderId, selectedRuleId]);
 
   useEffect(() => {
     if (
@@ -2057,265 +2086,270 @@ export function App() {
       onCreateHousehold={handleCreateHousehold}
       onLogout={handleLogout}
     >
-      <Routes>
-        <Route
-          path="/invite/:token"
-          element={<InviteRoute onAccepted={handleInviteAccepted} />}
-        />
-        <Route
-          path="/new-household"
-          element={
-            <CreateHouseholdPage
-              onCreated={(household) => {
-                setHouseholds((current) => [...current, household]);
-                setStatusMessage(
-                  `Household "${household.displayName}" created.`,
-                );
-                navigate(buildHouseholdPath(household.slug, "/inbox"), {
-                  replace: true,
-                });
-              }}
-            />
-          }
-        />
-        <Route
-          path="/"
-          element={
-            <Navigate
-              to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
-              replace
-            />
-          }
-        />
-        <Route
-          path="/:slug/inbox"
-          element={
-            <InboxView
-              providers={providers}
-              selectedProviderKey={selectedProviderKey}
-              onSelectProvider={setSelectedProviderKey}
-              messages={messages}
-              selectedMessageId={selectedMessageId}
-              onSelectMessage={setSelectedMessageId}
-              isLoadingInbox={isLoadingInbox}
-              isSavingMessage={isSavingMessage}
-              onStatusChange={handleStatusChange}
-              hasOlderMessages={messagesNextBefore !== null}
-              isLoadingOlderMessages={isLoadingOlderMessages}
-              onLoadOlderMessages={loadOlderMessages}
-            />
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <SettingsView
-              profile={profile}
-              sessions={settingsSessions}
-              isLoading={isLoadingSettings}
-              error={viewError}
-              formState={settingsFormState}
-              onFormChange={(update) =>
-                setSettingsFormState((current) => ({ ...current, ...update }))
-              }
-              onUpdateProfile={handleUpdateProfile}
-              onChangePassword={handleChangePassword}
-              onRequestPasswordReset={handleRequestPasswordReset}
-              onEnable2FA={handleEnable2FA}
-              onDisable2FA={handleDisable2FA}
-              twoFactorSetup={twoFactorSetup}
-              onVerify2FA={handleVerify2FA}
-              onCancel2FASetup={handleCancel2FASetup}
-              onLeaveHousehold={handleLeaveHousehold}
-              onAddPasskey={handleAddPasskey}
-              onRevokeSession={handleRevokeSession}
-              onRevokeOtherSessions={handleRevokeOtherSessions}
-              isSaving={isSavingSettings}
-            />
-          }
-        />
-        <Route
-          path="/:slug/settings"
-          element={
-            isOwner ? (
-              <HouseholdSettingsView
-                household={householdSettings}
-                isLoading={isLoadingHouseholdSettings}
-                error={viewError}
-                formState={householdSettingsFormState}
-                onFormChange={(update) =>
-                  setHouseholdSettingsFormState((current) => ({
-                    ...current,
-                    ...update,
-                  }))
-                }
-                onSave={handleUpdateHouseholdSettings}
-                isSaving={isSavingHouseholdSettings}
-              />
-            ) : (
-              <Navigate
-                to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
-                replace
-              />
-            )
-          }
-        />
-        <Route
-          path="/:slug/quarantine"
-          element={
-            isOwner ? (
-              <QuarantineView
-                quarantineMessages={quarantineMessages}
-                selectedQuarantineId={selectedQuarantineId}
-                onSelectMessage={setSelectedQuarantineId}
-                isLoadingQuarantine={isLoadingQuarantine}
-                providers={providers}
-                releaseProviderKey={releaseProviderKey}
-                onReleaseProviderKeyChange={setReleaseProviderKey}
-                isReviewingQuarantine={isReviewingQuarantine}
-                onQuarantineReview={handleQuarantineReview}
-                hasOlderMessages={quarantineNextBefore !== null}
-                isLoadingOlderMessages={isLoadingOlderQuarantine}
-                onLoadOlderMessages={loadOlderQuarantine}
-              />
-            ) : (
-              <Navigate
-                to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
-                replace
-              />
-            )
-          }
-        />
-        <Route
-          path="/:slug/members"
-          element={
-            isOwner ? (
-              <MembersView
-                members={members}
-                invitations={invitations}
-                providerOptions={providerOptions}
-                selectedMemberId={selectedMemberId}
-                onSelectMember={setSelectedMemberId}
-                isLoadingMembers={isLoadingMembers}
-                memberFormState={memberFormState}
-                onMemberFormChange={(update) =>
-                  setMemberFormState((current) => ({ ...current, ...update }))
-                }
-                onCreateMember={handleCreateMember}
-                isSavingMember={isSavingMember}
-                invitationFormState={invitationFormState}
-                onInvitationFormChange={(update) =>
-                  setInvitationFormState((current) => ({
-                    ...current,
-                    ...update,
-                  }))
-                }
-                onCreateInvitation={handleCreateInvitation}
-                onResendInvitation={handleResendInvitation}
-                onCancelInvitation={handleCancelInvitation}
-                isSavingInvitation={isSavingInvitation}
-                onRoleChange={handleMemberRoleChange}
-                onRemoveMember={handleRemoveMember}
-                onProviderAccessToggle={handleProviderAccessToggle}
-              />
-            ) : (
-              <Navigate
-                to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
-                replace
-              />
-            )
-          }
-        />
-        <Route
-          path="/:slug/providers"
-          element={
-            isOwner ? (
-              <ProvidersRulesView
-                providers={providerConfigurations}
-                rules={senderRules}
-                selectedProviderId={selectedProviderId}
-                selectedRuleId={selectedRuleId}
-                providerFormState={providerFormState}
-                ruleFormState={ruleFormState}
-                isSaving={isSavingProviderConfiguration}
-                onSelectProvider={(providerId) => {
-                  setSelectedProviderId(providerId);
-                  const provider = providerConfigurations.find(
-                    (item) => item.id === providerId,
+      <Suspense fallback={<ViewFallback />}>
+        <Routes>
+          <Route
+            path="/invite/:token"
+            element={<InviteRoute onAccepted={handleInviteAccepted} />}
+          />
+          <Route
+            path="/new-household"
+            element={
+              <CreateHouseholdPage
+                onCreated={(household) => {
+                  setHouseholds((current) => [...current, household]);
+                  setStatusMessage(
+                    `Household "${household.displayName}" created.`,
                   );
-
-                  setProviderFormState(
-                    provider
-                      ? {
-                          providerKey: provider.provider_key,
-                          displayName: provider.display_name,
-                        }
-                      : INITIAL_PROVIDER_FORM_STATE,
-                  );
-
-                  const firstRule =
-                    senderRules.find(
-                      (rule) => rule.provider_id === providerId,
-                    ) ?? null;
-                  setSelectedRuleId(firstRule?.id ?? null);
-                  setRuleFormState(
-                    firstRule
-                      ? {
-                          providerId: firstRule.provider_id,
-                          matchType: firstRule.match_type,
-                          matchValue: firstRule.match_value,
-                        }
-                      : {
-                          ...INITIAL_RULE_FORM_STATE,
-                          providerId,
-                        },
-                  );
-                }}
-                onSelectRule={(ruleId) => {
-                  setSelectedRuleId(ruleId);
-                  const rule = senderRules.find((item) => item.id === ruleId);
-
-                  if (!rule) {
-                    return;
-                  }
-
-                  setRuleFormState({
-                    providerId: rule.provider_id,
-                    matchType: rule.match_type,
-                    matchValue: rule.match_value,
+                  navigate(buildHouseholdPath(household.slug, "/inbox"), {
+                    replace: true,
                   });
                 }}
-                onProviderFormChange={(update) =>
-                  setProviderFormState((current) => ({ ...current, ...update }))
-                }
-                onRuleFormChange={(update) =>
-                  setRuleFormState((current) => ({ ...current, ...update }))
-                }
-                onCreateProvider={handleCreateProvider}
-                onUpdateProvider={handleUpdateProvider}
-                onDeleteProvider={handleDeleteProvider}
-                onCreateRule={handleCreateRule}
-                onUpdateRule={handleUpdateRule}
-                onDeleteRule={handleDeleteRule}
               />
-            ) : (
+            }
+          />
+          <Route
+            path="/"
+            element={
               <Navigate
                 to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
                 replace
               />
-            )
-          }
-        />
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
-              replace
-            />
-          }
-        />
-      </Routes>
+            }
+          />
+          <Route
+            path="/:slug/inbox"
+            element={
+              <InboxView
+                providers={providers}
+                selectedProviderKey={selectedProviderKey}
+                onSelectProvider={setSelectedProviderKey}
+                messages={messages}
+                selectedMessageId={selectedMessageId}
+                onSelectMessage={setSelectedMessageId}
+                isLoadingInbox={isLoadingInbox}
+                isSavingMessage={isSavingMessage}
+                onStatusChange={handleStatusChange}
+                hasOlderMessages={messagesNextBefore !== null}
+                isLoadingOlderMessages={isLoadingOlderMessages}
+                onLoadOlderMessages={loadOlderMessages}
+              />
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <SettingsView
+                profile={profile}
+                sessions={settingsSessions}
+                isLoading={isLoadingSettings}
+                error={viewError}
+                formState={settingsFormState}
+                onFormChange={(update) =>
+                  setSettingsFormState((current) => ({ ...current, ...update }))
+                }
+                onUpdateProfile={handleUpdateProfile}
+                onChangePassword={handleChangePassword}
+                onRequestPasswordReset={handleRequestPasswordReset}
+                onEnable2FA={handleEnable2FA}
+                onDisable2FA={handleDisable2FA}
+                twoFactorSetup={twoFactorSetup}
+                onVerify2FA={handleVerify2FA}
+                onCancel2FASetup={handleCancel2FASetup}
+                onLeaveHousehold={handleLeaveHousehold}
+                onAddPasskey={handleAddPasskey}
+                onRevokeSession={handleRevokeSession}
+                onRevokeOtherSessions={handleRevokeOtherSessions}
+                isSaving={isSavingSettings}
+              />
+            }
+          />
+          <Route
+            path="/:slug/settings"
+            element={
+              isOwner ? (
+                <HouseholdSettingsView
+                  household={householdSettings}
+                  isLoading={isLoadingHouseholdSettings}
+                  error={viewError}
+                  formState={householdSettingsFormState}
+                  onFormChange={(update) =>
+                    setHouseholdSettingsFormState((current) => ({
+                      ...current,
+                      ...update,
+                    }))
+                  }
+                  onSave={handleUpdateHouseholdSettings}
+                  isSaving={isSavingHouseholdSettings}
+                />
+              ) : (
+                <Navigate
+                  to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
+                  replace
+                />
+              )
+            }
+          />
+          <Route
+            path="/:slug/quarantine"
+            element={
+              isOwner ? (
+                <QuarantineView
+                  quarantineMessages={quarantineMessages}
+                  selectedQuarantineId={selectedQuarantineId}
+                  onSelectMessage={setSelectedQuarantineId}
+                  isLoadingQuarantine={isLoadingQuarantine}
+                  providers={providers}
+                  releaseProviderKey={releaseProviderKey}
+                  onReleaseProviderKeyChange={setReleaseProviderKey}
+                  isReviewingQuarantine={isReviewingQuarantine}
+                  onQuarantineReview={handleQuarantineReview}
+                  hasOlderMessages={quarantineNextBefore !== null}
+                  isLoadingOlderMessages={isLoadingOlderQuarantine}
+                  onLoadOlderMessages={loadOlderQuarantine}
+                />
+              ) : (
+                <Navigate
+                  to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
+                  replace
+                />
+              )
+            }
+          />
+          <Route
+            path="/:slug/members"
+            element={
+              isOwner ? (
+                <MembersView
+                  members={members}
+                  invitations={invitations}
+                  providerOptions={providerOptions}
+                  selectedMemberId={selectedMemberId}
+                  onSelectMember={setSelectedMemberId}
+                  isLoadingMembers={isLoadingMembers}
+                  memberFormState={memberFormState}
+                  onMemberFormChange={(update) =>
+                    setMemberFormState((current) => ({ ...current, ...update }))
+                  }
+                  onCreateMember={handleCreateMember}
+                  isSavingMember={isSavingMember}
+                  invitationFormState={invitationFormState}
+                  onInvitationFormChange={(update) =>
+                    setInvitationFormState((current) => ({
+                      ...current,
+                      ...update,
+                    }))
+                  }
+                  onCreateInvitation={handleCreateInvitation}
+                  onResendInvitation={handleResendInvitation}
+                  onCancelInvitation={handleCancelInvitation}
+                  isSavingInvitation={isSavingInvitation}
+                  onRoleChange={handleMemberRoleChange}
+                  onRemoveMember={handleRemoveMember}
+                  onProviderAccessToggle={handleProviderAccessToggle}
+                />
+              ) : (
+                <Navigate
+                  to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
+                  replace
+                />
+              )
+            }
+          />
+          <Route
+            path="/:slug/providers"
+            element={
+              isOwner ? (
+                <ProvidersRulesView
+                  providers={providerConfigurations}
+                  rules={senderRules}
+                  selectedProviderId={selectedProviderId}
+                  selectedRuleId={selectedRuleId}
+                  providerFormState={providerFormState}
+                  ruleFormState={ruleFormState}
+                  isSaving={isSavingProviderConfiguration}
+                  onSelectProvider={(providerId) => {
+                    setSelectedProviderId(providerId);
+                    const provider = providerConfigurations.find(
+                      (item) => item.id === providerId,
+                    );
+
+                    setProviderFormState(
+                      provider
+                        ? {
+                            providerKey: provider.provider_key,
+                            displayName: provider.display_name,
+                          }
+                        : INITIAL_PROVIDER_FORM_STATE,
+                    );
+
+                    const firstRule =
+                      senderRules.find(
+                        (rule) => rule.provider_id === providerId,
+                      ) ?? null;
+                    setSelectedRuleId(firstRule?.id ?? null);
+                    setRuleFormState(
+                      firstRule
+                        ? {
+                            providerId: firstRule.provider_id,
+                            matchType: firstRule.match_type,
+                            matchValue: firstRule.match_value,
+                          }
+                        : {
+                            ...INITIAL_RULE_FORM_STATE,
+                            providerId,
+                          },
+                    );
+                  }}
+                  onSelectRule={(ruleId) => {
+                    setSelectedRuleId(ruleId);
+                    const rule = senderRules.find((item) => item.id === ruleId);
+
+                    if (!rule) {
+                      return;
+                    }
+
+                    setRuleFormState({
+                      providerId: rule.provider_id,
+                      matchType: rule.match_type,
+                      matchValue: rule.match_value,
+                    });
+                  }}
+                  onProviderFormChange={(update) =>
+                    setProviderFormState((current) => ({
+                      ...current,
+                      ...update,
+                    }))
+                  }
+                  onRuleFormChange={(update) =>
+                    setRuleFormState((current) => ({ ...current, ...update }))
+                  }
+                  onCreateProvider={handleCreateProvider}
+                  onUpdateProvider={handleUpdateProvider}
+                  onDeleteProvider={handleDeleteProvider}
+                  onCreateRule={handleCreateRule}
+                  onUpdateRule={handleUpdateRule}
+                  onDeleteRule={handleDeleteRule}
+                />
+              ) : (
+                <Navigate
+                  to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
+                  replace
+                />
+              )
+            }
+          />
+          <Route
+            path="*"
+            element={
+              <Navigate
+                to={buildHouseholdPath(layoutHousehold.slug, "/inbox")}
+                replace
+              />
+            }
+          />
+        </Routes>
+      </Suspense>
 
       <Snackbar
         open={Boolean(statusMessage || viewError)}

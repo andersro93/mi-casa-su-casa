@@ -22,8 +22,6 @@ import {
 import { messageStatusSchema, quarantineReviewSchema } from "../http/schemas";
 import { parseJsonBody } from "../http/validation";
 
-const VALID_MESSAGE_STATUSES = new Set(["new", "used", "expired"]);
-
 export const inboxRoutes = new Hono<{
   Bindings: Env;
   Variables: AppVariables;
