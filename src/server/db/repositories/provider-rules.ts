@@ -137,12 +137,14 @@ export async function getProviderByKey(
   householdId: string,
   providerKey: string,
 ): Promise<ProviderRow | null> {
-  return dbForDatabase(db).get<ProviderRow>(sql`
+  const row = await dbForDatabase(db).get<ProviderRow>(sql`
     SELECT id, household_id, provider_key, display_name, created_at
     FROM providers
     WHERE household_id = ${householdId} AND provider_key = ${providerKey}
     LIMIT 1
   `);
+
+  return row ?? null;
 }
 
 export async function listProviderConfigurations(
@@ -229,12 +231,14 @@ export async function getProviderById(
   householdId: string,
   providerId: string,
 ): Promise<ProviderRow | null> {
-  return dbForDatabase(db).get<ProviderRow>(sql`
+  const row = await dbForDatabase(db).get<ProviderRow>(sql`
     SELECT id, household_id, provider_key, display_name, created_at
     FROM providers
     WHERE id = ${providerId} AND household_id = ${householdId}
     LIMIT 1
   `);
+
+  return row ?? null;
 }
 
 export async function createSenderRule(
@@ -294,10 +298,12 @@ export async function getSenderRuleById(
   householdId: string,
   ruleId: string,
 ): Promise<SenderRuleRow | null> {
-  return dbForDatabase(db).get<SenderRuleRow>(sql`
+  const row = await dbForDatabase(db).get<SenderRuleRow>(sql`
     SELECT id, household_id, provider_id, match_type, match_value, created_at
     FROM sender_rules
     WHERE id = ${ruleId} AND household_id = ${householdId}
     LIMIT 1
   `);
+
+  return row ?? null;
 }

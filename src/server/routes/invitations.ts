@@ -8,7 +8,6 @@ import {
   acceptInvitation,
   getInvitationByTokenHash,
   isInvitationExpired,
-  refreshExpiredInvitations,
 } from "../db/repositories/invitations";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
 import { acceptInvitationSchema } from "../http/schemas";
@@ -40,7 +39,6 @@ invitationRoutes.get("/lookup", async (c) => {
   if (!token) {
     return c.json({ error: "Invitation token header is required" }, 400);
   }
-  await refreshExpiredInvitations(c.env.DB);
   const tokenHash = await hashInvitationToken(token);
   const invitation = await getInvitationByTokenHash(c.env.DB, tokenHash);
 
@@ -77,7 +75,6 @@ invitationRoutes.post("/accept", async (c) => {
   if (!token) {
     return c.json({ error: "Invitation token header is required" }, 400);
   }
-  await refreshExpiredInvitations(c.env.DB);
 
   // Read the raw body once; a signed-in user may send an empty body.
   const rawBody = (await c.req.text()).trim();

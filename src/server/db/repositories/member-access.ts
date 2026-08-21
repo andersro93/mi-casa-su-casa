@@ -83,8 +83,11 @@ export async function grantProviderAccess(
 ) {
   await dbForDatabase(db).run(sql`
     INSERT OR IGNORE INTO household_member_provider_access (id, household_membership_id, provider_id)
-    SELECT ${crypto.randomUUID()}, household_memberships.id, ${providerId}
+    SELECT ${crypto.randomUUID()}, household_memberships.id, providers.id
     FROM household_memberships
+    INNER JOIN providers
+      ON providers.id = ${providerId}
+     AND providers.household_id = household_memberships.household_id
     WHERE household_memberships.household_id = ${householdId}
       AND household_memberships.user_id = ${userId}
   `);
