@@ -6,14 +6,7 @@ import {
   Typography,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
-import {
-  type FormEvent,
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -24,6 +17,7 @@ import {
 } from "react-router-dom";
 import { CreateHouseholdPage } from "./components/CreateHouseholdPage";
 import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
+import { HouseholdSettingsPage } from "./components/household/HouseholdSettingsPage";
 import { InboxPage } from "./components/inbox/InboxPage";
 import { MembersPage } from "./components/members/MembersPage";
 import { NeedsReviewPage } from "./components/review/NeedsReviewPage";
@@ -31,11 +25,6 @@ import { ServicesPage } from "./components/services/ServicesPage";
 import { AccountSettingsPage } from "./components/settings/AccountSettingsPage";
 
 // Owner-only and rarely-visited views are code-split so the inbox loads fast.
-const HouseholdSettingsView = lazy(() =>
-  import("./components/HouseholdSettingsView").then((m) => ({
-    default: m.HouseholdSettingsView,
-  })),
-);
 
 function ViewFallback() {
   return (
@@ -52,13 +41,7 @@ import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { SetupPage } from "./components/SetupPage";
 import { TwoFactorPage } from "./components/TwoFactorPage";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
-import type {
-  HouseholdSettings,
-  HouseholdSettingsFormState,
-  HouseholdSettingsResponse,
-  HouseholdSummary,
-  SetupStatus,
-} from "./types";
+import type { HouseholdSummary, SetupStatus } from "./types";
 import { buildHouseholdApiPath, buildHouseholdPath, fetchJson } from "./utils";
 
 type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
@@ -75,10 +58,6 @@ function getActiveView(pathname: string): ViewType {
   if (view === "providers") return "providers";
   return "inbox";
 }
-
-const INITIAL_HOUSEHOLD_SETTINGS_FORM_STATE: HouseholdSettingsFormState = {
-  displayName: "",
-};
 
 const PENDING_INVITE_KEY = "pendingInviteToken";
 
@@ -130,15 +109,6 @@ export function App() {
   const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [isLoadingHouseholds, setIsLoadingHouseholds] = useState(false);
 
-  const [householdSettings, setHouseholdSettings] =
-    useState<HouseholdSettings | null>(null);
-  const [householdSettingsFormState, setHouseholdSettingsFormState] =
-    useState<HouseholdSettingsFormState>(INITIAL_HOUSEHOLD_SETTINGS_FORM_STATE);
-  const [isLoadingHouseholdSettings, setIsLoadingHouseholdSettings] =
-    useState(false);
-  const [isSavingHouseholdSettings, setIsSavingHouseholdSettings] =
-    useState(false);
-
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
 
@@ -176,7 +146,7 @@ export function App() {
     },
     [activeView],
   );
-  const householdApiPath = useCallback(
+  const _householdApiPath = useCallback(
     (path: string) => {
       if (!currentHousehold) {
         throw new Error("No household selected");
@@ -276,123 +246,6 @@ export function App() {
     routeSlug,
     activeView,
   ]);
-
-  useEffect(() => {
-    const isHouseholdSettingsRoute = Boolean(
-      currentHousehold &&
-        location.pathname ===
-          buildHouseholdPath(currentHousehold.slug, "/settings"),
-    );
-
-    if (
-      !isAuthenticated ||
-      !currentHousehold ||
-      !isOwner ||
-      !isHouseholdSettingsRoute
-    ) {
-      setHouseholdSettings(null);
-      setHouseholdSettingsFormState(INITIAL_HOUSEHOLD_SETTINGS_FORM_STATE);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadHouseholdSettings = async () => {
-      setIsLoadingHouseholdSettings(true);
-
-      try {
-        const response = await fetchJson<HouseholdSettingsResponse>(
-          householdApiPath("/admin/settings"),
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        setHouseholdSettings(response.household);
-        setHouseholdSettingsFormState({
-          displayName: response.household.displayName,
-        });
-      } catch (error) {
-        if (!cancelled) {
-          setViewError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load household settings",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingHouseholdSettings(false);
-        }
-      }
-    };
-
-    void loadHouseholdSettings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    currentHousehold,
-    householdApiPath,
-    isAuthenticated,
-    isOwner,
-    location.pathname,
-  ]);
-
-  async function refreshHouseholdSettings() {
-    if (!isAuthenticated || !currentHousehold || !isOwner) {
-      return;
-    }
-
-    const response = await fetchJson<HouseholdSettingsResponse>(
-      householdApiPath("/admin/settings"),
-    );
-
-    setHouseholdSettings(response.household);
-    setHouseholdSettingsFormState({
-      displayName: response.household.displayName,
-    });
-    setHouseholds((current) =>
-      current.map((household) =>
-        household.id === currentHousehold.id
-          ? { ...household, displayName: response.household.displayName }
-          : household,
-      ),
-    );
-  }
-
-  async function handleUpdateHouseholdSettings(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
-    setIsSavingHouseholdSettings(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson<HouseholdSettingsResponse>(
-        householdApiPath("/admin/settings"),
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            displayName: householdSettingsFormState.displayName,
-          }),
-        },
-      );
-      setStatusMessage("Household name updated.");
-      await refreshHouseholdSettings();
-    } catch (error) {
-      setViewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to update household settings",
-      );
-    } finally {
-      setIsSavingHouseholdSettings(false);
-    }
-  }
 
   async function refreshSetupStatus() {
     if (typeof window === "undefined") {
@@ -671,19 +524,17 @@ export function App() {
             path="/:slug/settings"
             element={
               isOwner ? (
-                <HouseholdSettingsView
-                  household={householdSettings}
-                  isLoading={isLoadingHouseholdSettings}
-                  error={viewError}
-                  formState={householdSettingsFormState}
-                  onFormChange={(update) =>
-                    setHouseholdSettingsFormState((current) => ({
-                      ...current,
-                      ...update,
-                    }))
+                <HouseholdSettingsPage
+                  slug={layoutHousehold.slug}
+                  onRenamed={(displayName) =>
+                    setHouseholds((current) =>
+                      current.map((h) =>
+                        h.slug === layoutHousehold.slug
+                          ? { ...h, displayName }
+                          : h,
+                      ),
+                    )
                   }
-                  onSave={handleUpdateHouseholdSettings}
-                  isSaving={isSavingHouseholdSettings}
                 />
               ) : (
                 <Navigate
