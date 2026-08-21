@@ -153,6 +153,10 @@ export function ProvidersRulesView({
   };
 
   const handleProviderSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    // Always prevent the native submit here: the update handler takes no
+    // event, so relying on the create handler alone let edit-mode saves
+    // trigger a full page navigation.
+    event.preventDefault();
     const didSave =
       providerDialogMode === "edit"
         ? await onUpdateProvider()
@@ -164,6 +168,7 @@ export function ProvidersRulesView({
   };
 
   const handleRuleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     const didSave =
       ruleDialogMode === "edit"
         ? await onUpdateRule()
