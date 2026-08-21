@@ -15,22 +15,11 @@ import {
   resetInstallationSetup,
 } from "../db/repositories/installation-state";
 import { deleteUserById, findUserByEmail } from "../db/repositories/users";
-import {
-  normalizeHouseholdSlug,
-  validateHouseholdSlug,
-} from "../domain/household-slug";
+import { setupSchema } from "../http/schemas";
+import { parseJsonBody } from "../http/validation";
 import { logEvent } from "../runtime/log";
 import { secretsEqual } from "../security/compare";
 import { RATE_LIMITS, rateLimit } from "../security/rate-limit";
-
-type SetupPayload = {
-  email?: string;
-  name?: string;
-  password?: string;
-  householdName?: string;
-  householdSlug?: string;
-  setupSecret?: string;
-};
 
 export const setupRoutes = new Hono<{ Bindings: Env }>();
 
@@ -78,32 +67,11 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
     );
   }
 
-  let payload: SetupPayload;
+  const body = await parseJsonBody(c, setupSchema);
+  if (!body.ok) return body.response;
+  const payload = body.data;
 
-  try {
-    payload = await c.req.json<SetupPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (
-    !payload.email ||
-    !payload.name ||
-    !payload.password ||
-    !payload.householdName ||
-    !payload.householdSlug ||
-    !payload.setupSecret
-  ) {
-    return c.json(
-      {
-        error:
-          "email, name, password, householdName, householdSlug, and setupSecret are required",
-      },
-      400,
-    );
-  }
-
-  const requestedEmail = normalizeEmail(payload.email);
+  const requestedEmail = payload.email;
   const ownerEmail = normalizeEmail(c.env.OWNER_EMAIL);
 
   if (!(await secretsEqual(payload.setupSecret, c.env.SETUP_SECRET))) {
@@ -114,16 +82,7 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
     return c.json({ error: "Setup email must match OWNER_EMAIL" }, 403);
   }
 
-  if (payload.password.length < 12) {
-    return c.json({ error: "Password must be at least 12 characters" }, 400);
-  }
-
-  const householdSlug = normalizeHouseholdSlug(payload.householdSlug);
-  const slugCheck = validateHouseholdSlug(householdSlug);
-
-  if (!slugCheck.ok) {
-    return c.json({ error: `householdSlug: ${slugCheck.error}` }, 400);
-  }
+  const householdSlug = payload.householdSlug;
 
   const claimed = await beginInstallationSetup(c.env.DB);
 
@@ -178,7 +137,7 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
     const signUpResult = await auth.api.signUpEmail({
       body: {
         email: requestedEmail,
-        name: payload.name.trim(),
+        name: payload.name,
         password: payload.password,
       },
       headers: new Headers(c.req.raw.headers),
@@ -190,7 +149,7 @@ setupRoutes.post("/complete", rateLimit(RATE_LIMITS.setup), async (c) => {
 
     const household = await createHousehold(c.env.DB, {
       slug: householdSlug,
-      displayName: payload.householdName.trim(),
+      displayName: payload.householdName,
       ownerUserId: createdUser.id,
     });
 

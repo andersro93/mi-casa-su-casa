@@ -11,11 +11,8 @@ import {
   listUserSessions,
   updateUserProfile,
 } from "../db/repositories/settings";
-
-type ProfilePayload = {
-  name?: string;
-  image?: string | null;
-};
+import { profileSchema } from "../http/schemas";
+import { parseJsonBody } from "../http/validation";
 
 export const settingsRoutes = new Hono<{
   Bindings: Env;
@@ -69,36 +66,9 @@ settingsRoutes.patch("/profile", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  let payload: ProfilePayload;
-
-  try {
-    payload = await c.req.json<ProfilePayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const name = payload.name?.trim() ?? "";
-  const image = payload.image?.trim() || null;
-
-  if (!name || name.length > 80) {
-    return c.json({ error: "name is required (max 80 characters)" }, 400);
-  }
-
-  if (image !== null) {
-    let valid = image.length <= 2048;
-    try {
-      const url = new URL(image);
-      valid = valid && (url.protocol === "https:" || url.protocol === "http:");
-    } catch {
-      valid = false;
-    }
-    if (!valid) {
-      return c.json(
-        { error: "image must be an http(s) URL of at most 2048 characters" },
-        400,
-      );
-    }
-  }
+  const body = await parseJsonBody(c, profileSchema);
+  if (!body.ok) return body.response;
+  const { name, image } = body.data;
 
   const profile = await updateUserProfile(c.env.DB, currentUser.id, {
     name,

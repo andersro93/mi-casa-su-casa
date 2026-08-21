@@ -44,14 +44,18 @@ import {
   updateSenderRule,
 } from "../db/repositories/provider-rules";
 import { sendHouseholdInvitationEmail } from "../email/sender";
+import {
+  createMemberSchema,
+  householdSettingsSchema,
+  invitationSchema,
+  providerAccessSchema,
+  providerSchema,
+  roleChangeSchema,
+  senderRuleSchema,
+} from "../http/schemas";
+import { parseJsonBody } from "../http/validation";
 import { logEvent } from "../runtime/log";
 import { createInvitationToken } from "../security/tokens";
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function isValidEmail(value: string) {
-  return EMAIL_PATTERN.test(value) && value.length <= 254;
-}
 
 type AuditContext = {
   env: Env;
@@ -118,53 +122,10 @@ async function deliverInvitationEmail(
   }
 }
 
-type AccessPayload = {
-  providerKey?: string;
-};
-
-type CreateMemberPayload = {
-  email?: string;
-  name?: string;
-  role?: string;
-};
-
-type ProviderPayload = {
-  providerKey?: string;
-  displayName?: string;
-};
-
-type SenderRulePayload = {
-  providerId?: string;
-  matchType?: string;
-  matchValue?: string;
-};
-
-type InvitationPayload = {
-  email?: string;
-  name?: string;
-  /** "owner" | "member"; the legacy value "admin" is accepted as "owner". */
-  role?: InvitationRole | "admin";
-  providerIds?: string[];
-};
-
-type HouseholdSettingsPayload = {
-  displayName?: string;
-};
-
 export const adminRoutes = new Hono<{
   Bindings: Env;
   Variables: AppVariables;
 }>();
-
-/**
- * Household roles are "owner" | "member" everywhere. The UI used to send
- * "admin" for owners; keep accepting it so old clients don't break.
- */
-function normalizeHouseholdRole(value: unknown): "owner" | "member" | null {
-  if (value === "owner" || value === "admin") return "owner";
-  if (value === "member") return "member";
-  return null;
-}
 
 function householdSettingsPayload(
   env: Env,
@@ -177,34 +138,6 @@ function householdSettingsPayload(
     // The address providers must send codes to; null until EMAIL_DOMAIN is set.
     emailAddress: domain ? `${settings.slug}@${domain}` : null,
   };
-}
-
-function normalizeProviderKey(value: string | undefined) {
-  return value?.trim().toLowerCase() ?? "";
-}
-
-function normalizeDisplayName(value: string | undefined) {
-  return value?.trim() ?? "";
-}
-
-function normalizeEmail(value: string | undefined) {
-  return value?.trim().toLowerCase() ?? "";
-}
-
-function normalizeMatchValue(matchType: string, value: string | undefined) {
-  const trimmed = value?.trim().toLowerCase() ?? "";
-
-  if (matchType === "domain") {
-    return trimmed.replace(/^@+/, "");
-  }
-
-  return trimmed;
-}
-
-function isValidMatchType(
-  value: string | undefined,
-): value is "exact" | "domain" {
-  return value === "exact" || value === "domain";
 }
 
 adminRoutes.use("/:slug/*", requireHouseholdContext);
@@ -240,19 +173,9 @@ adminRoutes.patch("/:slug/settings", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  let payload: HouseholdSettingsPayload;
-
-  try {
-    payload = await c.req.json<HouseholdSettingsPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const displayName = normalizeDisplayName(payload.displayName);
-
-  if (!displayName) {
-    return c.json({ error: "displayName is required" }, 400);
-  }
+  const body = await parseJsonBody(c, householdSettingsSchema);
+  if (!body.ok) return body.response;
+  const { displayName } = body.data;
 
   const settings = await updateHouseholdDisplayName(
     c.env.DB,
@@ -288,20 +211,9 @@ adminRoutes.get("/:slug/providers", async (c) => {
 adminRoutes.post("/:slug/providers", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
-  let payload: ProviderPayload;
-
-  try {
-    payload = await c.req.json<ProviderPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const providerKey = normalizeProviderKey(payload.providerKey);
-  const displayName = normalizeDisplayName(payload.displayName);
-
-  if (!providerKey || !displayName) {
-    return c.json({ error: "providerKey and displayName are required" }, 400);
-  }
+  const body = await parseJsonBody(c, providerSchema);
+  if (!body.ok) return body.response;
+  const { providerKey, displayName } = body.data;
 
   const existing = await getProviderByKey(c.env.DB, household.id, providerKey);
 
@@ -326,21 +238,10 @@ adminRoutes.post("/:slug/providers", async (c) => {
 adminRoutes.patch("/:slug/providers/:providerId", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
-  let payload: ProviderPayload;
-
-  try {
-    payload = await c.req.json<ProviderPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
+  const body = await parseJsonBody(c, providerSchema);
+  if (!body.ok) return body.response;
   const providerId = c.req.param("providerId");
-  const providerKey = normalizeProviderKey(payload.providerKey);
-  const displayName = normalizeDisplayName(payload.displayName);
-
-  if (!providerKey || !displayName) {
-    return c.json({ error: "providerKey and displayName are required" }, 400);
-  }
+  const { providerKey, displayName } = body.data;
 
   const existing = await getProviderById(c.env.DB, household.id, providerId);
 
@@ -390,26 +291,10 @@ adminRoutes.delete("/:slug/providers/:providerId", async (c) => {
 adminRoutes.post("/:slug/provider-rules", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
-  let payload: SenderRulePayload;
-
-  try {
-    payload = await c.req.json<SenderRulePayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (!payload.providerId || !isValidMatchType(payload.matchType)) {
-    return c.json(
-      { error: "providerId and a valid matchType are required" },
-      400,
-    );
-  }
-
-  const matchValue = normalizeMatchValue(payload.matchType, payload.matchValue);
-
-  if (!matchValue) {
-    return c.json({ error: "matchValue is required" }, 400);
-  }
+  const body = await parseJsonBody(c, senderRuleSchema);
+  if (!body.ok) return body.response;
+  const payload = body.data;
+  const matchValue = payload.matchValue;
 
   const provider = await getProviderById(
     c.env.DB,
@@ -440,28 +325,11 @@ adminRoutes.post("/:slug/provider-rules", async (c) => {
 adminRoutes.patch("/:slug/provider-rules/:ruleId", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
-  let payload: SenderRulePayload;
-
-  try {
-    payload = await c.req.json<SenderRulePayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
+  const body = await parseJsonBody(c, senderRuleSchema);
+  if (!body.ok) return body.response;
+  const payload = body.data;
   const ruleId = c.req.param("ruleId");
-
-  if (!payload.providerId || !isValidMatchType(payload.matchType)) {
-    return c.json(
-      { error: "providerId and a valid matchType are required" },
-      400,
-    );
-  }
-
-  const matchValue = normalizeMatchValue(payload.matchType, payload.matchValue);
-
-  if (!matchValue) {
-    return c.json({ error: "matchValue is required" }, 400);
-  }
+  const matchValue = payload.matchValue;
 
   const [provider, existingRule] = await Promise.all([
     getProviderById(c.env.DB, household.id, payload.providerId),
@@ -558,28 +426,9 @@ adminRoutes.get("/:slug/invitations", async (c) => {
 adminRoutes.post("/:slug/invitations", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
-  let payload: InvitationPayload;
-
-  try {
-    payload = await c.req.json<InvitationPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const email = normalizeEmail(payload.email);
-  const name = normalizeDisplayName(payload.name);
-  const role: InvitationRole = normalizeHouseholdRole(payload.role) ?? "member";
-  const providerIds = Array.isArray(payload.providerIds)
-    ? payload.providerIds.filter((providerId) => Boolean(providerId))
-    : [];
-
-  if (!email || !name) {
-    return c.json({ error: "email and name are required" }, 400);
-  }
-
-  if (!isValidEmail(email)) {
-    return c.json({ error: "email must be a valid email address" }, 400);
-  }
+  const body = await parseJsonBody(c, invitationSchema);
+  if (!body.ok) return body.response;
+  const { email, name, role, providerIds } = body.data;
 
   const providersBelong = await assertProvidersBelongToHousehold(
     c.env.DB,
@@ -727,23 +576,10 @@ adminRoutes.delete("/:slug/invitations/:invitationId", async (c) => {
 adminRoutes.post("/:slug/members", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
-  let payload: CreateMemberPayload;
-
-  try {
-    payload = await c.req.json<CreateMemberPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (!payload.email || !payload.name) {
-    return c.json({ error: "email and name are required" }, 400);
-  }
-
-  const memberEmail = normalizeEmail(payload.email);
-
-  if (!isValidEmail(memberEmail)) {
-    return c.json({ error: "email must be a valid email address" }, 400);
-  }
+  const body = await parseJsonBody(c, createMemberSchema);
+  if (!body.ok) return body.response;
+  const payload = body.data;
+  const memberEmail = payload.email;
 
   const inviter = c.get("user");
 
@@ -755,13 +591,12 @@ adminRoutes.post("/:slug/members", async (c) => {
   const expiresAt = new Date(
     Date.now() + 1000 * 60 * 60 * 24 * 7,
   ).toISOString();
-  const invitationRole: InvitationRole =
-    normalizeHouseholdRole(payload.role) ?? "member";
+  const invitationRole: InvitationRole = payload.role;
 
   const invitationId = await createHouseholdInvitation(c.env.DB, {
     householdId: household.id,
     email: memberEmail,
-    name: payload.name.trim(),
+    name: payload.name,
     role: invitationRole,
     tokenHash,
     invitedByUserId: inviter.id,
@@ -850,19 +685,9 @@ adminRoutes.patch("/:slug/members/:userId/role", async (c) => {
     );
   }
 
-  let payload: { role?: string };
-
-  try {
-    payload = await c.req.json<{ role?: string }>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const nextRole = normalizeHouseholdRole(payload.role);
-
-  if (!nextRole) {
-    return c.json({ error: "role must be owner or member" }, 400);
-  }
+  const body = await parseJsonBody(c, roleChangeSchema);
+  if (!body.ok) return body.response;
+  const nextRole = body.data.role;
 
   const household = c.get("household");
 
@@ -894,17 +719,9 @@ adminRoutes.post("/:slug/members/:userId/provider-access", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
   const userId = c.req.param("userId");
-  let payload: AccessPayload;
-
-  try {
-    payload = await c.req.json<AccessPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (!payload.providerKey) {
-    return c.json({ error: "providerKey is required" }, 400);
-  }
+  const body = await parseJsonBody(c, providerAccessSchema);
+  if (!body.ok) return body.response;
+  const payload = body.data;
 
   const provider = await getProviderByKey(
     c.env.DB,
@@ -933,45 +750,52 @@ adminRoutes.post("/:slug/members/:userId/provider-access", async (c) => {
   return c.json({ ok: true });
 });
 
-adminRoutes.delete("/:slug/members/:userId/provider-access", async (c) => {
-  const household = c.get("household");
-  if (!household) return c.json({ error: "Forbidden" }, 403);
-  const userId = c.req.param("userId");
-  let payload: AccessPayload;
+// Accepts the provider key in the URL (preferred) or, for older clients, in a
+// JSON body on DELETE.
+adminRoutes.delete(
+  "/:slug/members/:userId/provider-access/:providerKey?",
+  async (c) => {
+    const household = c.get("household");
+    if (!household) return c.json({ error: "Forbidden" }, 403);
+    const userId = c.req.param("userId");
+    let payload: { providerKey: string };
+    const fromPath = c.req.param("providerKey");
+    if (fromPath) {
+      const parsed = providerAccessSchema.safeParse({ providerKey: fromPath });
+      if (!parsed.success) {
+        return c.json({ error: "providerKey is invalid" }, 400);
+      }
+      payload = parsed.data;
+    } else {
+      const body = await parseJsonBody(c, providerAccessSchema);
+      if (!body.ok) return body.response;
+      payload = body.data;
+    }
 
-  try {
-    payload = await c.req.json<AccessPayload>();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+    const provider = await getProviderByKey(
+      c.env.DB,
+      household.id,
+      payload.providerKey,
+    );
 
-  if (!payload.providerKey) {
-    return c.json({ error: "providerKey is required" }, 400);
-  }
+    if (!provider) {
+      return c.json({ error: "Provider not found" }, 404);
+    }
 
-  const provider = await getProviderByKey(
-    c.env.DB,
-    household.id,
-    payload.providerKey,
-  );
+    const membership = await getHouseholdMembership(
+      c.env.DB,
+      userId,
+      household.id,
+    );
 
-  if (!provider) {
-    return c.json({ error: "Provider not found" }, 404);
-  }
+    if (!membership) {
+      return c.json({ error: "Member not found" }, 404);
+    }
 
-  const membership = await getHouseholdMembership(
-    c.env.DB,
-    userId,
-    household.id,
-  );
-
-  if (!membership) {
-    return c.json({ error: "Member not found" }, 404);
-  }
-
-  await revokeProviderAccess(c.env.DB, household.id, userId, provider.id);
-  await audit(c, "member.provider_access_revoked", "user", userId, {
-    providerKey: payload.providerKey,
-  });
-  return c.json({ ok: true });
-});
+    await revokeProviderAccess(c.env.DB, household.id, userId, provider.id);
+    await audit(c, "member.provider_access_revoked", "user", userId, {
+      providerKey: payload.providerKey,
+    });
+    return c.json({ ok: true });
+  },
+);
