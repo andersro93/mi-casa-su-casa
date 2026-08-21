@@ -418,7 +418,7 @@ adminRoutes.get("/:slug/members", async (c) => {
 adminRoutes.get("/:slug/invitations", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
-  await refreshExpiredInvitations(c.env.DB);
+  await refreshExpiredInvitations(c.env.DB, new Date(), household.id);
   const invitations = await listHouseholdInvitations(c.env.DB, household.id);
   return c.json({ invitations });
 });
@@ -466,7 +466,11 @@ adminRoutes.post("/:slug/invitations", async (c) => {
     providerIds,
   });
 
-  const invitation = await getInvitationById(c.env.DB, invitationId);
+  const invitation = await getInvitationById(
+    c.env.DB,
+    household.id,
+    invitationId,
+  );
 
   if (!invitation) {
     return c.json({ error: "Unable to create invitation" }, 500);
@@ -495,16 +499,16 @@ adminRoutes.post("/:slug/invitations", async (c) => {
 adminRoutes.post("/:slug/invitations/:invitationId/resend", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
-  await refreshExpiredInvitations(c.env.DB);
+  await refreshExpiredInvitations(c.env.DB, new Date(), household.id);
 
   const invitationId = c.req.param("invitationId");
-  const invitation = await getInvitationById(c.env.DB, invitationId);
+  const invitation = await getInvitationById(
+    c.env.DB,
+    household.id,
+    invitationId,
+  );
 
-  if (
-    !invitation ||
-    invitation.householdId !== household.id ||
-    invitation.status !== "pending"
-  ) {
+  if (!invitation || invitation.status !== "pending") {
     return c.json({ error: "Invitation not found or not resendable" }, 404);
   }
 
@@ -532,7 +536,11 @@ adminRoutes.post("/:slug/invitations/:invitationId/resend", async (c) => {
     providerIds: invitation.providers.map((provider) => provider.id),
   });
 
-  const replacement = await getInvitationById(c.env.DB, replacementId);
+  const replacement = await getInvitationById(
+    c.env.DB,
+    household.id,
+    replacementId,
+  );
 
   if (!replacement) {
     return c.json({ error: "Unable to resend invitation" }, 500);
@@ -562,9 +570,13 @@ adminRoutes.delete("/:slug/invitations/:invitationId", async (c) => {
   const household = c.get("household");
   if (!household) return c.json({ error: "Forbidden" }, 403);
   const invitationId = c.req.param("invitationId");
-  const invitation = await getInvitationById(c.env.DB, invitationId);
+  const invitation = await getInvitationById(
+    c.env.DB,
+    household.id,
+    invitationId,
+  );
 
-  if (!invitation || invitation.householdId !== household.id) {
+  if (!invitation) {
     return c.json({ error: "Invitation not found" }, 404);
   }
 
@@ -604,7 +616,11 @@ adminRoutes.post("/:slug/members", async (c) => {
     providerIds: [],
   });
 
-  const invitation = await getInvitationById(c.env.DB, invitationId);
+  const invitation = await getInvitationById(
+    c.env.DB,
+    household.id,
+    invitationId,
+  );
 
   if (!invitation) {
     return c.json({ error: "Unable to create invitation" }, 500);

@@ -703,9 +703,15 @@ vi.mock("../src/server/db/repositories/invitations", async () => {
       });
       return invitationId;
     },
-    getInvitationById: async (_db: D1Database, invitationId: string) => {
+    getInvitationById: async (
+      _db: D1Database,
+      householdId: string,
+      invitationId: string,
+    ) => {
       const invitation = repoState.invitations.find(
-        (candidate) => candidate.id === invitationId,
+        (candidate) =>
+          candidate.id === invitationId &&
+          candidate.householdId === householdId,
       );
       return invitation ? invitationSummary(invitation) : null;
     },
@@ -715,11 +721,9 @@ vi.mock("../src/server/db/repositories/invitations", async () => {
       );
       return invitation ? invitationSummary(invitation) : null;
     },
-    listHouseholdInvitations: async (_db: D1Database, householdId?: string) =>
+    listHouseholdInvitations: async (_db: D1Database, householdId: string) =>
       repoState.invitations
-        .filter((invitation) =>
-          householdId ? invitation.householdId === householdId : true,
-        )
+        .filter((invitation) => invitation.householdId === householdId)
         .map(invitationSummary),
     refreshExpiredInvitations: async () => {},
     cancelInvitation: async (_db: D1Database, invitationId: string) => {

@@ -1,3 +1,5 @@
+import type { HouseholdRepository } from "../db/scoped";
+
 export type AuthContext = {
   user: {
     id: string;
@@ -20,4 +22,6 @@ export type AuthContext = {
     slug: string;
     role: "owner" | "member";
   } | null;
+  /** Household-scoped repositories, set by requireHouseholdContext. */
+  repo: HouseholdRepository | null;
 };

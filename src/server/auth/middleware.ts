@@ -3,6 +3,7 @@ import {
   listHouseholdsForUser,
   userBelongsToHousehold,
 } from "../db/repositories/households";
+import { forHousehold } from "../db/scoped";
 import { authForEnv } from "./auth";
 import type { AuthContext } from "./auth-context";
 
@@ -48,6 +49,7 @@ export const loadAuthSession: MiddlewareHandler<{
       : null,
   );
   c.set("household", null);
+  c.set("repo", null);
 
   await next();
 };
@@ -103,6 +105,7 @@ export const requireHouseholdContext: MiddlewareHandler<{
     slug: membership.slug,
     role: membership.role,
   });
+  c.set("repo", forHousehold(c.env.DB, membership.householdId));
 
   await next();
 };

@@ -75,7 +75,7 @@ export async function createHouseholdInvitation(
 
 export async function listHouseholdInvitations(
   db: D1Database,
-  householdId?: string,
+  householdId: string,
 ) {
   const rows = await dbForDatabase(db)
     .select({
@@ -108,11 +108,7 @@ export async function listHouseholdInvitations(
       providers,
       eq(providers.id, householdInvitationProviderAccess.providerId),
     )
-    .where(
-      householdId
-        ? eq(householdInvitations.householdId, householdId)
-        : undefined,
-    )
+    .where(eq(householdInvitations.householdId, householdId))
     .orderBy(sql`${householdInvitations.createdAt} DESC`);
 
   return groupInvitationRows(rows);
@@ -158,7 +154,11 @@ export async function getInvitationByTokenHash(
   return groupInvitationRows(rows)[0] ?? null;
 }
 
-export async function getInvitationById(db: D1Database, invitationId: string) {
+export async function getInvitationById(
+  db: D1Database,
+  householdId: string,
+  invitationId: string,
+) {
   const rows = await dbForDatabase(db)
     .select({
       id: householdInvitations.id,
@@ -190,7 +190,12 @@ export async function getInvitationById(db: D1Database, invitationId: string) {
       providers,
       eq(providers.id, householdInvitationProviderAccess.providerId),
     )
-    .where(eq(householdInvitations.id, invitationId));
+    .where(
+      and(
+        eq(householdInvitations.id, invitationId),
+        eq(householdInvitations.householdId, householdId),
+      ),
+    );
 
   return groupInvitationRows(rows)[0] ?? null;
 }
@@ -280,6 +285,7 @@ export function isInvitationExpired(
 export async function refreshExpiredInvitations(
   db: D1Database,
   now: Date = new Date(),
+  householdId?: string,
 ) {
   await dbForDatabase(db)
     .update(householdInvitations)
@@ -291,6 +297,9 @@ export async function refreshExpiredInvitations(
       and(
         eq(householdInvitations.status, "pending"),
         sql`${householdInvitations.expiresAt} <= ${now.toISOString()}`,
+        householdId
+          ? eq(householdInvitations.householdId, householdId)
+          : undefined,
       ),
     );
 }
@@ -407,7 +416,11 @@ function invitationProviderInserts(
   );
 }
 
-export async function getProvidersByIds(db: D1Database, providerIds: string[]) {
+export async function getProvidersByIds(
+  db: D1Database,
+  householdId: string,
+  providerIds: string[],
+) {
   if (providerIds.length === 0) {
     return [];
   }
@@ -419,5 +432,10 @@ export async function getProvidersByIds(db: D1Database, providerIds: string[]) {
       display_name: providers.displayName,
     })
     .from(providers)
-    .where(inArray(providers.id, providerIds));
+    .where(
+      and(
+        eq(providers.householdId, householdId),
+        inArray(providers.id, providerIds),
+      ),
+    );
 }
