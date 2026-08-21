@@ -6,7 +6,6 @@ import {
   Typography,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
-import { useQueryClient } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import {
   type FormEvent,
@@ -28,17 +27,13 @@ import { CreateHouseholdPage } from "./components/CreateHouseholdPage";
 import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
 import { InboxPage } from "./components/inbox/InboxPage";
 import { MembersPage } from "./components/members/MembersPage";
+import { NeedsReviewPage } from "./components/review/NeedsReviewPage";
 import { ServicesPage } from "./components/services/ServicesPage";
 
 // Owner-only and rarely-visited views are code-split so the inbox loads fast.
 const HouseholdSettingsView = lazy(() =>
   import("./components/HouseholdSettingsView").then((m) => ({
     default: m.HouseholdSettingsView,
-  })),
-);
-const QuarantineView = lazy(() =>
-  import("./components/QuarantineView").then((m) => ({
-    default: m.QuarantineView,
   })),
 );
 const SettingsView = lazy(() =>
@@ -62,7 +57,6 @@ import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { SetupPage } from "./components/SetupPage";
 import { TwoFactorPage } from "./components/TwoFactorPage";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
-import { inboxKeys, useProviderSummaries } from "./queries/inbox";
 import type {
   AccountProfile,
   AccountSession,
@@ -72,17 +66,12 @@ import type {
   HouseholdSettingsFormState,
   HouseholdSettingsResponse,
   HouseholdSummary,
-  ProviderSummary,
-  QuarantineMessage,
-  QuarantineMessagesResponse,
   SetupStatus,
   TwoFactorSetup,
 } from "./types";
 import { buildHouseholdApiPath, buildHouseholdPath, fetchJson } from "./utils";
 
 type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
-
-const EMPTY_PROVIDERS: ProviderSummary[] = [];
 
 function getActiveView(pathname: string): ViewType {
   // Match on path segments (/:slug/:view), not substrings, so a household slug
@@ -180,22 +169,6 @@ export function App() {
   const [isSavingHouseholdSettings, setIsSavingHouseholdSettings] =
     useState(false);
 
-  const [quarantineMessages, setQuarantineMessages] = useState<
-    QuarantineMessage[]
-  >([]);
-  const [selectedQuarantineId, setSelectedQuarantineId] = useState<
-    string | null
-  >(null);
-  const [releaseProviderKey, setReleaseProviderKey] = useState<string>("");
-
-  const [isLoadingQuarantine, setIsLoadingQuarantine] = useState(false);
-  const [isReviewingQuarantine, setIsReviewingQuarantine] = useState(false);
-
-  const [quarantineNextBefore, setQuarantineNextBefore] = useState<
-    string | null
-  >(null);
-  const [isLoadingOlderQuarantine, setIsLoadingOlderQuarantine] =
-    useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
 
@@ -207,17 +180,6 @@ export function App() {
   const isOwner = currentHousehold?.role === "owner";
   const layoutHousehold = currentHousehold ?? defaultHousehold;
   const layoutIsOwner = layoutHousehold?.role === "owner";
-  const queryClient = useQueryClient();
-  const providersQuery = useProviderSummaries(
-    isAuthenticated && currentHousehold ? currentHousehold.slug : null,
-  );
-  const providers = providersQuery.data ?? EMPTY_PROVIDERS;
-  const invalidateInbox = useCallback(async () => {
-    if (!currentHousehold) return;
-    await queryClient.invalidateQueries({
-      queryKey: inboxKeys.all(currentHousehold.slug),
-    });
-  }, [currentHousehold, queryClient]);
   const getHouseholdDestination = useCallback(
     (household: HouseholdSummary) => {
       switch (activeView) {
@@ -849,169 +811,14 @@ export function App() {
 
   useEffect(() => {
     if (!isAuthenticated || !currentHousehold) {
-      setQuarantineMessages([]);
-      setSelectedQuarantineId(null);
-      setReleaseProviderKey("");
     }
   }, [currentHousehold, isAuthenticated]);
-
-  // Quarantine's "release to" picker defaults to the first service.
-  useEffect(() => {
-    setReleaseProviderKey((current) =>
-      current && providers.some((p) => p.provider_key === current)
-        ? current
-        : (providers[0]?.provider_key ?? ""),
-    );
-  }, [providers]);
-
-  useEffect(() => {
-    if (
-      !isAuthenticated ||
-      !isOwner ||
-      !currentHousehold ||
-      activeView !== "quarantine"
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadQuarantine = async () => {
-      setIsLoadingQuarantine(true);
-
-      try {
-        const response = await fetchJson<QuarantineMessagesResponse>(
-          householdApiPath("/inbox/quarantine?limit=50"),
-        );
-
-        if (cancelled) return;
-
-        setQuarantineMessages(response.messages);
-        setQuarantineNextBefore(response.page?.nextBefore ?? null);
-        setSelectedQuarantineId((current) => {
-          if (current && response.messages.some((m) => m.id === current)) {
-            return current;
-          }
-          return response.messages[0]?.id ?? null;
-        });
-      } catch (error) {
-        if (!cancelled) {
-          setViewError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load quarantine",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingQuarantine(false);
-        }
-      }
-    };
-
-    void loadQuarantine();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeView,
-    currentHousehold,
-    householdApiPath,
-    isAuthenticated,
-    isOwner,
-  ]);
-
-  async function loadOlderQuarantine() {
-    if (!quarantineNextBefore || isLoadingOlderQuarantine) {
-      return;
-    }
-    setIsLoadingOlderQuarantine(true);
-    try {
-      const response = await fetchJson<QuarantineMessagesResponse>(
-        householdApiPath(
-          `/inbox/quarantine?limit=50&before=${encodeURIComponent(quarantineNextBefore)}`,
-        ),
-      );
-      setQuarantineMessages((current) => {
-        const seen = new Set(current.map((m) => m.id));
-        return [
-          ...current,
-          ...response.messages.filter((m) => !seen.has(m.id)),
-        ];
-      });
-      setQuarantineNextBefore(response.page?.nextBefore ?? null);
-    } catch (error) {
-      setViewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load older quarantined messages",
-      );
-    } finally {
-      setIsLoadingOlderQuarantine(false);
-    }
-  }
-
-  async function refreshQuarantine() {
-    if (!isAuthenticated || !isOwner || !currentHousehold) return;
-    const response = await fetchJson<QuarantineMessagesResponse>(
-      householdApiPath("/inbox/quarantine?limit=50"),
-    );
-    setQuarantineMessages(response.messages);
-    setQuarantineNextBefore(response.page?.nextBefore ?? null);
-    setSelectedQuarantineId((current) => {
-      if (current && response.messages.some((m) => m.id === current)) {
-        return current;
-      }
-      return response.messages[0]?.id ?? null;
-    });
-  }
 
   async function handleLogout() {
     setStatusMessage(null);
     setViewError(null);
     await authClient.signOut({});
     await refetch();
-  }
-
-  async function handleQuarantineReview(
-    action: "dismiss" | "release",
-  ): Promise<boolean> {
-    if (!selectedQuarantineId) return false;
-
-    setIsReviewingQuarantine(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson(
-        householdApiPath(`/inbox/quarantine/${selectedQuarantineId}/review`),
-        {
-          method: "POST",
-          body: JSON.stringify(
-            action === "release"
-              ? { action, providerKey: releaseProviderKey }
-              : { action },
-          ),
-        },
-      );
-
-      setStatusMessage(
-        action === "release"
-          ? "Quarantined message released to the selected provider."
-          : "Quarantined message dismissed.",
-      );
-
-      await Promise.all([refreshQuarantine(), invalidateInbox()]);
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to review quarantine",
-      );
-      return false;
-    } finally {
-      setIsReviewingQuarantine(false);
-    }
   }
 
   async function handleLeaveHousehold(slug: string): Promise<boolean> {
@@ -1278,19 +1085,9 @@ export function App() {
             path="/:slug/quarantine"
             element={
               isOwner ? (
-                <QuarantineView
-                  quarantineMessages={quarantineMessages}
-                  selectedQuarantineId={selectedQuarantineId}
-                  onSelectMessage={setSelectedQuarantineId}
-                  isLoadingQuarantine={isLoadingQuarantine}
-                  providers={providers}
-                  releaseProviderKey={releaseProviderKey}
-                  onReleaseProviderKeyChange={setReleaseProviderKey}
-                  isReviewingQuarantine={isReviewingQuarantine}
-                  onQuarantineReview={handleQuarantineReview}
-                  hasOlderMessages={quarantineNextBefore !== null}
-                  isLoadingOlderMessages={isLoadingOlderQuarantine}
-                  onLoadOlderMessages={loadOlderQuarantine}
+                <NeedsReviewPage
+                  slug={layoutHousehold.slug}
+                  householdName={layoutHousehold.displayName}
                 />
               ) : (
                 <Navigate
