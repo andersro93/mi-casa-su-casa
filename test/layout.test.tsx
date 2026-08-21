@@ -163,7 +163,6 @@ describe("UserAccountMenuContent", () => {
                 },
               }}
               mode="dark"
-              settingsPath="/home/settings"
               onSettingsClick={vi.fn()}
               onToggleColorMode={vi.fn()}
               onLogout={vi.fn()}
@@ -176,7 +175,10 @@ describe("UserAccountMenuContent", () => {
     expect(html).toContain("Alex Member");
     expect(html).toContain("alex.member@example.com");
     expect(html).toContain("Settings");
-    expect(html).toContain('href="/home/settings"');
+    // Account settings are a global route, distinct from /:slug/settings
+    // (household settings).
+    expect(html).toContain('href="/settings"');
+    expect(html).not.toContain('href="/home/settings"');
     expect(html).toContain("Light mode");
     expect(html).toContain("Sign out");
   });
