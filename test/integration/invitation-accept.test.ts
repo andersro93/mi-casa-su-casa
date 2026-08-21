@@ -121,6 +121,9 @@ describe("invitation acceptance (end-to-end against D1)", () => {
     await expect(lookup.json()).resolves.toMatchObject({
       accountExists: true,
       viewer: { email: "kid@example.com", emailMatches: true },
+      // The page greets newcomers with who invited them and to what.
+      household: { displayName: expect.any(String) },
+      invitedBy: { name: expect.any(String) },
     });
 
     const response = await SELF.fetch(

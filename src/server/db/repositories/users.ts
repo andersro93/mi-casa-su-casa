@@ -13,6 +13,16 @@ export async function findUserByEmail(db: D1Database, email: string) {
   return rows[0] ?? null;
 }
 
+export async function findUserById(db: D1Database, id: string) {
+  const rows = await dbForDatabase(db)
+    .select({ id: user.id, email: user.email, name: user.name })
+    .from(user)
+    .where(eq(user.id, id))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 /**
  * Deletes a Better Auth user; accounts, sessions, passkeys and memberships
  * cascade via foreign keys. Only used to compensate for interrupted flows.

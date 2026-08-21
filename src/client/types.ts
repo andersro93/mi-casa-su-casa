@@ -251,6 +251,8 @@ export type InvitationLookupResponse = {
   invitation: InvitationSummary;
   accountExists: boolean;
   viewer: { email: string; emailMatches: boolean } | null;
+  household: { displayName: string } | null;
+  invitedBy: { name: string } | null;
 };
 
 export type TwoFactorSetup = {
