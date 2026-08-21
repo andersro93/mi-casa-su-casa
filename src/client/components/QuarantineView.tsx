@@ -1,6 +1,4 @@
 import {
-  CheckCircleOutlined,
-  ContentCopyOutlined,
   DeleteOutlined,
   MoveToInboxOutlined,
   ShieldOutlined,
@@ -16,7 +14,6 @@ import {
   Chip,
   Divider,
   FormControl,
-  IconButton,
   InputLabel,
   List,
   ListItem,
@@ -26,13 +23,13 @@ import {
   Paper,
   Select,
   Stack,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import React, { useState } from "react";
 import type { ProviderSummary, QuarantineMessage } from "../types";
 import { formatTimestamp, stringAvatar } from "../utils";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { CopyButton } from "./ui";
 
 interface QuarantineViewProps {
   quarantineMessages: QuarantineMessage[];
@@ -63,7 +60,6 @@ export function QuarantineView({
   isLoadingOlderMessages = false,
   onLoadOlderMessages,
 }: QuarantineViewProps) {
-  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [reviewAction, setReviewAction] = useState<
     "dismiss" | "release" | null
   >(null);
@@ -71,16 +67,6 @@ export function QuarantineView({
   const selectedQuarantineMessage = quarantineMessages.find(
     (m) => m.id === selectedQuarantineId,
   );
-
-  const handleCopyCode = async (code: string, id: string) => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopiedCodeId(id);
-      setTimeout(() => setCopiedCodeId(null), 2000);
-    } catch (err) {
-      console.error("Failed to copy text: ", err);
-    }
-  };
 
   const handleReviewConfirm = async () => {
     if (!reviewAction) {
@@ -332,37 +318,11 @@ export function QuarantineView({
                       "No code detected"}
                   </Typography>
                   {selectedQuarantineMessage.extracted_code && (
-                    <Tooltip
-                      title={
-                        copiedCodeId === selectedQuarantineMessage.id
-                          ? "Copied!"
-                          : "Copy code"
-                      }
-                      placement="top"
-                    >
-                      <IconButton
-                        onClick={() => {
-                          if (selectedQuarantineMessage.extracted_code) {
-                            handleCopyCode(
-                              selectedQuarantineMessage.extracted_code,
-                              selectedQuarantineMessage.id,
-                            );
-                          }
-                        }}
-                        color={
-                          copiedCodeId === selectedQuarantineMessage.id
-                            ? "success"
-                            : "default"
-                        }
-                        sx={{ ml: 1 }}
-                      >
-                        {copiedCodeId === selectedQuarantineMessage.id ? (
-                          <CheckCircleOutlined />
-                        ) : (
-                          <ContentCopyOutlined />
-                        )}
-                      </IconButton>
-                    </Tooltip>
+                    <CopyButton
+                      value={selectedQuarantineMessage.extracted_code}
+                      label="Copy code"
+                      sx={{ ml: 1 }}
+                    />
                   )}
                 </Box>
               </CardContent>

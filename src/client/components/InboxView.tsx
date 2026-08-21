@@ -1,6 +1,4 @@
 import {
-  CheckCircleOutlined,
-  ContentCopyOutlined,
   EmailOutlined,
   HistoryOutlined,
   InboxOutlined,
@@ -17,18 +15,17 @@ import {
   CardContent,
   Chip,
   Divider,
-  IconButton,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
   Paper,
-  Tooltip,
   Typography,
 } from "@mui/material";
-import React, { useState } from "react";
+import React from "react";
 import type { InboxMessage, ProviderSummary } from "../types";
 import { formatTimestamp, stringAvatar } from "../utils";
+import { CopyButton } from "./ui";
 
 interface InboxViewProps {
   providers: ProviderSummary[];
@@ -59,22 +56,10 @@ export function InboxView({
   isLoadingOlderMessages = false,
   onLoadOlderMessages,
 }: InboxViewProps) {
-  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
-
   const selectedProvider = providers.find(
     (p) => p.provider_key === selectedProviderKey,
   );
   const selectedMessage = messages.find((m) => m.id === selectedMessageId);
-
-  const handleCopyCode = async (code: string, id: string) => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopiedCodeId(id);
-      setTimeout(() => setCopiedCodeId(null), 2000);
-    } catch (err) {
-      console.error("Failed to copy text: ", err);
-    }
-  };
 
   const getStatusColor = (status: InboxMessage["status"]) => {
     switch (status) {
@@ -467,36 +452,12 @@ export function InboxView({
                     {selectedMessage.extracted_code ?? "No code detected"}
                   </Typography>
                   {selectedMessage.extracted_code && (
-                    <Tooltip
-                      title={
-                        copiedCodeId === selectedMessage.id
-                          ? "Copied!"
-                          : "Copy code"
-                      }
-                      placement="top"
-                    >
-                      <IconButton
-                        onClick={() => {
-                          if (selectedMessage.extracted_code) {
-                            handleCopyCode(
-                              selectedMessage.extracted_code,
-                              selectedMessage.id,
-                            );
-                          }
-                        }}
-                        sx={{
-                          color: "primary.contrastText",
-                          opacity: 0.9,
-                          "&:hover": { opacity: 1 },
-                        }}
-                      >
-                        {copiedCodeId === selectedMessage.id ? (
-                          <CheckCircleOutlined />
-                        ) : (
-                          <ContentCopyOutlined />
-                        )}
-                      </IconButton>
-                    </Tooltip>
+                    <CopyButton
+                      value={selectedMessage.extracted_code}
+                      label="Copy code"
+                      color="inherit"
+                      sx={{ color: "primary.contrastText" }}
+                    />
                   )}
                 </Box>
               </CardContent>
