@@ -355,8 +355,12 @@ export function SettingsView({
             <Box
               component="form"
               onSubmit={(e) => {
+                // Enter in the password field must go through the same
+                // confirmation as the button — never disable 2FA directly.
                 e.preventDefault();
-                onDisable2FA();
+                if (formState.twoFactorPassword) {
+                  setIsDisable2FAOpen(true);
+                }
               }}
             >
               <Typography variant="body1" sx={{ mb: 2 }}>
