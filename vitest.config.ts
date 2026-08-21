@@ -43,6 +43,21 @@ export default defineConfig(async () => {
                 compatibilityFlags: ["nodejs_compat"],
                 d1Databases: ["DB"],
                 email: { send_email: [{ name: "EMAIL" }] },
+                // A tiny stand-in for dist/client so the SPA/asset passthrough
+                // (run_worker_first + security headers) is exercised in tests
+                // without requiring a Vite build first.
+                assets: {
+                  directory: "./test/fixtures/assets",
+                  binding: "ASSETS",
+                  run_worker_first: true,
+                  routerConfig: {
+                    has_user_worker: true,
+                    invoke_user_worker_ahead_of_assets: true,
+                  },
+                  assetConfig: {
+                    not_found_handling: "single-page-application",
+                  },
+                },
                 bindings: {
                   APP_NAME: "Mi Casa Su Casa (test)",
                   APP_URL: "http://localhost:8787",

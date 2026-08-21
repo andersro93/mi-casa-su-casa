@@ -114,7 +114,10 @@ app.route("/api/setup", setupRoutes);
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 
 app.get("*", async (c) => {
-  return c.env.ASSETS.fetch(c.req.raw);
+  // Responses from a binding fetch() carry immutable headers; re-wrap so the
+  // security-header middleware above can decorate the SPA and its assets.
+  const response = await c.env.ASSETS.fetch(c.req.raw);
+  return new Response(response.body, response);
 });
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
