@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  getPageTitle,
   isSettingsPath,
   Layout,
   UserAccountMenuContent,
@@ -204,5 +205,17 @@ describe("getUserInitials", () => {
         },
       }),
     ).toBe("AM");
+  });
+});
+
+describe("getPageTitle", () => {
+  it("names the current page for the mobile app bar", () => {
+    expect(getPageTitle("/home/inbox")).toBe("Latest codes");
+    expect(getPageTitle("/home/inbox/netflix")).toBe("Latest codes");
+    expect(getPageTitle("/home/members")).toBe("Members");
+    expect(getPageTitle("/home/quarantine")).toBe("Quarantine");
+    expect(getPageTitle("/home/providers")).toBe("Providers & rules");
+    expect(getPageTitle("/home/settings")).toBe("Household settings");
+    expect(getPageTitle("/settings")).toBe("Settings");
   });
 });

@@ -1,5 +1,8 @@
 import { Box, Card, CardContent, Container, Typography } from "@mui/material";
 import type { ReactNode } from "react";
+import { BrandLockup } from "./ui";
+
+const APP_NAME = "Mi Casa Su Casa";
 
 interface PublicEntryShellProps {
   eyebrow: string;
@@ -37,13 +40,18 @@ export function PublicEntryShell({
             sx={{ borderRadius: { xs: 3, sm: 4 }, overflow: "hidden" }}
           >
             <CardContent sx={{ p: { xs: 3, sm: 4, md: 5 } }}>
-              <Typography
-                variant="overline"
-                color="text.secondary"
-                sx={{ fontWeight: "bold", letterSpacing: 1 }}
-              >
-                {eyebrow}
-              </Typography>
+              <Box sx={{ mb: 3 }}>
+                <BrandLockup size={36} />
+              </Box>
+              {eyebrow !== APP_NAME ? (
+                <Typography
+                  variant="overline"
+                  color="text.secondary"
+                  component="div"
+                >
+                  {eyebrow}
+                </Typography>
+              ) : null}
               <Typography
                 variant="h4"
                 component="h1"
