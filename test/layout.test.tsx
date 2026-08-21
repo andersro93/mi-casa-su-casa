@@ -50,14 +50,14 @@ describe("Layout", () => {
 
     const settingsIndex = html.indexOf("Settings");
     const membersIndex = html.indexOf("Members");
-    const quarantineIndex = html.indexOf("Quarantine");
+    const quarantineIndex = html.indexOf("Needs review");
     const providersIndex = html.indexOf("Services");
     const householdSettingsIndex = html.indexOf("Household settings");
 
     expect(html).toContain("Inbox");
     expect(html).toContain("Settings");
     expect(html).toContain("Household settings");
-    expect(html).toContain("Quarantine");
+    expect(html).toContain("Needs review");
     expect(html).toContain("Members");
     expect(html).toContain("Services");
     expect(html).toContain("Home");
@@ -213,7 +213,7 @@ describe("getPageTitle", () => {
     expect(getPageTitle("/home/inbox")).toBe("Latest codes");
     expect(getPageTitle("/home/inbox/netflix")).toBe("Latest codes");
     expect(getPageTitle("/home/members")).toBe("Members");
-    expect(getPageTitle("/home/quarantine")).toBe("Quarantine");
+    expect(getPageTitle("/home/quarantine")).toBe("Needs review");
     expect(getPageTitle("/home/providers")).toBe("Services");
     expect(getPageTitle("/home/settings")).toBe("Household settings");
     expect(getPageTitle("/settings")).toBe("Settings");

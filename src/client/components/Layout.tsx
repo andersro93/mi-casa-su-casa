@@ -93,7 +93,7 @@ export function getPageTitle(pathname: string): string {
   return {
     inbox: "Latest codes",
     members: "Members",
-    quarantine: "Quarantine",
+    quarantine: "Needs review",
     providers: "Services",
   }[view];
 }
@@ -466,7 +466,7 @@ export function Layout({
             <NavItem
               to={buildHouseholdPath(householdSlug, "/quarantine")}
               icon={<SecurityIcon />}
-              label="Quarantine"
+              label="Needs review"
               selected={activeView === "quarantine"}
               onClick={handleNavClick}
             />
