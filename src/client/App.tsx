@@ -1,7 +1,6 @@
 import {
   Alert,
   Box,
-  Button,
   CircularProgress,
   Snackbar,
   Typography,
@@ -28,6 +27,7 @@ import {
 import { CreateHouseholdPage } from "./components/CreateHouseholdPage";
 import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
 import { InboxPage } from "./components/inbox/InboxPage";
+import { MembersPage } from "./components/members/MembersPage";
 import { ServicesPage } from "./components/services/ServicesPage";
 
 // Owner-only and rarely-visited views are code-split so the inbox loads fast.
@@ -35,9 +35,6 @@ const HouseholdSettingsView = lazy(() =>
   import("./components/HouseholdSettingsView").then((m) => ({
     default: m.HouseholdSettingsView,
   })),
-);
-const MembersView = lazy(() =>
-  import("./components/MembersView").then((m) => ({ default: m.MembersView })),
 );
 const QuarantineView = lazy(() =>
   import("./components/QuarantineView").then((m) => ({
@@ -75,24 +72,13 @@ import type {
   HouseholdSettingsFormState,
   HouseholdSettingsResponse,
   HouseholdSummary,
-  InvitationDeliveryResponse,
-  InvitationFormState,
-  InvitationSummary,
-  MemberFormState,
-  MemberSummary,
-  ProviderOption,
   ProviderSummary,
   QuarantineMessage,
   QuarantineMessagesResponse,
   SetupStatus,
   TwoFactorSetup,
 } from "./types";
-import {
-  buildHouseholdApiPath,
-  buildHouseholdPath,
-  fetchJson,
-  getProviderAccessToggleRequest,
-} from "./utils";
+import { buildHouseholdApiPath, buildHouseholdPath, fetchJson } from "./utils";
 
 type ViewType = "inbox" | "quarantine" | "members" | "providers" | "settings";
 
@@ -125,19 +111,6 @@ const INITIAL_SETTINGS_FORM_STATE: AccountSettingsFormState = {
 
 const INITIAL_HOUSEHOLD_SETTINGS_FORM_STATE: HouseholdSettingsFormState = {
   displayName: "",
-};
-
-const INITIAL_MEMBER_FORM_STATE: MemberFormState = {
-  email: "",
-  name: "",
-  role: "member",
-};
-
-const INITIAL_INVITATION_FORM_STATE: InvitationFormState = {
-  email: "",
-  name: "",
-  role: "member",
-  providerIds: [],
 };
 
 const PENDING_INVITE_KEY = "pendingInviteToken";
@@ -215,21 +188,8 @@ export function App() {
   >(null);
   const [releaseProviderKey, setReleaseProviderKey] = useState<string>("");
 
-  const [members, setMembers] = useState<MemberSummary[]>([]);
-  const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
-  const [memberFormState, setMemberFormState] = useState<MemberFormState>(
-    INITIAL_MEMBER_FORM_STATE,
-  );
-  const [invitations, setInvitations] = useState<InvitationSummary[]>([]);
-  const [invitationFormState, setInvitationFormState] =
-    useState<InvitationFormState>(INITIAL_INVITATION_FORM_STATE);
-
   const [isLoadingQuarantine, setIsLoadingQuarantine] = useState(false);
-  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [isReviewingQuarantine, setIsReviewingQuarantine] = useState(false);
-  const [isSavingMember, setIsSavingMember] = useState(false);
-  const [isSavingInvitation, setIsSavingInvitation] = useState(false);
 
   const [quarantineNextBefore, setQuarantineNextBefore] = useState<
     string | null
@@ -238,38 +198,6 @@ export function App() {
     useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
-  const [pendingInviteLink, setPendingInviteLink] = useState<string | null>(
-    null,
-  );
-
-  function reportInvitationDelivery(
-    result: InvitationDeliveryResponse,
-    sentMessage: string,
-  ) {
-    if (result.emailSent) {
-      setPendingInviteLink(null);
-      setStatusMessage(sentMessage);
-      return;
-    }
-
-    setPendingInviteLink(result.inviteUrl);
-    setViewError(
-      "The invitation was created, but the email could not be sent. Copy the invite link and share it directly.",
-    );
-  }
-
-  async function copyPendingInviteLink() {
-    if (!pendingInviteLink) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(pendingInviteLink);
-      setViewError(null);
-      setStatusMessage("Invite link copied.");
-    } catch {
-      window.prompt("Copy the invite link:", pendingInviteLink);
-    }
-  }
 
   const isAuthenticated = Boolean(session?.user?.email);
   const currentHousehold = routeSlug
@@ -922,14 +850,8 @@ export function App() {
   useEffect(() => {
     if (!isAuthenticated || !currentHousehold) {
       setQuarantineMessages([]);
-      setMembers([]);
-      setProviderOptions([]);
       setSelectedQuarantineId(null);
-      setSelectedMemberId(null);
       setReleaseProviderKey("");
-      setMemberFormState(INITIAL_MEMBER_FORM_STATE);
-      setInvitations([]);
-      setInvitationFormState(INITIAL_INVITATION_FORM_STATE);
     }
   }, [currentHousehold, isAuthenticated]);
 
@@ -1000,72 +922,6 @@ export function App() {
     isOwner,
   ]);
 
-  useEffect(() => {
-    if (
-      !isAuthenticated ||
-      !isOwner ||
-      !currentHousehold ||
-      activeView !== "members"
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadMembers = async () => {
-      setIsLoadingMembers(true);
-
-      try {
-        const [membersResponse, invitationsResponse] = await Promise.all([
-          fetchJson<{
-            members: MemberSummary[];
-            providers: ProviderOption[];
-          }>(householdApiPath("/admin/members")),
-          fetchJson<{ invitations: InvitationSummary[] }>(
-            householdApiPath("/admin/invitations"),
-          ),
-        ]);
-
-        if (cancelled) return;
-
-        setMembers(membersResponse.members);
-        setProviderOptions(membersResponse.providers);
-        setInvitations(invitationsResponse.invitations);
-        setSelectedMemberId((current) => {
-          if (
-            current &&
-            membersResponse.members.some((member) => member.id === current)
-          ) {
-            return current;
-          }
-          return membersResponse.members[0]?.id ?? null;
-        });
-      } catch (error) {
-        if (!cancelled) {
-          setViewError(
-            error instanceof Error ? error.message : "Unable to load members",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingMembers(false);
-        }
-      }
-    };
-
-    void loadMembers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeView,
-    currentHousehold,
-    householdApiPath,
-    isAuthenticated,
-    isOwner,
-  ]);
-
   async function loadOlderQuarantine() {
     if (!quarantineNextBefore || isLoadingOlderQuarantine) {
       return;
@@ -1109,30 +965,6 @@ export function App() {
       }
       return response.messages[0]?.id ?? null;
     });
-  }
-
-  async function refreshMembers() {
-    if (!isAuthenticated || !isOwner || !currentHousehold) return;
-    const response = await fetchJson<{
-      members: MemberSummary[];
-      providers: ProviderOption[];
-    }>(householdApiPath("/admin/members"));
-    setMembers(response.members);
-    setProviderOptions(response.providers);
-    setSelectedMemberId((current) => {
-      if (current && response.members.some((m) => m.id === current)) {
-        return current;
-      }
-      return response.members[0]?.id ?? null;
-    });
-  }
-
-  async function refreshInvitations() {
-    if (!isAuthenticated || !isOwner || !currentHousehold) return;
-    const response = await fetchJson<{ invitations: InvitationSummary[] }>(
-      householdApiPath("/admin/invitations"),
-    );
-    setInvitations(response.invitations);
   }
 
   async function handleLogout() {
@@ -1182,139 +1014,6 @@ export function App() {
     }
   }
 
-  async function handleCreateMember(
-    event: FormEvent<HTMLFormElement>,
-  ): Promise<boolean> {
-    event.preventDefault();
-    setIsSavingMember(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const result = await fetchJson<InvitationDeliveryResponse>(
-        householdApiPath("/admin/members"),
-        {
-          method: "POST",
-          body: JSON.stringify(memberFormState),
-        },
-      );
-
-      setMemberFormState(INITIAL_MEMBER_FORM_STATE);
-      reportInvitationDelivery(result, "Invitation email sent.");
-      await refreshInvitations();
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to create household invitation",
-      );
-      return false;
-    } finally {
-      setIsSavingMember(false);
-    }
-  }
-
-  async function handleCreateInvitation(
-    event: FormEvent<HTMLFormElement>,
-  ): Promise<boolean> {
-    event.preventDefault();
-    setIsSavingInvitation(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const result = await fetchJson<InvitationDeliveryResponse>(
-        householdApiPath("/admin/invitations"),
-        {
-          method: "POST",
-          body: JSON.stringify(invitationFormState),
-        },
-      );
-
-      setInvitationFormState(INITIAL_INVITATION_FORM_STATE);
-      reportInvitationDelivery(result, "Invitation email sent.");
-      await refreshInvitations();
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to create invitation",
-      );
-      return false;
-    } finally {
-      setIsSavingInvitation(false);
-    }
-  }
-
-  async function handleResendInvitation(invitationId: string) {
-    setIsSavingInvitation(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const result = await fetchJson<InvitationDeliveryResponse>(
-        householdApiPath(`/admin/invitations/${invitationId}/resend`),
-        {
-          method: "POST",
-        },
-      );
-
-      reportInvitationDelivery(result, "Invitation resent.");
-      await refreshInvitations();
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to resend invitation",
-      );
-    } finally {
-      setIsSavingInvitation(false);
-    }
-  }
-
-  async function handleCancelInvitation(
-    invitationId: string,
-  ): Promise<boolean> {
-    setIsSavingInvitation(true);
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson(householdApiPath(`/admin/invitations/${invitationId}`), {
-        method: "DELETE",
-      });
-
-      setStatusMessage("Invitation cancelled.");
-      await refreshInvitations();
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to cancel invitation",
-      );
-      return false;
-    } finally {
-      setIsSavingInvitation(false);
-    }
-  }
-
-  async function handleRemoveMember(userId: string): Promise<boolean> {
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson<{ ok: boolean }>(
-        householdApiPath(`/admin/members/${userId}`),
-        { method: "DELETE" },
-      );
-      setStatusMessage("Member removed from the household.");
-      await refreshMembers();
-      return true;
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to remove member",
-      );
-      return false;
-    }
-  }
-
   async function handleLeaveHousehold(slug: string): Promise<boolean> {
     setStatusMessage(null);
     setViewError(null);
@@ -1333,71 +1032,6 @@ export function App() {
         error instanceof Error ? error.message : "Unable to leave household",
       );
       return false;
-    }
-  }
-
-  async function handleMemberRoleChange(
-    userId: string,
-    role: MemberSummary["role"],
-  ) {
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      await fetchJson<{ ok: boolean }>(
-        householdApiPath(`/admin/members/${userId}/role`),
-        {
-          method: "PATCH",
-          body: JSON.stringify({ role }),
-        },
-      );
-
-      setStatusMessage(`Updated member role to ${role}.`);
-      await refreshMembers();
-      if (
-        session?.user?.email === members.find((m) => m.id === userId)?.email
-      ) {
-        await refetch();
-      }
-    } catch (error) {
-      setViewError(
-        error instanceof Error ? error.message : "Unable to update member role",
-      );
-    }
-  }
-
-  async function handleProviderAccessToggle(
-    userId: string,
-    providerKey: string,
-    shouldHaveAccess: boolean,
-  ) {
-    setStatusMessage(null);
-    setViewError(null);
-
-    try {
-      const { method, statusMessage } =
-        getProviderAccessToggleRequest(shouldHaveAccess);
-
-      await fetchJson<{ ok: boolean }>(
-        householdApiPath(
-          method === "DELETE"
-            ? `/admin/members/${userId}/provider-access/${encodeURIComponent(providerKey)}`
-            : `/admin/members/${userId}/provider-access`,
-        ),
-        method === "DELETE"
-          ? { method }
-          : { method, body: JSON.stringify({ providerKey }) },
-      );
-
-      setStatusMessage(statusMessage);
-      await refreshMembers();
-      await invalidateInbox();
-    } catch (error) {
-      setViewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to update provider access",
-      );
     }
   }
 
@@ -1670,33 +1304,10 @@ export function App() {
             path="/:slug/members"
             element={
               isOwner ? (
-                <MembersView
-                  members={members}
-                  invitations={invitations}
-                  providerOptions={providerOptions}
-                  selectedMemberId={selectedMemberId}
-                  onSelectMember={setSelectedMemberId}
-                  isLoadingMembers={isLoadingMembers}
-                  memberFormState={memberFormState}
-                  onMemberFormChange={(update) =>
-                    setMemberFormState((current) => ({ ...current, ...update }))
-                  }
-                  onCreateMember={handleCreateMember}
-                  isSavingMember={isSavingMember}
-                  invitationFormState={invitationFormState}
-                  onInvitationFormChange={(update) =>
-                    setInvitationFormState((current) => ({
-                      ...current,
-                      ...update,
-                    }))
-                  }
-                  onCreateInvitation={handleCreateInvitation}
-                  onResendInvitation={handleResendInvitation}
-                  onCancelInvitation={handleCancelInvitation}
-                  isSavingInvitation={isSavingInvitation}
-                  onRoleChange={handleMemberRoleChange}
-                  onRemoveMember={handleRemoveMember}
-                  onProviderAccessToggle={handleProviderAccessToggle}
+                <MembersPage
+                  slug={layoutHousehold.slug}
+                  householdName={layoutHousehold.displayName}
+                  currentUserId={session?.user?.id ?? null}
                 />
               ) : (
                 <Navigate
@@ -1745,17 +1356,6 @@ export function App() {
           severity={viewError ? "error" : "success"}
           variant="filled"
           sx={{ width: "100%" }}
-          action={
-            viewError && pendingInviteLink ? (
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => void copyPendingInviteLink()}
-              >
-                Copy invite link
-              </Button>
-            ) : undefined
-          }
         >
           {viewError || statusMessage}
         </Alert>
