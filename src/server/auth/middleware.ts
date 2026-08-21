@@ -69,7 +69,7 @@ export const requireOwner: MiddlewareHandler<{
 }> = async (c, next) => {
   const household = c.get("household");
 
-  if (!household || household.role !== "owner") {
+  if (household?.role !== "owner") {
     return c.json({ error: "Forbidden" }, 403);
   }
 

@@ -2,7 +2,7 @@ import { isAPIError } from "better-auth/api";
 import { Hono } from "hono";
 
 import { provisioningAuthForEnv } from "../auth/auth";
-import { loadAuthSession, requireAuthenticatedUser } from "../auth/middleware";
+import { loadAuthSession } from "../auth/middleware";
 import { getHouseholdById } from "../db/repositories/households";
 import {
   acceptInvitation,
@@ -19,16 +19,6 @@ type AcceptInvitationPayload = {
   name?: string;
   password?: string;
 };
-
-function withoutToken(
-  invitation: Awaited<ReturnType<typeof getInvitationByTokenHash>>,
-) {
-  if (!invitation) {
-    return null;
-  }
-
-  return invitation;
-}
 
 export const invitationRoutes = new Hono<{
   Bindings: Env;
@@ -58,7 +48,7 @@ invitationRoutes.get("/lookup", async (c) => {
   const tokenHash = await hashInvitationToken(token);
   const invitation = await getInvitationByTokenHash(c.env.DB, tokenHash);
 
-  if (!invitation || invitation.status !== "pending") {
+  if (invitation?.status !== "pending") {
     return c.json({ error: "Invitation not found or no longer valid" }, 404);
   }
 
@@ -72,7 +62,7 @@ invitationRoutes.get("/lookup", async (c) => {
   );
 
   return c.json({
-    invitation: withoutToken(invitation),
+    invitation,
     // Lets the invite page pick the right flow: create an account, sign in
     // first, or accept as the signed-in user.
     accountExists,
@@ -105,7 +95,7 @@ invitationRoutes.post("/accept", async (c) => {
   const tokenHash = await hashInvitationToken(token);
   const invitation = await getInvitationByTokenHash(c.env.DB, tokenHash);
 
-  if (!invitation || invitation.status !== "pending") {
+  if (invitation?.status !== "pending") {
     return c.json({ error: "Invitation not found or no longer valid" }, 404);
   }
 
@@ -244,7 +234,3 @@ invitationRoutes.post("/accept", async (c) => {
     return c.json({ error: "Unable to accept invitation" }, 500);
   }
 });
-
-export const authenticatedInvitationRoutes = new Hono<{ Bindings: Env }>();
-
-authenticatedInvitationRoutes.use("*", requireAuthenticatedUser);

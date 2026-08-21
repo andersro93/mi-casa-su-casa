@@ -53,6 +53,7 @@ import type {
   MemberSummary,
   ProviderOption,
 } from "../types";
+import { stringAvatar } from "../utils";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 interface MembersViewProps {
@@ -79,41 +80,6 @@ interface MembersViewProps {
     providerKey: string,
     hasAccess: boolean,
   ) => void;
-}
-
-const avatarColors = [
-  "#6366F1", // Indigo
-  "#8B5CF6", // Violet
-  "#A855F7", // Purple
-  "#EC4899", // Fuchsia
-  "#3B82F6", // Blue
-  "#0EA5E9", // Light Blue
-  "#14B8A6", // Sky
-  "#06B6D4", // Cyan
-];
-
-function stringToColor(string: string) {
-  let hash = 0;
-  for (let i = 0; i < string.length; i += 1) {
-    hash = string.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return avatarColors[Math.abs(hash) % avatarColors.length];
-}
-
-function stringAvatar(name: string) {
-  const safeName = name || "?";
-  const parts = safeName.split(" ");
-  const initials =
-    parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : safeName[0];
-
-  return {
-    sx: {
-      bgcolor: stringToColor(safeName),
-      color: "#fff",
-      fontWeight: "bold",
-    },
-    children: initials.toUpperCase(),
-  };
 }
 
 export function MembersView({

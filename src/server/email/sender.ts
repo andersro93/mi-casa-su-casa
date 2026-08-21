@@ -26,7 +26,7 @@ export async function sendTransactionalEmail(
   return env.EMAIL.send({
     from: resolveSenderAddress(env),
     ...message,
-  });
+  } as TransactionalEmailMessage);
 }
 
 export async function sendPasswordResetEmail(

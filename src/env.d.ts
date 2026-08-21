@@ -1,17 +1,5 @@
-type TransactionalEmailMessage = {
-  from: string;
-  to: string | string[];
-  subject: string;
-  html?: string;
-  text?: string;
-  replyTo?: string;
-};
-
-type SendEmail = {
-  send(
-    message: TransactionalEmailMessage,
-  ): Promise<{ messageId?: string } | undefined>;
-};
+/** Message shape accepted by the Workers send_email binding (workers-types). */
+type TransactionalEmailMessage = EmailMessageBuilder;
 
 interface Env {
   APP_NAME: string;

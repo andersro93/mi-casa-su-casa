@@ -32,7 +32,6 @@ export const inboxRoutes = new Hono<{
   Variables: AppVariables;
 }>();
 
-inboxRoutes.use("/providers", requireAuthenticatedUser);
 inboxRoutes.use("/:slug/*", requireAuthenticatedUser);
 inboxRoutes.use("/:slug/*", requireHouseholdContext);
 inboxRoutes.use("/:slug/quarantine", requireOwner);
