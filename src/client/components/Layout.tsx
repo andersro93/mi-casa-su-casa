@@ -495,6 +495,26 @@ export function Layout({
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
+      {/* Keyboard users can jump past the navigation. */}
+      <Box
+        component="a"
+        href="#main-content"
+        sx={{
+          position: "absolute",
+          left: 16,
+          top: -100,
+          zIndex: (theme) => theme.zIndex.appBar + 1,
+          px: 2,
+          py: 1,
+          borderRadius: 2,
+          bgcolor: "primary.main",
+          color: "primary.contrastText",
+          fontWeight: 600,
+          "&:focus-visible": { top: 12 },
+        }}
+      >
+        Skip to content
+      </Box>
       <AppBar
         position="fixed"
         elevation={0}
@@ -605,7 +625,10 @@ export function Layout({
 
       <Box
         component="main"
+        id="main-content"
+        tabIndex={-1}
         sx={{
+          outline: "none",
           flexGrow: 1,
           p: { xs: 2, sm: 3, md: 4 },
           minWidth: 0,

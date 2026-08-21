@@ -148,6 +148,39 @@ describe("Layout", () => {
 
     expect(html).not.toContain("Household settings");
   });
+
+  it("offers a skip link to the main content for keyboard users", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/home/inbox"]}>
+        <ColorModeContext.Provider value={{ toggleColorMode: vi.fn() }}>
+          <ThemeProvider theme={getTheme("light")}>
+            <Layout
+              session={{ user: { email: "alex.member@example.com" } }}
+              households={[
+                {
+                  id: "household-1",
+                  slug: "home",
+                  displayName: "Home",
+                  role: "member",
+                },
+              ]}
+              isOwner={false}
+              householdSlug="home"
+              householdName="Home"
+              householdRole="member"
+              onSelectHousehold={vi.fn()}
+              onCreateHousehold={vi.fn()}
+              onLogout={vi.fn()}
+            >
+              <div>Inbox content</div>
+            </Layout>
+          </ThemeProvider>
+        </ColorModeContext.Provider>
+      </MemoryRouter>,
+    );
+    expect(html).toContain('href="#main-content"');
+    expect(html).toContain('id="main-content"');
+  });
 });
 
 describe("UserAccountMenuContent", () => {
