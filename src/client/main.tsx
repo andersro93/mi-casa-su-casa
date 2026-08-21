@@ -1,29 +1,61 @@
+import "@fontsource-variable/inter";
+import "@fontsource-variable/nunito";
+
 import { CssBaseline, ThemeProvider, useMediaQuery } from "@mui/material";
-import { StrictMode, useMemo, useState } from "react";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import { registerServiceWorker } from "./service-worker";
-import { ColorModeContext, getTheme } from "./theme";
+import {
+  ColorModeContext,
+  type ColorModePreference,
+  getTheme,
+  persistColorMode,
+  readStoredColorMode,
+  resolveColorMode,
+} from "./theme";
+
+function getStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 function AppWrapper() {
   const prefersDarkMode = useMediaQuery("(prefers-color-scheme: dark)");
-  const [mode, setMode] = useState<"light" | "dark">(
-    prefersDarkMode ? "dark" : "light",
+  const [preference, setPreference] = useState<ColorModePreference>(() =>
+    readStoredColorMode(getStorage()),
   );
+  const mode = resolveColorMode(preference, prefersDarkMode);
 
   const colorMode = useMemo(
     () => ({
       toggleColorMode: () => {
-        setMode((prevMode) => (prevMode === "light" ? "dark" : "light"));
+        setPreference((current) => {
+          const next =
+            resolveColorMode(current, prefersDarkMode) === "light"
+              ? "dark"
+              : "light";
+          persistColorMode(getStorage(), next);
+          return next;
+        });
       },
     }),
-    [],
+    [prefersDarkMode],
   );
 
   const theme = useMemo(() => getTheme(mode), [mode]);
+
+  // Keep the browser/PWA chrome in step with the app surface colour.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    meta?.setAttribute("content", theme.palette.background.paper);
+  }, [theme]);
 
   return (
     <BrowserRouter>
