@@ -1,211 +1,212 @@
 # CI/CD architecture
 
-Mi Casa Su Casa uses GitHub Actions plus Wrangler to validate pull requests, publish preview deployments, deploy application code from `main`, and keep production D1 migrations behind an explicit approval gate.
+Three workflows, one quality gate, and no deploy step. GitHub Actions
+validates every pull request, publishes a preview image for it, and — on merge
+to `main` — tags a version and publishes a release: binaries, checksums,
+SBOMs, cosign signatures and the multi-arch container image.
 
-Drizzle now owns schema definitions and migration generation. Wrangler continues to apply the checked-in SQL migrations to Cloudflare D1 in local, preview, and production environments.
+**Merging is releasing.** There is no "deploy" button and no environment this
+repository rolls out to: the artifact is the image, and where it runs is
+deployment infrastructure the repository does not own.
 
 ## Workflow layout
 
-### 1. `CI`
+```
+pull_request ──▶ ci-go.yml ──▶ test.yml (reusable)
+                     └──────▶ image: build → smoke test → preview push
 
-File: `.github/workflows/ci.yml`
-
-Runs on every pull request and on pushes to `main`.
-
-Commands:
-
-```bash
-npm ci
-npm run check
-npm run typecheck
-npm run test
-npm run build
+push to main ──▶ release.yml ──▶ version (svu)
+                     ├────────▶ verify: test.yml on the merge commit
+                     └────────▶ publish: tag → GoReleaser → GHCR + GitHub Release
 ```
 
-This is the required validation workflow that should block merges when red.
+### `Tests` — `.github/workflows/test.yml`
 
-### 2. `Preview Deploy`
+The single definition of "the suite is green", called by both of the others
+(`workflow_call` only — it never runs on its own) so the gate cannot drift
+between the pull-request check and the release check.
 
-File: `.github/workflows/preview-deploy.yml`
+It runs against a real `postgres:17-alpine` service container:
 
-Runs on pull requests from branches in this repository.
-
-Flow:
-
-1. install dependencies
-2. run `npm run ci`
-3. apply preview D1 migrations with `npm run db:apply:preview`
-4. deploy preview Worker with `npm run deploy:preview`
-5. comment on the pull request with the preview status
-
-Fork pull requests do not get preview deploys by default because GitHub does not expose deployment secrets to fork-triggered workflows.
-
-#### The shared preview database
-
-Every pull request deploys to the **same** preview Worker and preview D1 (`mi-casa-su-casa-preview`). That keeps setup simple but has two consequences:
-
-- a PR's migrations are applied to the shared database as soon as its preview deploys, so a broken or destructive migration affects every other open PR's preview — reset it with the steps in [`runbook.md`](./runbook.md#7-reset-the-shared-preview-database);
-- two open PRs must not reuse a migration number: the `CI` workflow fails a PR whose `migrations/NNNN_*.sql` number already exists on `main` under a different name, or that is missing migrations `main` already has (rebase).
-
-If you need isolated previews, the Cloudflare way is one preview alias per PR (`wrangler versions upload --preview-alias pr-<n>`) plus a per-PR D1 created in the workflow (`wrangler d1 create preview-pr-<n>`) and deleted on PR close; the workflow is written so that swapping the injected database id is the only change needed.
-
-### 3. `Production Deploy`
-
-File: `.github/workflows/production-deploy.yml`
-
-Runs automatically on pushes to `main`, in the `production` GitHub environment (add required reviewers there if you want a manual gate).
-
-Flow:
-
-1. install dependencies
-2. run `npm run ci`
-3. inject the production D1 id (fails loudly if the secret or placeholder is missing)
-4. **apply production D1 migrations** (`npm run db:apply:production`)
-5. deploy the Worker (`npm run deploy:production`)
-
-Migrations are applied immediately before the matching code ships, so they must be **expand/contract-safe**: the previous Worker version keeps running for a few seconds against the new schema. Add columns/tables before code depends on them; only drop or rename once no deployed code references them. Migrations are append-only.
-
-The workflow uses `concurrency: { group: production-d1, cancel-in-progress: false }`: a second push queues instead of cancelling a migration or deploy half-way, and it shares the group with `Production D1 Migrate`, so two migration runs can never overlap.
-
-### 4. `Production D1 Migrate`
-
-File: `.github/workflows/production-d1-migrate.yml`
-
-Manual recovery path (`workflow_dispatch`) behind the protected `production-migrations` environment. Normal releases do **not** need it — `Production Deploy` applies migrations. Use it to re-apply migrations for a specific ref after a failed deploy, or to list the applied migrations for an audit. It shares the `production-d1` concurrency group.
-
-## Wrangler environment model
-
-`wrangler.jsonc` separates preview and production bindings:
-
-- top-level config is local-development oriented
-- `env.preview` deploys `mi-casa-su-casa-preview`
-- `env.production` deploys `mi-casa-su-casa`
-- preview and production use different D1 bindings
-
-D1 `database_id` values are **not hardcoded** in `wrangler.jsonc`. They are injected at deploy time by the GitHub Actions workflows via `sed` from GitHub secrets before Wrangler runs.
-
-Runtime variables (`APP_URL`, `OWNER_EMAIL`, `OUTBOUND_EMAIL_FROM`) and secrets (`AUTH_SECRET`, `SETUP_SECRET`) are configured directly in the Cloudflare dashboard for each Worker. They persist across deploys and do not depend on GitHub Actions.
-
-> **Why `keep_vars` matters:** by default Wrangler treats `wrangler.jsonc` as the source of truth and **deletes** any plaintext variable that is set in the dashboard but not in the config on every `wrangler deploy` (secrets are never touched). `wrangler.jsonc` sets `"keep_vars": true` so dashboard variables survive deploys. Do not remove it unless you move those variables into the config or pass them with `wrangler deploy --var`.
-
-This design means forkers never need to edit `wrangler.jsonc` — just add the required secrets and variables to their GitHub repository and Cloudflare dashboard.
-
-## Required GitHub secrets
-
-Add these repository secrets under **Settings → Secrets and variables → Actions → Secrets**:
-
-| Secret | Purpose |
-| --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account used by Wrangler (found on the Workers & Pages overview sidebar) |
-| `CLOUDFLARE_API_TOKEN` | API token for all deployments and migrations — see [Creating an API token](#creating-an-api-token) below |
-| `D1_DATABASE_ID_PREVIEW` | UUID of the preview D1 database (from `wrangler d1 create`) |
-| `D1_DATABASE_ID_PRODUCTION` | UUID of the production D1 database (from `wrangler d1 create`) |
-
-A single token is used for preview deploys, production deploys, and production migrations. Cloudflare recommends scoping API tokens to the single account they need to manage.
-
-### Creating an API token
-
-Create an **account-owned** token so CI/CD survives team changes (requires Super Administrator). If you are not a Super Administrator, create a user-owned token instead — both work the same way, but user tokens are revoked if the creating user loses access.
-
-1. For an **account-owned token**: open the [Cloudflare dashboard](https://dash.cloudflare.com) → select your account → **Manage Account → Account API Tokens → Create Token**
-2. For a **user-owned token**: open [**API Tokens** in your profile](https://dash.cloudflare.com/profile/api-tokens) → **Create Token**
-3. Choose the **Edit Cloudflare Workers** template and click **Use template**
-4. Add one more permission: **Account → D1 → Edit** (required for `wrangler d1 migrations apply`)
-5. Under **Account Resources**, select only the account that owns your Workers
-6. Under **Zone Resources**, select **All zones** (or the specific zone for your domain)
-7. Click **Continue to summary** → **Create Token**
-8. Copy the token — it is only shown once
-
-## Required GitHub variables
-
-Add these repository variables under **Settings → Secrets and variables → Actions → Variables**:
-
-| Variable | Purpose |
-| --- | --- |
-| `CLOUDFLARE_PREVIEW_URL` | Full URL of the preview deployment — used for PR comment links (e.g. `https://mi-casa-su-casa-preview.example.workers.dev`) |
-
-The preview workflow still deploys without `CLOUDFLARE_PREVIEW_URL`, but the pull request comment will only report status instead of a direct link.
-
-## Required Cloudflare dashboard variables and secrets
-
-In the Cloudflare dashboard, go to **Workers & Pages → your Worker → Settings → Variables and Secrets**.
-
-Add as **plaintext variables**:
-
-| Variable | Purpose |
-| --- | --- |
-| `APP_URL` | Full URL of this deployment (e.g. `https://mi-casa-su-casa.example.com`) |
-| `OWNER_EMAIL` | Email address for the initial owner account |
-| `EMAIL_DOMAIN` | Domain of the household inbox addresses (`<slug>@EMAIL_DOMAIN`, e.g. `home.yourdomain.com`). Display only — shown to owners in household settings |
-| `OUTBOUND_EMAIL_FROM` | Sender address for invitation and password-reset emails — must be on a domain enabled for sending in Cloudflare Email Routing. The Worker refuses API requests (503 `misconfigured`) until this, `APP_URL` and `AUTH_SECRET` are set |
-
-Add as **encrypted secrets**:
-
-| Secret | Purpose |
-| --- | --- |
-| `AUTH_SECRET` | Random string used by Better Auth to sign sessions (generate with `openssl rand -base64 32`) |
-| `SETUP_SECRET` | One-time setup passphrase for initial owner account creation — delete it from the Worker after `/setup` succeeds |
-
-Repeat for both production (`mi-casa-su-casa`) and preview (`mi-casa-su-casa-preview`) Workers. Use the appropriate URL for `APP_URL` in each.
-
-## Required GitHub environments
-
-Create this environment under **Settings → Environments**:
-
-### `production-migrations`
-
-Use required reviewers here so production database changes require explicit approval.
-
-Recommended settings:
-
-- required reviewers enabled
-- deployment branches limited to `main`
-- optional wait timer if your release process benefits from a pause before migration approval
-
-## D1 rollout guidance
-
-Merging to `main` applies pending migrations and then deploys the Worker, in that order, in one queued run.
-
-For schema changes, always use expand/contract rollouts:
-
-- additive columns/tables/indexes in one PR, with code that tolerates both shapes
-- backfills as idempotent statements
-- cleanup and destructive changes (drop/rename) only in a later PR, after compatible code is live
-
-If a migration fails, the Worker is **not** deployed; fix forward with a new migration and re-run via a new push or `Production D1 Migrate`.
-
-## Local commands
-
-Useful commands after this issue:
-
-```bash
-npm run ci
-npm run deploy:preview
-npm run deploy:production
-npm run db:generate
-npm run db:apply:local
-npm run db:apply:preview
-npm run db:apply:production
+```
+bun install --frozen-lockfile
+bun run check          # Biome + tsc
+goreleaser check       # the release config is code too
+bun run test           # the TypeScript suite
+cd apps/server && go vet ./...
+cd apps/server && go test -p 1 -count=1 ./...
 ```
 
-## Manual setup still required
+`-p 1` is not optional: Go packages that truncate shared tables cannot run as
+concurrent packages against one database.
 
-This issue adds the repository-side CI/CD wiring, but operators still need to:
+The toolchain comes from `.mise.toml` via `jdx/mise-action`, with
+`install_args` naming only what this job needs — plus `oapi-codegen` and
+`sqlc`, because the generated-code drift test shells out to them and never
+skips. CI itself never runs `go generate`: generated code is committed, and
+that test is what keeps it honest.
 
-1. create the preview and production D1 databases in Cloudflare (`wrangler d1 create mi-casa-su-casa-preview` and `wrangler d1 create mi-casa-su-casa`)
-2. add the GitHub secrets listed above (including the D1 database UUIDs from step 1)
-3. add the GitHub variables listed above
-4. set `APP_URL`, `OWNER_EMAIL`, `AUTH_SECRET`, and `SETUP_SECRET` in the Cloudflare dashboard for each Worker (see table above)
-5. enable branch protection on `main` so `CI` stays required
-6. configure required reviewers for the `production-migrations` environment
-7. enable Cloudflare Email Routing on the domain and create a routing rule forwarding the shared inbox address to the Worker (see [`email-routing.md`](./email-routing.md))
+### `CI (Go)` — `.github/workflows/ci-go.yml`
 
-No edits to `wrangler.jsonc` are needed — all environment-specific values are injected by the workflows.
+Runs on every pull request, with `cancel-in-progress` concurrency keyed on the
+branch — a force-push obsoletes the running check rather than burning minutes
+on a commit nobody can merge.
 
-## References
+1. `test.yml`.
+2. `svu next --v0` computes what the next release *would* be, so the preview
+   tags sort below it.
+3. `bash scripts/build-artifacts.sh` builds the SPA and both server binaries
+   natively. Nothing compiles inside Docker.
+4. `docker build` produces a single-arch image, and the **smoke test** proves
+   it runs rather than merely compiles, against a throwaway Postgres:
+   - `migrate` applies the schema from the image;
+   - the default mode starts and answers `/healthz`;
+   - `/readyz` returns `"ok":true` (so it reached Postgres);
+   - `GET /` returns the embedded SPA (`id="root"`, not the committed
+     placeholder — a build that skipped the embed overlay fails here);
+   - an unsigned `POST /api/inbound/mailgun/mime` returns **401**, which
+     proves the router mounted the webhook outside the spec validator, the
+     multipart form parsed, and HMAC verification ran.
+5. **Only then**, the preview image is pushed for both architectures:
 
-- Cloudflare Workers GitHub Actions: https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/
-- Cloudflare Wrangler environments: https://developers.cloudflare.com/workers/wrangler/environments/
-- Cloudflare D1 environments: https://developers.cloudflare.com/d1/configuration/environments/
-- Cloudflare D1 commands: https://developers.cloudflare.com/workers/wrangler/commands/d1/
-- Cloudflare preview URLs: https://developers.cloudflare.com/workers/configuration/previews/
+   ```
+   ghcr.io/andersro93/mi-casa-su-casa:<next>-pr.<number>          # moves with the PR
+   ghcr.io/andersro93/mi-casa-su-casa:<next>-pr.<number>.<sha>    # immutable
+   ```
+
+   Both are valid semver prereleases of the release they precede, so they can
+   never be mistaken for one.
+
+Two kinds of pull request build and smoke-test but publish nothing, because
+their `GITHUB_TOKEN` is read-only: those from **forks**, and those from
+**Dependabot** (whose runs are treated as untrusted even on an in-repo
+branch). The job checks both conditions before attempting a login, so the
+failure is a skipped step rather than a 403 after the smoke test has already
+passed.
+
+On any failure the job dumps the container's log — the image has no shell to
+go poking around in — and tears the stack down.
+
+### `Release` — `.github/workflows/release.yml`
+
+Runs on every push to `main`, plus a manual dispatch with two inputs.
+
+**`version` job.** `svu` reads Conventional Commits since the last `v*` tag.
+`--v0` keeps breaking changes bumping the minor while the major is 0; the
+`allow_major` dispatch input drops it, so reaching 1.0.0 stays a deliberate
+human act. A push with nothing releasable (docs, chore, ci) ends **green
+without releasing** — the app did not change. The same state on a manual
+dispatch is a refusal instead: somebody pressing the button expects a release
+to exist.
+
+**`verify` job.** `test.yml` again, on the merge commit — which is not the
+pull request head that CI tested, so the suite runs once more on exactly what
+ships.
+
+**`publish` job.** In order:
+
+1. Create and push the git tag. GoReleaser releases *from* a tag, so the tag
+   comes first.
+2. `goreleaser release --clean` builds and publishes everything: `linux/amd64`
+   and `linux/arm64` archives, `checksums.txt`, SPDX SBOMs, a keyless cosign
+   signature over the checksum file, the multi-arch image tagged
+   `X.Y.Z` / `X.Y` / `X` / `latest` / `sha-<commit>` with cosign signatures
+   over the manifests, and a GitHub Release with a Conventional-Commits
+   changelog.
+3. If the publish did not succeed — failed, cancelled, or never started — the
+   tag and any GitHub Release are deleted again, so **a tag never points at a
+   release that does not exist**. The cleanup keys on the publish step's own
+   outcome rather than on `failure()`, because a cancelled job is not a failed
+   one.
+
+The `dry_run` dispatch input runs the whole pipeline as a GoReleaser snapshot
+with nothing pushed, tagged or signed — plus a cosign sign-and-verify against
+a throwaway blob, because GoReleaser auto-skips signing in snapshot mode and a
+cosign flag incompatibility once reached a real release that way.
+
+`concurrency: release` with `cancel-in-progress: false` serialises rapid
+merges, so the second run computes its version from the tag the first one just
+created.
+
+### What the pipeline does not do
+
+It does not roll anything out. Rolling out means, in order:
+
+1. `/app/mi-casa migrate` as a one-off (a Job, an initContainer, or the
+   compose `migrate` service) **before** the new image serves traffic —
+   migrations are append-only, so old code briefly running against a newer
+   schema is safe, while new code against an older schema is not.
+2. Point the deployment at the new tag and let the rollout proceed. `/readyz`
+   gates each replica; `SIGTERM` drains it (20 seconds, inside the usual
+   30-second grace period).
+
+See the README's [Upgrading](../README.md#upgrading) section, and
+[`runbook.md`](./runbook.md) for rolling back.
+
+## Local equivalents
+
+Everything CI does can be run locally with the pinned toolchain:
+
+```sh
+mise run test        # what test.yml runs
+mise run check       # Biome + tsc + goreleaser check
+mise run artifacts   # what the image job builds
+mise run image       # the multi-arch buildx assemble
+mise run snapshot    # the full GoReleaser pipeline, nothing published
+mise x -- svu next --v0    # what the next release would be
+```
+
+## Repository settings this assumes
+
+- **Branch protection on `main`**: pull requests only, with `CI (Go)`
+  required. `Tests` is reusable and reports under the calling workflow, so
+  require `CI (Go)`, not `Tests`.
+- **`packages: write`** for the workflow token, which is the default for
+  workflows in this repository; GHCR is written with the built-in
+  `GITHUB_TOKEN`, so there is no registry secret to manage.
+- **`id-token: write`** on the publish job, which is what makes keyless cosign
+  signing work through GitHub's OIDC. No signing key exists or needs rotating.
+- Optionally the **`PRODUCTION_URL`** repository variable. The publish job's
+  environment URL falls back to the GHCR package page when it is unset.
+
+No other secret is required to build or release. There is no cloud account, no
+API token and no deployment credential in this pipeline.
+
+## Dependency updates
+
+`.github/dependabot.yml` covers four ecosystems, weekly, with minor and patch
+bumps grouped into one pull request each and majors arriving individually:
+
+| Ecosystem | Directory | What it tracks |
+| --- | --- | --- |
+| `gomod` | `/apps/server` | the Go module |
+| `npm` | `/` | the bun workspaces (`bun.lock` goes through the npm ecosystem) |
+| `github-actions` | `/` | workflow actions, pinned by commit hash with a version comment |
+| `docker` | `/` | the distroless base image, pinned by digest in the `Dockerfile` |
+
+Dependabot's own pull requests build and smoke-test the image but publish no
+preview, as described above.
+
+---
+
+## Legacy Cloudflare workflows
+
+The original Cloudflare Workers deployment is still in the repository until
+the cutover release removes it, and so are its workflows. They are **not** the
+supported pipeline, and nothing in them touches the container:
+
+| File | What it did |
+| --- | --- |
+| `.github/workflows/ci.yml` | `npm run check`/`typecheck`/`test`/`build` for the Worker sources |
+| `.github/workflows/preview-deploy.yml` | Deployed each pull request to a shared preview Worker and preview D1 |
+| `.github/workflows/production-deploy.yml` | Applied D1 migrations and deployed the Worker on every push to `main` |
+| `.github/workflows/production-d1-migrate.yml` | Manual D1 migration recovery behind a protected environment |
+
+They need the Cloudflare account secrets (`CLOUDFLARE_ACCOUNT_ID`,
+`CLOUDFLARE_API_TOKEN`, `D1_DATABASE_ID_PREVIEW`, `D1_DATABASE_ID_PRODUCTION`)
+and the per-Worker dashboard variables described in the Worker's own
+configuration. If you are not running the Worker, none of that applies, and
+the workflows will simply fail or skip for want of secrets.
+
+`.github/workflows/codeql-analysis.yml` is not legacy — it scans both trees
+and stays.
