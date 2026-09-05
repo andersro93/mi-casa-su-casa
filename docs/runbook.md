@@ -111,9 +111,9 @@ npx wrangler d1 delete mi-casa-su-casa-preview && npx wrangler d1 create mi-casa
 
 ## 9. Service worker cache and app icons
 
-The SPA registers `src/client/public/sw.js` (served at `/sw.js`). It caches only the app shell (`/`) and the content-hashed files under `/assets/`; `/api/*` is never intercepted, so sessions, inbox data and codes always come from the network. Navigations are network-first, so a new deploy is picked up on the next open (the registration also calls `update()` whenever the app returns to the foreground).
+The SPA registers `apps/frontend/public/sw.js` (served at `/sw.js`). It caches only the app shell (`/`) and the content-hashed files under `/assets/`; `/api/*` is never intercepted, so sessions, inbox data and codes always come from the network. Navigations are network-first, so a new deploy is picked up on the next open (the registration also calls `update()` whenever the app returns to the foreground).
 
 - If you change the caching strategy, bump `CACHE_NAME` in `sw.js` so the `activate` handler drops the old cache on every device.
-- Icons in `src/client/public/icons/` are generated from `assets/mi-casa-su-casa-logo.png` (house glyph cropped and padded onto the logo's background; the maskable variant keeps the glyph inside the inner 80 % safe zone). Regenerate with a one-off `sharp` script if the logo changes — no build step depends on it.
+- Icons in `apps/frontend/public/icons/` are generated from `assets/mi-casa-su-casa-logo.png` (house glyph cropped and padded onto the logo's background; the maskable variant keeps the glyph inside the inner 80 % safe zone). Regenerate with a one-off `sharp` script if the logo changes — no build step depends on it.
 - Sessions last 30 days with daily sliding refresh (`src/server/auth/auth.ts`); members can revoke any session from Settings → Active Sessions.
 

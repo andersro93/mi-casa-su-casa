@@ -43,7 +43,7 @@ Households often share streaming and similar consumer accounts. When those servi
 - **One Worker** (`src/index.ts`)
   - Hono API under `/api/*` (households, inbox, quarantine, admin, invitations, settings, setup, health)
   - Better Auth (email + password, passkeys, TOTP two-factor, password reset) under `/api/auth/*`
-  - React/MUI single-page app served from Workers Static Assets (installable PWA: `src/client/public/manifest.webmanifest`, `sw.js`, icons); every request passes through the Worker so security headers apply everywhere
+  - React/MUI single-page app served from Workers Static Assets (installable PWA: `apps/frontend/public/manifest.webmanifest`, `sw.js`, icons); every request passes through the Worker so security headers apply everywhere
   - inbound `email()` handler: parse → authenticate sender (SPF/DKIM/DMARC results) → match sender rules → store or quarantine
   - daily `scheduled()` retention job (30-day purge, invitation expiry)
 - **One D1 database** (hand-written migrations in `migrations/`, Drizzle mirror in `src/server/db/schema.ts`, drift guarded by tests)
