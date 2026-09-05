@@ -58,6 +58,18 @@ func viewerFrom(ctx context.Context) *auth.Session {
 	return middleware.UserFrom(r)
 }
 
+// householdFrom is the tenancy context RequireHousehold resolved, or nil when
+// the operation's tier does not mount it. It reaches the request the same way
+// viewerFrom does, because a strict handler is handed a context and nothing
+// else.
+func householdFrom(ctx context.Context) *middleware.Household {
+	_, r, ok := middleware.HTTPFromContext(ctx)
+	if !ok || r == nil {
+		return nil
+	}
+	return middleware.HouseholdFrom(r)
+}
+
 // emailPattern is REF §A4's email rule verbatim: deliberately loose, because
 // the authoritative test of an address is whether mail to it arrives, and a
 // stricter pattern only rejects addresses that work.
@@ -85,6 +97,26 @@ func householdBody(household *repo.Household) *gen.Household {
 		UpdatedAt:   household.UpdatedAt,
 	}
 }
+
+// householdSummaries maps the switcher list onto the wire shape. The slice is
+// made non-nil even when empty: `households: []` is what the SPA expects, and
+// a nil slice would marshal as null.
+func householdSummaries(households []repo.HouseholdSummary) []gen.HouseholdSummary {
+	summaries := make([]gen.HouseholdSummary, 0, len(households))
+	for _, household := range households {
+		summaries = append(summaries, gen.HouseholdSummary{
+			Id:          household.ID,
+			Slug:        household.Slug,
+			DisplayName: household.DisplayName,
+			Role:        gen.HouseholdSummaryRole(household.Role),
+		})
+	}
+	return summaries
+}
+
+// okBody is the acknowledgement every "it is done, and there is nothing to
+// show for it" route answers with.
+func okBody() gen.Ok { return gen.Ok{Ok: true} }
 
 // invitationBody maps an invitation and its provider scope onto the wire
 // shape. The provider entries keep their snake_case keys inside a camelCase

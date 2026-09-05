@@ -7,6 +7,78 @@ import (
 	"time"
 )
 
+// Defines values for HouseholdMemberHouseholdRole.
+const (
+	HouseholdMemberHouseholdRoleMember HouseholdMemberHouseholdRole = "member"
+	HouseholdMemberHouseholdRoleOwner  HouseholdMemberHouseholdRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the HouseholdMemberHouseholdRole enum.
+func (e HouseholdMemberHouseholdRole) Valid() bool {
+	switch e {
+	case HouseholdMemberHouseholdRoleMember:
+		return true
+	case HouseholdMemberHouseholdRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HouseholdMemberRole.
+const (
+	HouseholdMemberRoleMember HouseholdMemberRole = "member"
+	HouseholdMemberRoleOwner  HouseholdMemberRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the HouseholdMemberRole enum.
+func (e HouseholdMemberRole) Valid() bool {
+	switch e {
+	case HouseholdMemberRoleMember:
+		return true
+	case HouseholdMemberRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HouseholdSummaryRole.
+const (
+	HouseholdSummaryRoleMember HouseholdSummaryRole = "member"
+	HouseholdSummaryRoleOwner  HouseholdSummaryRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the HouseholdSummaryRole enum.
+func (e HouseholdSummaryRole) Valid() bool {
+	switch e {
+	case HouseholdSummaryRoleMember:
+		return true
+	case HouseholdSummaryRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HouseholdWithRoleRole.
+const (
+	HouseholdWithRoleRoleMember HouseholdWithRoleRole = "member"
+	HouseholdWithRoleRoleOwner  HouseholdWithRoleRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the HouseholdWithRoleRole enum.
+func (e HouseholdWithRoleRole) Valid() bool {
+	switch e {
+	case HouseholdWithRoleRoleMember:
+		return true
+	case HouseholdWithRoleRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvitationRole.
 const (
 	InvitationRoleMember InvitationRole = "member"
@@ -61,6 +133,24 @@ func (e MemberRole) Valid() bool {
 	case MemberRoleMember:
 		return true
 	case MemberRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SenderRuleMatchType.
+const (
+	Domain SenderRuleMatchType = "domain"
+	Exact  SenderRuleMatchType = "exact"
+)
+
+// Valid indicates whether the value is a known member of the SenderRuleMatchType enum.
+func (e SenderRuleMatchType) Valid() bool {
+	switch e {
+	case Domain:
+		return true
+	case Exact:
 		return true
 	default:
 		return false
@@ -142,6 +232,51 @@ type AcceptInvitationRequest struct {
 	Password *string `json:"password,omitempty"`
 }
 
+// AccountSettings defines model for AccountSettings.
+type AccountSettings struct {
+	// Profile The account settings screen's view of the caller. `role` is always null: it carried Better Auth's global role in the TypeScript server, which the Go one has no counterpart for, and stays in the payload because the SPA reads it.
+	Profile  Profile          `json:"profile"`
+	Sessions []SessionSummary `json:"sessions"`
+}
+
+// AuditEvent One line of the audit trail. `details` is whatever the action recorded (the new role, the provider key, whether an invitation email got out), parsed back from the stored JSON.
+type AuditEvent struct {
+	Action      string                  `json:"action"`
+	ActorUserId *string                 `json:"actorUserId"`
+	CreatedAt   time.Time               `json:"createdAt"`
+	Details     *map[string]interface{} `json:"details"`
+	HouseholdId *string                 `json:"householdId"`
+	Id          string                  `json:"id"`
+	TargetId    *string                 `json:"targetId"`
+	TargetType  string                  `json:"targetType"`
+}
+
+// AuditEventList defines model for AuditEventList.
+type AuditEventList struct {
+	Events []AuditEvent `json:"events"`
+}
+
+// CreateHouseholdRequest REF §A4's `createHousehold` schema. As with SetupRequest, only the shape is stated here: the slug is normalised (trimmed, lower-cased) before REF §A3's rules are applied to it, and the message each failure produces is the wording the SPA renders next to the input.
+type CreateHouseholdRequest struct {
+	// DisplayName Trimmed, 1..80 characters.
+	DisplayName string `json:"displayName"`
+
+	// Slug Trimmed, lower-cased, and subject to REF §A3's slug rules.
+	Slug string `json:"slug"`
+}
+
+// CreateMemberRequest REF §A4's `createMember` schema. `role` is a plain string, defaulting to member when absent: the enum would reject `admin`, which REF §A4 accepts and maps to owner, and its rejection would not read "role must be owner or member".
+type CreateMemberRequest struct {
+	// Email Trimmed, lower-cased, 3..254 characters, must look like an address.
+	Email string `json:"email"`
+
+	// Name Trimmed, 1..80 characters.
+	Name string `json:"name"`
+
+	// Role `owner` or `member` (`admin` is accepted and means owner). Defaults to member.
+	Role *string `json:"role,omitempty"`
+}
+
 // Error The failure envelope every error response in this API uses. `fields` carries one message per rejected input (keyed by the property or parameter name, `_` for the request body as a whole); `code` is a stable discriminator for the few failures a client must branch on rather than merely display.
 type Error struct {
 	Code   *string            `json:"code,omitempty"`
@@ -157,6 +292,78 @@ type Household struct {
 	Slug        string    `json:"slug"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
+
+// HouseholdList defines model for HouseholdList.
+type HouseholdList struct {
+	Households []HouseholdSummary `json:"households"`
+}
+
+// HouseholdMember One member of the household, with the providers they may read. `role` duplicates `householdRole`: it carried Better Auth's global role in the TypeScript server and the SPA reads both, so the Go server puts the household role in each.
+type HouseholdMember struct {
+	CreatedAt      time.Time                    `json:"createdAt"`
+	Email          string                       `json:"email"`
+	HouseholdRole  HouseholdMemberHouseholdRole `json:"householdRole"`
+	Id             string                       `json:"id"`
+	Name           string                       `json:"name"`
+	ProviderAccess []MemberProviderAccess       `json:"providerAccess"`
+	Role           HouseholdMemberRole          `json:"role"`
+	UpdatedAt      time.Time                    `json:"updatedAt"`
+}
+
+// HouseholdMemberHouseholdRole defines model for HouseholdMember.HouseholdRole.
+type HouseholdMemberHouseholdRole string
+
+// HouseholdMemberRole defines model for HouseholdMember.Role.
+type HouseholdMemberRole string
+
+// HouseholdResult defines model for HouseholdResult.
+type HouseholdResult struct {
+	// Household A newly created household: the switcher entry's keys plus the timestamps, so the client can drop it straight into its cache.
+	Household HouseholdWithRole `json:"household"`
+}
+
+// HouseholdSettings A household's own settings. `emailAddress` is `slug@EMAIL_DOMAIN` — the address providers must be told to send to — and is null only if the installation has no inbound domain configured.
+type HouseholdSettings struct {
+	DisplayName  string  `json:"displayName"`
+	EmailAddress *string `json:"emailAddress"`
+	Slug         string  `json:"slug"`
+}
+
+// HouseholdSettingsRequest REF §A4's `householdSettings` schema. Trimmed and length-checked in Go, for the wording.
+type HouseholdSettingsRequest struct {
+	// DisplayName Trimmed, 1..80 characters.
+	DisplayName string `json:"displayName"`
+}
+
+// HouseholdSettingsResult defines model for HouseholdSettingsResult.
+type HouseholdSettingsResult struct {
+	// Household A household's own settings. `emailAddress` is `slug@EMAIL_DOMAIN` — the address providers must be told to send to — and is null only if the installation has no inbound domain configured.
+	Household HouseholdSettings `json:"household"`
+}
+
+// HouseholdSummary One entry in the household switcher: a household plus what the caller may do in it.
+type HouseholdSummary struct {
+	DisplayName string               `json:"displayName"`
+	Id          string               `json:"id"`
+	Role        HouseholdSummaryRole `json:"role"`
+	Slug        string               `json:"slug"`
+}
+
+// HouseholdSummaryRole defines model for HouseholdSummary.Role.
+type HouseholdSummaryRole string
+
+// HouseholdWithRole A newly created household: the switcher entry's keys plus the timestamps, so the client can drop it straight into its cache.
+type HouseholdWithRole struct {
+	CreatedAt   time.Time             `json:"createdAt"`
+	DisplayName string                `json:"displayName"`
+	Id          string                `json:"id"`
+	Role        HouseholdWithRoleRole `json:"role"`
+	Slug        string                `json:"slug"`
+	UpdatedAt   time.Time             `json:"updatedAt"`
+}
+
+// HouseholdWithRoleRole defines model for HouseholdWithRole.Role.
+type HouseholdWithRoleRole string
 
 // Invitation One invitation record. The token itself never appears — only its SHA-256 is stored, and the plaintext lives solely in the link.
 type Invitation struct {
@@ -181,6 +388,11 @@ type InvitationRole string
 
 // InvitationStatus defines model for Invitation.Status.
 type InvitationStatus string
+
+// InvitationList defines model for InvitationList.
+type InvitationList struct {
+	Invitations []Invitation `json:"invitations"`
+}
 
 // InvitationLookup Everything the invite page needs to pick a flow: create an account, sign in first, or accept as whoever is already signed in.
 type InvitationLookup struct {
@@ -210,6 +422,31 @@ type InvitationProvider struct {
 	ProviderKey string `json:"provider_key"`
 }
 
+// InvitationRequest REF §A4's `invitation` schema. See CreateMemberRequest for why `role` is a plain string.
+type InvitationRequest struct {
+	// Email Trimmed, lower-cased, 3..254 characters, must look like an address.
+	Email string `json:"email"`
+
+	// Name Trimmed, 1..80 characters.
+	Name string `json:"name"`
+
+	// ProviderIds The providers the invitee may read the moment they accept. At most 50; every id must belong to this household.
+	ProviderIds *[]string `json:"providerIds,omitempty"`
+
+	// Role `owner` or `member` (`admin` is accepted and means owner). Defaults to member.
+	Role *string `json:"role,omitempty"`
+}
+
+// InvitationResult A newly issued invitation, its link, and whether the email carrying that link got out. A failed delivery is NOT an error (REF §A3): the invitation stands and `inviteUrl` can be shared by hand, so `emailSent` is false and `emailError` says what went wrong.
+type InvitationResult struct {
+	EmailError *string `json:"emailError,omitempty"`
+	EmailSent  bool    `json:"emailSent"`
+
+	// Invitation One invitation record. The token itself never appears — only its SHA-256 is stored, and the plaintext lives solely in the link.
+	Invitation Invitation `json:"invitation"`
+	InviteUrl  string     `json:"inviteUrl"`
+}
+
 // Member The account that was just created or signed in, with its role in the household.
 type Member struct {
 	Email string     `json:"email"`
@@ -221,12 +458,150 @@ type Member struct {
 // MemberRole defines model for Member.Role.
 type MemberRole string
 
+// MemberList defines model for MemberList.
+type MemberList struct {
+	Members   []HouseholdMember `json:"members"`
+	Providers []Provider        `json:"providers"`
+}
+
+// MemberProviderAccess One provider a member may read.
+type MemberProviderAccess struct {
+	DisplayName string `json:"displayName"`
+	ProviderKey string `json:"providerKey"`
+}
+
 // MembershipResult What both "you are now the owner" (setup) and "you are now a member" (invitation accept) answer with.
 type MembershipResult struct {
 	Household *Household `json:"household"`
 
 	// Member The account that was just created or signed in, with its role in the household.
 	Member Member `json:"member"`
+}
+
+// Ok The acknowledgement every "it is done, and there is nothing to show for it" endpoint answers with.
+type Ok struct {
+	Ok bool `json:"ok"`
+}
+
+// Profile The account settings screen's view of the caller. `role` is always null: it carried Better Auth's global role in the TypeScript server, which the Go one has no counterpart for, and stays in the payload because the SPA reads it.
+type Profile struct {
+	Email            string             `json:"email"`
+	Households       []HouseholdSummary `json:"households"`
+	Id               string             `json:"id"`
+	Image            *string            `json:"image"`
+	Name             string             `json:"name"`
+	Role             *string            `json:"role"`
+	TwoFactorEnabled bool               `json:"twoFactorEnabled"`
+}
+
+// ProfileRequest REF §A4's `profile` schema. `image` is optional and an empty string clears the avatar; anything else must be an http(s) URL of at most 2048 characters, checked in Go so the message is the TypeScript's ("image must be an http(s) URL").
+type ProfileRequest struct {
+	// Image An http(s) URL, or "" to clear the avatar.
+	Image *string `json:"image,omitempty"`
+
+	// Name Trimmed, 1..80 characters.
+	Name string `json:"name"`
+}
+
+// ProfileResult defines model for ProfileResult.
+type ProfileResult struct {
+	// Profile The account settings screen's view of the caller. `role` is always null: it carried Better Auth's global role in the TypeScript server, which the Go one has no counterpart for, and stays in the payload because the SPA reads it.
+	Profile Profile `json:"profile"`
+}
+
+// Provider One provider. snake_case keys, deliberately: it is what the TypeScript returned and what the SPA reads.
+type Provider struct {
+	CreatedAt   time.Time `json:"created_at"`
+	DisplayName string    `json:"display_name"`
+	HouseholdId string    `json:"household_id"`
+	Id          string    `json:"id"`
+	ProviderKey string    `json:"provider_key"`
+}
+
+// ProviderAccessRequest REF §A4's `providerAccess` schema.
+type ProviderAccessRequest struct {
+	// ProviderKey Trimmed, lower-cased, 1..40 characters.
+	ProviderKey string `json:"providerKey"`
+}
+
+// ProviderConfiguration A provider plus how many sender rules point at it.
+type ProviderConfiguration struct {
+	CreatedAt   time.Time `json:"created_at"`
+	DisplayName string    `json:"display_name"`
+	HouseholdId string    `json:"household_id"`
+	Id          string    `json:"id"`
+	ProviderKey string    `json:"provider_key"`
+	RuleCount   int       `json:"rule_count"`
+}
+
+// ProviderConfigurationList defines model for ProviderConfigurationList.
+type ProviderConfigurationList struct {
+	Providers []ProviderConfiguration `json:"providers"`
+	Rules     []SenderRule            `json:"rules"`
+}
+
+// ProviderRequest REF §A4's `provider` schema. Only the shape is stated here: the key is trimmed and lower-cased before its rules run, and the message each failure produces is REF §A4's wording, which a schema violation cannot produce.
+type ProviderRequest struct {
+	// DisplayName Trimmed, 1..80 characters.
+	DisplayName string `json:"displayName"`
+
+	// ProviderKey Trimmed, lower-cased, 1..40, lowercase letters, numbers and hyphens, starting with a letter or number.
+	ProviderKey string `json:"providerKey"`
+}
+
+// ProviderResult defines model for ProviderResult.
+type ProviderResult struct {
+	// Provider One provider. snake_case keys, deliberately: it is what the TypeScript returned and what the SPA reads.
+	Provider Provider `json:"provider"`
+}
+
+// RoleChangeRequest REF §A4's `roleChange` schema. See CreateMemberRequest for why `role` is not an enum here.
+type RoleChangeRequest struct {
+	// Role `owner` or `member` (`admin` is accepted and means owner).
+	Role string `json:"role"`
+}
+
+// SenderRule One sender rule — the address or domain whose mail files into a provider.
+type SenderRule struct {
+	CreatedAt   time.Time           `json:"created_at"`
+	HouseholdId string              `json:"household_id"`
+	Id          string              `json:"id"`
+	MatchType   SenderRuleMatchType `json:"match_type"`
+	MatchValue  string              `json:"match_value"`
+	ProviderId  string              `json:"provider_id"`
+}
+
+// SenderRuleMatchType defines model for SenderRule.MatchType.
+type SenderRuleMatchType string
+
+// SenderRuleRequest REF §A4's `senderRule` schema. `matchType` is a plain string here rather than an enum for the same reason the lengths are absent: the rejection must read "matchType must be exact or domain", which is checked in Go.
+type SenderRuleRequest struct {
+	// MatchType `exact` or `domain`.
+	MatchType string `json:"matchType"`
+
+	// MatchValue Trimmed, lower-cased, 1..254. A domain rule drops any leading `@` and must then be a hostname; an exact rule must be a full email address.
+	MatchValue string `json:"matchValue"`
+
+	// ProviderId Trimmed, 1..64 characters.
+	ProviderId string `json:"providerId"`
+}
+
+// SenderRuleResult defines model for SenderRuleResult.
+type SenderRuleResult struct {
+	// Rule One sender rule — the address or domain whose mail files into a provider.
+	Rule SenderRule `json:"rule"`
+}
+
+// SessionSummary One signed-in device. The session TOKEN is a bearer secret and never appears here — `isCurrent` is all the client needs to tell which row it is looking through. `ipAddress` is the digest Limen stored, not a readable address, and `impersonatedBy` is always null (the Go server has no impersonation).
+type SessionSummary struct {
+	CreatedAt      time.Time  `json:"createdAt"`
+	ExpiresAt      time.Time  `json:"expiresAt"`
+	Id             string     `json:"id"`
+	ImpersonatedBy *string    `json:"impersonatedBy"`
+	IpAddress      *string    `json:"ipAddress"`
+	IsCurrent      bool       `json:"isCurrent"`
+	UpdatedAt      *time.Time `json:"updatedAt"`
+	UserAgent      *string    `json:"userAgent"`
 }
 
 // SetupRequest REF §A4's `setup` schema. The shape — which properties exist, which are required, and that each is a string — is enforced here; the LENGTH and FORMAT rules named in each description below are enforced in Go (internal/api/setup.go's validateSetupBody) and deliberately not repeated as `minLength`/`pattern`.
@@ -268,8 +643,23 @@ type SetupStatus struct {
 // SetupStatusStatus defines model for SetupStatus.Status.
 type SetupStatusStatus string
 
+// HouseholdSlug defines model for HouseholdSlug.
+type HouseholdSlug = string
+
+// InvitationId defines model for InvitationId.
+type InvitationId = string
+
 // InvitationToken defines model for InvitationToken.
 type InvitationToken = string
+
+// MemberUserId defines model for MemberUserId.
+type MemberUserId = string
+
+// ProviderId defines model for ProviderId.
+type ProviderId = string
+
+// SenderRuleId defines model for SenderRuleId.
+type SenderRuleId = string
 
 // AcceptInvitationParams defines parameters for AcceptInvitation.
 type AcceptInvitationParams struct {
@@ -294,8 +684,41 @@ type Readyz200JSONResponseBodyOk bool
 // Readyz503JSONResponseBodyOk defines parameters for Readyz.
 type Readyz503JSONResponseBodyOk bool
 
+// CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
+type CreateInvitationJSONRequestBody = InvitationRequest
+
+// CreateMemberJSONRequestBody defines body for CreateMember for application/json ContentType.
+type CreateMemberJSONRequestBody = CreateMemberRequest
+
+// GrantProviderAccessJSONRequestBody defines body for GrantProviderAccess for application/json ContentType.
+type GrantProviderAccessJSONRequestBody = ProviderAccessRequest
+
+// UpdateMemberRoleJSONRequestBody defines body for UpdateMemberRole for application/json ContentType.
+type UpdateMemberRoleJSONRequestBody = RoleChangeRequest
+
+// CreateSenderRuleJSONRequestBody defines body for CreateSenderRule for application/json ContentType.
+type CreateSenderRuleJSONRequestBody = SenderRuleRequest
+
+// UpdateSenderRuleJSONRequestBody defines body for UpdateSenderRule for application/json ContentType.
+type UpdateSenderRuleJSONRequestBody = SenderRuleRequest
+
+// CreateProviderJSONRequestBody defines body for CreateProvider for application/json ContentType.
+type CreateProviderJSONRequestBody = ProviderRequest
+
+// UpdateProviderJSONRequestBody defines body for UpdateProvider for application/json ContentType.
+type UpdateProviderJSONRequestBody = ProviderRequest
+
+// UpdateHouseholdSettingsJSONRequestBody defines body for UpdateHouseholdSettings for application/json ContentType.
+type UpdateHouseholdSettingsJSONRequestBody = HouseholdSettingsRequest
+
+// CreateHouseholdJSONRequestBody defines body for CreateHousehold for application/json ContentType.
+type CreateHouseholdJSONRequestBody = CreateHouseholdRequest
+
 // AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
 type AcceptInvitationJSONRequestBody = AcceptInvitationRequest
+
+// UpdateProfileJSONRequestBody defines body for UpdateProfile for application/json ContentType.
+type UpdateProfileJSONRequestBody = ProfileRequest
 
 // CompleteSetupJSONRequestBody defines body for CompleteSetup for application/json ContentType.
 type CompleteSetupJSONRequestBody = SetupRequest

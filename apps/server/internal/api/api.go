@@ -242,11 +242,26 @@ func requestErrorHandler(w http.ResponseWriter, _ *http.Request, _ error) {
 }
 
 // responseErrorHandler answers a handler that returned an error rather than a
-// response object: an unexpected failure, which REF §A1 item 11 answers with
-// `unhandled_error` in the log and a 500 that says nothing else. The error
-// text stays in the log — a pgx error names the statement that failed, which
-// is for the operator and not for the caller.
+// response object.
+//
+// One error is expected rather than unexpected and gets a real answer: a
+// unique-constraint violation, which REF §A1 item 11 maps to 409 with a message
+// naming what collided (see errors.go). Several routes check for a duplicate
+// and then insert, which is not a lock — the index is what actually decides —
+// and a couple skip the check entirely because of that. Both reach the caller
+// through here.
+//
+// Everything else is an unexpected failure: `unhandled_error` in the log and a
+// 500 that says nothing else. The error text stays in the log — a pgx error
+// names the statement that failed, which is for the operator and not for the
+// caller.
 func responseErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
+	if repo.IsUniqueViolation(err) {
+		respond.Error(w, http.StatusConflict,
+			uniqueViolationMessage(repo.UniqueViolationConstraint(err)))
+		return
+	}
+
 	applog.Event(applog.LevelError, "unhandled_error", map[string]any{
 		"method": r.Method,
 		"path":   r.URL.Path,

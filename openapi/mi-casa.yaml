@@ -271,8 +271,1080 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/households/me:
+    get:
+      operationId: listMyHouseholds
+      summary: >-
+        Every household the caller belongs to, for the household switcher.
+        Ordered by lower-cased display name so the list does not reshuffle
+        when somebody renames a household with a capital letter.
+      tags: [households]
+      responses:
+        "200":
+          description: The caller's households.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/households:
+    post:
+      operationId: createHousehold
+      summary: >-
+        Create a household with the caller as its owner. Restricted (REF §A2):
+        the installation owner may always; anybody else only while they belong
+        to no household at all, so a member cannot mint extra households or
+        squat inbound addresses. Rate limited (10 per hour).
+      tags: [households]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHouseholdRequest"
+      responses:
+        "201":
+          description: >-
+            The household, in the same shape as a /api/households/me entry so
+            the client can use it without a refetch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller may not create a household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The slug is taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited. `Retry-After` says when to come back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/households/{slug}/leave:
+    post:
+      operationId: leaveHousehold
+      summary: >-
+        Give up your own membership of this household. Refused for the last
+        owner, which is what keeps a household from being left with nobody who
+        can administer it.
+      tags: [households]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      responses:
+        "200":
+          description: The membership is gone; provider access cascaded with it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not a member of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The caller is the household's only owner.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings:
+    get:
+      operationId: getAccountSettings
+      summary: >-
+        The account settings screen in one request: the caller's profile with
+        their households, and their signed-in devices newest first.
+      tags: [settings]
+      responses:
+        "200":
+          description: The profile and the session list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountSettings"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The session's account no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings/households:
+    get:
+      operationId: listSettingsHouseholds
+      summary: >-
+        The caller's households, the same list GET /api/households/me answers
+        with. It exists separately because the settings screen refetches it on
+        its own after leaving a household.
+      tags: [settings]
+      responses:
+        "200":
+          description: The caller's households.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings/profile:
+    patch:
+      operationId: updateProfile
+      summary: Update the caller's display name and avatar.
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileRequest"
+      responses:
+        "200":
+          description: The profile as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The session's account no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings/sessions/others:
+    delete:
+      operationId: revokeOtherSessions
+      summary: >-
+        Sign out everywhere else: every session of this account except the one
+        this request arrived on.
+      tags: [settings]
+      responses:
+        "200":
+          description: The other sessions are gone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings/sessions/{sessionId}:
+    delete:
+      operationId: revokeSession
+      summary: >-
+        Revoke one device. A session id that is not the caller's own revokes
+        nothing and still answers 200 — deliberately, so the endpoint cannot be
+        used to discover whether an id exists.
+      tags: [settings]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: The session is gone, if it was the caller's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/audit:
+    get:
+      operationId: listAuditEvents
+      summary: >-
+        The household's audit trail, newest 100 first. Owner-only: it names
+        who did what to whom, which is exactly the sort of thing a member has
+        no business reading about the rest of the household.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      responses:
+        "200":
+          description: The trail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/settings:
+    get:
+      operationId: getHouseholdSettings
+      summary: >-
+        The household's own settings: its name and the inbound address
+        providers must be told to send codes to.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      responses:
+        "200":
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdSettingsResult"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The household is gone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: updateHouseholdSettings
+      summary: Rename the household. The slug — and therefore the inbound address — never changes.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdSettingsRequest"
+      responses:
+        "200":
+          description: The settings, as they now stand.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdSettingsResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The household is gone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/providers:
+    get:
+      operationId: listProviderConfigurations
+      summary: >-
+        Every provider in the household with the number of sender rules that
+        point at it, plus the rules themselves — the two halves of the
+        provider settings screen in one request.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      responses:
+        "200":
+          description: The providers and their sender rules.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConfigurationList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: createProvider
+      summary: Add a provider — the mailbox a set of sender rules files messages into.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderRequest"
+      responses:
+        "201":
+          description: The provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A provider with that key already exists in this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/providers/{providerId}:
+    patch:
+      operationId: updateProvider
+      summary: Rename a provider or change its key.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/ProviderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderRequest"
+      responses:
+        "200":
+          description: The provider, as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such provider in this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Another provider in this household already has that key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteProvider
+      summary: >-
+        Remove a provider. Its sender rules, its stored messages and every
+        member's access to it go with it — the foreign keys cascade, which is
+        the point: a deleted provider must not leave readable messages behind.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/ProviderId"
+      responses:
+        "200":
+          description: The provider and everything filed under it are gone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such provider in this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/provider-rules:
+    post:
+      operationId: createSenderRule
+      summary: >-
+        Add a sender rule: the address or domain whose mail files into a
+        provider. Exact rules beat domain rules, and the most specific domain
+        rule wins among those.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SenderRuleRequest"
+      responses:
+        "201":
+          description: The rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SenderRuleResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such provider in this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: This household already has a rule for that match type and value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/provider-rules/{ruleId}:
+    patch:
+      operationId: updateSenderRule
+      summary: Repoint a sender rule, or change what it matches.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/SenderRuleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SenderRuleRequest"
+      responses:
+        "200":
+          description: The rule, as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SenderRuleResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such provider, or no such rule, in this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: This household already has a rule for that match type and value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteSenderRule
+      summary: Remove a sender rule. Messages already filed under its provider stay.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/SenderRuleId"
+      responses:
+        "200":
+          description: The rule is gone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such rule in this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/members:
+    get:
+      operationId: listMembers
+      summary: >-
+        Everybody in the household with the providers each of them may read,
+        plus the household's providers so the screen can offer the rest.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      responses:
+        "200":
+          description: The members and the household's providers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: createMember
+      summary: >-
+        "Add a member" — which is an invitation with no provider scope, not an
+        account this endpoint creates. Nobody may be given a password by
+        somebody else, so the invitee always sets their own.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemberRequest"
+      responses:
+        "201":
+          description: >-
+            The invitation, its link, and whether the email carrying that link
+            was delivered. A failed delivery is not an error (REF §A3) — the
+            owner can share `inviteUrl` by hand.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/members/{userId}:
+    delete:
+      operationId: removeMember
+      summary: >-
+        Remove somebody else from the household. Refused for the last owner,
+        and refused for yourself — "leave household" is the route for that, so
+        that giving up your own access is never a click away from removing
+        somebody else's.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/MemberUserId"
+      responses:
+        "200":
+          description: The membership is gone; provider access cascaded with it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "400":
+          description: The caller asked to remove themselves.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: That user is not a member of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: That member is the household's only owner.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/members/{userId}/role:
+    patch:
+      operationId: updateMemberRole
+      summary: >-
+        Promote or demote somebody else. Refused for yourself: an owner who
+        could demote themselves could leave a household with no owner at all,
+        and the answer names the other owners as the way out.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/MemberUserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleChangeRequest"
+      responses:
+        "200":
+          description: The role is changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner, or asked to change their own role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: That user is not a member of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/members/{userId}/provider-access:
+    post:
+      operationId: grantProviderAccess
+      summary: >-
+        Let a member read one provider's messages. Idempotent: granting twice
+        is the same as granting once, so a double-click is not an error.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/MemberUserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderAccessRequest"
+      responses:
+        "200":
+          description: The member may now read that provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such provider, or that user is not a member of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/members/{userId}/provider-access/{providerKey}:
+    delete:
+      operationId: revokeProviderAccess
+      summary: >-
+        Take a provider away from a member. The key is a path parameter and
+        only a path parameter — the TypeScript also read it from a JSON body
+        on DELETE, which is a shape no client sends and every proxy is
+        entitled to drop.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/MemberUserId"
+        - name: providerKey
+          in: path
+          required: true
+          description: >-
+            The provider's key. REF §A4's `providerAccess` rules (1..40, and
+            lower-cased before the lookup) are stated here rather than in Go,
+            because a path parameter has no `fields` entry to render against
+            and REF §A2 asks for this one to be spec-validated.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 40
+      responses:
+        "200":
+          description: The member can no longer read that provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "400":
+          description: The provider key is not a usable key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such provider, or that user is not a member of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/invitations:
+    get:
+      operationId: listInvitations
+      summary: >-
+        Every invitation this household has issued, newest first. Invitations
+        past their expiry are marked expired before the list is read, so the
+        screen never shows a pending invitation whose link no longer works.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      responses:
+        "200":
+          description: The invitations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: createInvitation
+      summary: >-
+        Invite somebody, optionally scoped to a set of providers they will be
+        able to read the moment they accept.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationRequest"
+      responses:
+        "201":
+          description: >-
+            The invitation, its link, and whether the email carrying that link
+            was delivered. A failed delivery is not an error (REF §A3).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationResult"
+        "400":
+          description: >-
+            The request was rejected — a bad field, or a provider that belongs
+            to another household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/invitations/{invitationId}/resend:
+    post:
+      operationId: resendInvitation
+      summary: >-
+        Issue a fresh invitation to the same person with the same role and
+        provider scope, cancelling the old one. A new token, so the link in
+        the first email stops working — which is what makes "resend" safe to
+        offer after a link has been forwarded to the wrong inbox.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/InvitationId"
+      responses:
+        "200":
+          description: The replacement invitation, its link, and the delivery outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationResult"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such invitation in this household, or it is no longer pending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/{slug}/invitations/{invitationId}:
+    delete:
+      operationId: cancelInvitation
+      summary: Cancel a pending invitation, which makes its link stop working.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/InvitationId"
+      responses:
+        "200":
+          description: The invitation is cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such invitation in this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   parameters:
+    HouseholdSlug:
+      name: slug
+      in: path
+      required: true
+      description: >-
+        The household this request acts on. Every `{slug}` route is guarded by
+        the tenancy middleware, which turns it into a membership or refuses —
+        so the parameter is also the authorization boundary, not just a lookup
+        key.
+
+        REF §A3's length bounds (2..40) are deliberately NOT stated here. A
+        slug outside them cannot name a household, so it must be answered the
+        way every other non-membership is — 403, never a validation error that
+        distinguishes "no such household" from "not yours".
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
     InvitationToken:
       name: X-Invitation-Token
       in: header
@@ -292,7 +1364,220 @@ components:
         right size. It is mandatory in practice.
       schema:
         type: string
+    ProviderId:
+      name: providerId
+      in: path
+      required: true
+      description: A provider's id. Scoped to the household in the path, so an id from another household is a 404 rather than a leak.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    SenderRuleId:
+      name: ruleId
+      in: path
+      required: true
+      description: A sender rule's id, scoped to the household in the path.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    MemberUserId:
+      name: userId
+      in: path
+      required: true
+      description: The member's user id. Membership of the household in the path is checked before anything is done with it.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    InvitationId:
+      name: invitationId
+      in: path
+      required: true
+      description: An invitation's id, scoped to the household in the path.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
   schemas:
+    Ok:
+      type: object
+      description: >-
+        The acknowledgement every "it is done, and there is nothing to show
+        for it" endpoint answers with.
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    HouseholdSummary:
+      type: object
+      description: >-
+        One entry in the household switcher: a household plus what the caller
+        may do in it.
+      required: [id, slug, displayName, role]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+    HouseholdList:
+      type: object
+      required: [households]
+      properties:
+        households:
+          type: array
+          items:
+            $ref: "#/components/schemas/HouseholdSummary"
+    CreateHouseholdRequest:
+      type: object
+      description: >-
+        REF §A4's `createHousehold` schema. As with SetupRequest, only the
+        shape is stated here: the slug is normalised (trimmed, lower-cased)
+        before REF §A3's rules are applied to it, and the message each failure
+        produces is the wording the SPA renders next to the input.
+      required: [slug, displayName]
+      properties:
+        slug:
+          type: string
+          description: Trimmed, lower-cased, and subject to REF §A3's slug rules.
+        displayName:
+          type: string
+          description: Trimmed, 1..80 characters.
+    HouseholdWithRole:
+      type: object
+      description: >-
+        A newly created household: the switcher entry's keys plus the
+        timestamps, so the client can drop it straight into its cache.
+      required: [id, slug, displayName, createdAt, updatedAt, role]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        displayName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        role:
+          type: string
+          enum: [owner, member]
+    HouseholdResult:
+      type: object
+      required: [household]
+      properties:
+        household:
+          $ref: "#/components/schemas/HouseholdWithRole"
+    Profile:
+      type: object
+      description: >-
+        The account settings screen's view of the caller. `role` is always
+        null: it carried Better Auth's global role in the TypeScript server,
+        which the Go one has no counterpart for, and stays in the payload
+        because the SPA reads it.
+      required: [id, email, name, image, role, twoFactorEnabled, households]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        image:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        twoFactorEnabled:
+          type: boolean
+        households:
+          type: array
+          items:
+            $ref: "#/components/schemas/HouseholdSummary"
+    SessionSummary:
+      type: object
+      description: >-
+        One signed-in device. The session TOKEN is a bearer secret and never
+        appears here — `isCurrent` is all the client needs to tell which row
+        it is looking through. `ipAddress` is the digest Limen stored, not a
+        readable address, and `impersonatedBy` is always null (the Go server
+        has no impersonation).
+      required:
+        [
+          id,
+          isCurrent,
+          expiresAt,
+          ipAddress,
+          userAgent,
+          createdAt,
+          updatedAt,
+          impersonatedBy,
+        ]
+      properties:
+        id:
+          type: string
+        isCurrent:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        impersonatedBy:
+          type: string
+          nullable: true
+    AccountSettings:
+      type: object
+      required: [profile, sessions]
+      properties:
+        profile:
+          $ref: "#/components/schemas/Profile"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSummary"
+    ProfileResult:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          $ref: "#/components/schemas/Profile"
+    ProfileRequest:
+      type: object
+      description: >-
+        REF §A4's `profile` schema. `image` is optional and an empty string
+        clears the avatar; anything else must be an http(s) URL of at most
+        2048 characters, checked in Go so the message is the TypeScript's
+        ("image must be an http(s) URL").
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Trimmed, 1..80 characters.
+        image:
+          type: string
+          description: An http(s) URL, or "" to clear the avatar.
     Error:
       type: object
       description: >-
@@ -539,3 +1824,318 @@ components:
               type: string
             emailMatches:
               type: boolean
+    AuditEvent:
+      type: object
+      description: >-
+        One line of the audit trail. `details` is whatever the action recorded
+        (the new role, the provider key, whether an invitation email got out),
+        parsed back from the stored JSON.
+      required:
+        [id, actorUserId, householdId, action, targetType, targetId, details, createdAt]
+      properties:
+        id:
+          type: string
+        actorUserId:
+          type: string
+          nullable: true
+        householdId:
+          type: string
+          nullable: true
+        action:
+          type: string
+        targetType:
+          type: string
+        targetId:
+          type: string
+          nullable: true
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+    AuditEventList:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+    HouseholdSettings:
+      type: object
+      description: >-
+        A household's own settings. `emailAddress` is `slug@EMAIL_DOMAIN` —
+        the address providers must be told to send to — and is null only if
+        the installation has no inbound domain configured.
+      required: [slug, displayName, emailAddress]
+      properties:
+        slug:
+          type: string
+        displayName:
+          type: string
+        emailAddress:
+          type: string
+          nullable: true
+    HouseholdSettingsResult:
+      type: object
+      required: [household]
+      properties:
+        household:
+          $ref: "#/components/schemas/HouseholdSettings"
+    HouseholdSettingsRequest:
+      type: object
+      description: REF §A4's `householdSettings` schema. Trimmed and length-checked in Go, for the wording.
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          description: Trimmed, 1..80 characters.
+    Provider:
+      type: object
+      description: >-
+        One provider. snake_case keys, deliberately: it is what the TypeScript
+        returned and what the SPA reads.
+      required: [id, household_id, provider_key, display_name, created_at]
+      properties:
+        id:
+          type: string
+        household_id:
+          type: string
+        provider_key:
+          type: string
+        display_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ProviderConfiguration:
+      type: object
+      description: A provider plus how many sender rules point at it.
+      required: [id, household_id, provider_key, display_name, created_at, rule_count]
+      properties:
+        id:
+          type: string
+        household_id:
+          type: string
+        provider_key:
+          type: string
+        display_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        rule_count:
+          type: integer
+    SenderRule:
+      type: object
+      description: One sender rule — the address or domain whose mail files into a provider.
+      required: [id, household_id, provider_id, match_type, match_value, created_at]
+      properties:
+        id:
+          type: string
+        household_id:
+          type: string
+        provider_id:
+          type: string
+        match_type:
+          type: string
+          enum: [exact, domain]
+        match_value:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ProviderConfigurationList:
+      type: object
+      required: [providers, rules]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderConfiguration"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/SenderRule"
+    ProviderResult:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          $ref: "#/components/schemas/Provider"
+    ProviderRequest:
+      type: object
+      description: >-
+        REF §A4's `provider` schema. Only the shape is stated here: the key is
+        trimmed and lower-cased before its rules run, and the message each
+        failure produces is REF §A4's wording, which a schema violation cannot
+        produce.
+      required: [providerKey, displayName]
+      properties:
+        providerKey:
+          type: string
+          description: Trimmed, lower-cased, 1..40, lowercase letters, numbers and hyphens, starting with a letter or number.
+        displayName:
+          type: string
+          description: Trimmed, 1..80 characters.
+    SenderRuleResult:
+      type: object
+      required: [rule]
+      properties:
+        rule:
+          $ref: "#/components/schemas/SenderRule"
+    SenderRuleRequest:
+      type: object
+      description: >-
+        REF §A4's `senderRule` schema. `matchType` is a plain string here
+        rather than an enum for the same reason the lengths are absent: the
+        rejection must read "matchType must be exact or domain", which is
+        checked in Go.
+      required: [providerId, matchType, matchValue]
+      properties:
+        providerId:
+          type: string
+          description: Trimmed, 1..64 characters.
+        matchType:
+          type: string
+          description: "`exact` or `domain`."
+        matchValue:
+          type: string
+          description: >-
+            Trimmed, lower-cased, 1..254. A domain rule drops any leading `@`
+            and must then be a hostname; an exact rule must be a full email
+            address.
+    MemberProviderAccess:
+      type: object
+      description: One provider a member may read.
+      required: [providerKey, displayName]
+      properties:
+        providerKey:
+          type: string
+        displayName:
+          type: string
+    HouseholdMember:
+      type: object
+      description: >-
+        One member of the household, with the providers they may read. `role`
+        duplicates `householdRole`: it carried Better Auth's global role in the
+        TypeScript server and the SPA reads both, so the Go server puts the
+        household role in each.
+      required: [id, householdRole, email, name, role, createdAt, updatedAt, providerAccess]
+      properties:
+        id:
+          type: string
+        householdRole:
+          type: string
+          enum: [owner, member]
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        providerAccess:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberProviderAccess"
+    MemberList:
+      type: object
+      required: [members, providers]
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/HouseholdMember"
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Provider"
+    CreateMemberRequest:
+      type: object
+      description: >-
+        REF §A4's `createMember` schema. `role` is a plain string, defaulting
+        to member when absent: the enum would reject `admin`, which REF §A4
+        accepts and maps to owner, and its rejection would not read "role must
+        be owner or member".
+      required: [email, name]
+      properties:
+        email:
+          type: string
+          description: Trimmed, lower-cased, 3..254 characters, must look like an address.
+        name:
+          type: string
+          description: Trimmed, 1..80 characters.
+        role:
+          type: string
+          description: "`owner` or `member` (`admin` is accepted and means owner). Defaults to member."
+    RoleChangeRequest:
+      type: object
+      description: REF §A4's `roleChange` schema. See CreateMemberRequest for why `role` is not an enum here.
+      required: [role]
+      properties:
+        role:
+          type: string
+          description: "`owner` or `member` (`admin` is accepted and means owner)."
+    ProviderAccessRequest:
+      type: object
+      description: REF §A4's `providerAccess` schema.
+      required: [providerKey]
+      properties:
+        providerKey:
+          type: string
+          description: Trimmed, lower-cased, 1..40 characters.
+    InvitationList:
+      type: object
+      required: [invitations]
+      properties:
+        invitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invitation"
+    InvitationRequest:
+      type: object
+      description: >-
+        REF §A4's `invitation` schema. See CreateMemberRequest for why `role`
+        is a plain string.
+      required: [email, name]
+      properties:
+        email:
+          type: string
+          description: Trimmed, lower-cased, 3..254 characters, must look like an address.
+        name:
+          type: string
+          description: Trimmed, 1..80 characters.
+        role:
+          type: string
+          description: "`owner` or `member` (`admin` is accepted and means owner). Defaults to member."
+        providerIds:
+          type: array
+          description: The providers the invitee may read the moment they accept. At most 50; every id must belong to this household.
+          items:
+            type: string
+    InvitationResult:
+      type: object
+      description: >-
+        A newly issued invitation, its link, and whether the email carrying
+        that link got out. A failed delivery is NOT an error (REF §A3): the
+        invitation stands and `inviteUrl` can be shared by hand, so
+        `emailSent` is false and `emailError` says what went wrong.
+      required: [invitation, inviteUrl, emailSent]
+      properties:
+        invitation:
+          $ref: "#/components/schemas/Invitation"
+        inviteUrl:
+          type: string
+        emailSent:
+          type: boolean
+        emailError:
+          type: string

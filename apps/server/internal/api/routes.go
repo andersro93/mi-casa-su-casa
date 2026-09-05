@@ -76,6 +76,50 @@ var operationAuthTiers = map[string]authTier{
 	// Invitations (REF §A2, "Invitations — public"). See tierViewer.
 	"LookupInvitation": tierViewer,
 	"AcceptInvitation": tierViewer,
+
+	// Households (REF §A2, "Households — session required"). Only the leave
+	// route names a household in its path, and it is the one that needs the
+	// tenancy guard; the other two answer about the caller themselves, so
+	// their tenancy is the session.
+	"ListMyHouseholds": tierSession,
+	"CreateHousehold":  tierSession,
+	"LeaveHousehold":   tierHousehold,
+
+	// Settings (REF §A2, "Settings — session required"). Every one of these is
+	// about the caller's own account — there is no user id in any path — so
+	// the session is both the authentication and the subject.
+	"GetAccountSettings":     tierSession,
+	"ListSettingsHouseholds": tierSession,
+	"UpdateProfile":          tierSession,
+	"RevokeOtherSessions":    tierSession,
+	"RevokeSession":          tierSession,
+
+	// Admin (REF §A2, "Admin — owner of :slug"). Every one of them, without
+	// exception: the TypeScript mounted requireHouseholdContext and
+	// requireOwner on `/:slug/*` for the whole admin router, so "owner" was a
+	// property of that ROUTER, and it is a property of this block here. A
+	// future admin route wanting a lesser tier is a decision to argue for in
+	// review, not a line to slip in.
+	"ListAuditEvents":            tierOwner,
+	"GetHouseholdSettings":       tierOwner,
+	"UpdateHouseholdSettings":    tierOwner,
+	"ListProviderConfigurations": tierOwner,
+	"CreateProvider":             tierOwner,
+	"UpdateProvider":             tierOwner,
+	"DeleteProvider":             tierOwner,
+	"CreateSenderRule":           tierOwner,
+	"UpdateSenderRule":           tierOwner,
+	"DeleteSenderRule":           tierOwner,
+	"ListMembers":                tierOwner,
+	"CreateMember":               tierOwner,
+	"RemoveMember":               tierOwner,
+	"UpdateMemberRole":           tierOwner,
+	"GrantProviderAccess":        tierOwner,
+	"RevokeProviderAccess":       tierOwner,
+	"ListInvitations":            tierOwner,
+	"CreateInvitation":           tierOwner,
+	"ResendInvitation":           tierOwner,
+	"CancelInvitation":           tierOwner,
 }
 
 // operationRateLimits maps an operationID to the rule its route is limited by.
@@ -85,6 +129,11 @@ var operationRateLimits = map[string]ratelimit.Rule{
 	"CompleteSetup":    ratelimit.Setup,
 	"LookupInvitation": ratelimit.Invitations,
 	"AcceptInvitation": ratelimit.Invitations,
+
+	// Household creation carries no secret, but each one claims an inbound
+	// email address, so the budget (10 per hour) is what keeps a signed-in
+	// caller from minting them faster than a person plausibly would.
+	"CreateHousehold": ratelimit.HouseholdCreate,
 }
 
 // publicAPIAllowlist is the exhaustive set of tierPublic operations allowed to
