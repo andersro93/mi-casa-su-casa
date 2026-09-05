@@ -1,0 +1,133 @@
+# Mi Casa Su Casa, whole stack, one command — builds from source:
+#
+#   bash scripts/build-artifacts.sh   # REQUIRED FIRST — see below
+#   docker compose up
+#
+# The Dockerfile is COPY-only: it compiles nothing, it copies the binary
+# that scripts/build-artifacts.sh produced natively. So run that script
+# before the first `docker compose build` and again after any server or SPA
+# change — otherwise the build fails with "dist/server/... not found", or
+# (worse) quietly ships yesterday's binary.
+#
+# Two containers and nothing else: Postgres holds everything, inbound mail
+# and attachments included, so there is no object store and no data volume
+# for the app.
+#
+# The app runs in its default dispatch mode: it migrates itself under a
+# Postgres advisory lock at startup, then serves with its in-process
+# scheduler running — the right shape for a single container, which has no
+# orchestrator to drive migrations or cron separately. Run migrations
+# explicitly instead (before a rollout, say) with the `migrate` service
+# below.
+#
+# Self-hosting? Use docker-compose.selfhost.yml instead: it pulls the
+# published image and needs no clone at all.
+
+name: mi-casa-su-casa
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: micasa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-micasa}
+      POSTGRES_DB: micasa
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # -d as well as -U: without the database name pg_isready reports ready
+      # while the init scripts are still creating it, and the migration then
+      # fails on a database that does not exist yet.
+      test: ["CMD-SHELL", "pg_isready -U micasa -d micasa"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    # The Dockerfile is COPY-only: run `bash scripts/build-artifacts.sh`
+    # before the first `docker compose build` (and after server/SPA changes).
+    build: .
+    # Named so the one-off services below share the built image instead of
+    # each triggering their own build of the same context.
+    image: mi-casa:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PORT:-3000}:3000"
+    environment: &app-env
+      DATABASE_URL: postgres://micasa:${POSTGRES_PASSWORD:-micasa}@db:5432/micasa
+
+      # `development` is what makes the http:// APP_URL below legal — outside
+      # development and test the config loader refuses anything but https,
+      # because an http origin means session cookies without Secure.
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+
+      # Dev defaults, deliberately weak and deliberately not secrets. The
+      # self-host file demands real ones; this file is a laptop.
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-do-not-use-in-production-0123456789}
+      SETUP_SECRET: ${SETUP_SECRET:-dev-setup-secret}
+
+      # The account first-run /setup creates, and the domain households
+      # receive mail on (<slug>@EMAIL_DOMAIN).
+      OWNER_EMAIL: ${OWNER_EMAIL:-owner@example.com}
+      EMAIL_DOMAIN: ${EMAIL_DOMAIN:-example.com}
+
+      # Inbound and outbound mail. Nothing here reaches a real relay by
+      # default: the point is that the process boots, since config.Load
+      # requires all three regardless of whether mail is ever sent.
+      MAILGUN_WEBHOOK_SIGNING_KEY: ${MAILGUN_WEBHOOK_SIGNING_KEY:-dev-signing-key}
+      SMTP_URL: ${SMTP_URL:-smtp://localhost:1025}
+      OUTBOUND_EMAIL_FROM: ${OUTBOUND_EMAIL_FROM:-no-reply@example.com}
+
+      # Behind a reverse proxy, set this to the number of proxies in front —
+      # otherwise the rate limiter ignores X-Forwarded-For (by design, since
+      # it is caller-supplied) and buckets every caller together.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+
+      APP_NAME: ${APP_NAME:-Mi Casa Su Casa}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  # One-off: apply migrations and exit.
+  #
+  #   docker compose run --rm migrate
+  #
+  # The default mode already migrates at startup, so a single-container
+  # deployment never needs this. It exists for the orchestrated case
+  # (Kubernetes, several `server` replicas) where migrations must land before
+  # any replica depending on the new schema starts. Safe to run concurrently
+  # with a booting app container: both take the same Postgres advisory lock.
+  #
+  # Behind a profile so `docker compose up` does not start it.
+  migrate:
+    build: .
+    image: mi-casa:local
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["migrate"]
+    environment: *app-env
+
+  # One-off: run a single scheduled job and exit.
+  #
+  #   docker compose run --rm cron retention
+  #
+  # Same image, same configuration, so a Kubernetes CronJob runs exactly what
+  # is already deployed. Not needed alongside the default mode either — its
+  # in-process scheduler drives the job itself.
+  cron:
+    build: .
+    image: mi-casa:local
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/app/mi-casa", "cron"]
+    environment: *app-env
+
+volumes:
+  db-data:
