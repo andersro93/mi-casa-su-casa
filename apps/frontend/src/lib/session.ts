@@ -15,7 +15,7 @@ import {
 } from "@tanstack/react-query";
 import type { HouseholdSummary, SessionData, SetupStatus } from "../types";
 import { ApiError, client, unwrap } from "./api";
-import { getSession, signOut } from "./auth-client";
+import { getSession, SessionUnavailableError, signOut } from "./auth-client";
 
 /** Set by the invite page before it sends a signed-out visitor to sign in. */
 export const PENDING_INVITE_KEY = "pendingInviteToken";
@@ -57,21 +57,78 @@ export const setupStatusQueryOptions = queryOptions({
   staleTime: 30_000,
 });
 
+/**
+ * Who is signed in — or, just as importantly, the admission that we could not
+ * find out.
+ *
+ * The third state is the point. `GET /api/auth/me` sits behind Limen's
+ * 60/min-per-client limiter, so an ordinary busy tab (or a household behind
+ * one NAT) can meet a 429; a restart or a proxy hiccup can meet a 5xx or
+ * nothing at all. Collapsing any of those into "anonymous" is what used to
+ * throw a visitor with a perfectly good session out to `/login`.
+ *
+ * `unavailable` is not a value in this union because it is never cached: the
+ * query *rejects* with `SessionUnavailableError`, which is what lets
+ * TanStack Query retry it and what leaves the last known answer in the cache
+ * for the guards to keep using (`lib/guards.ts`).
+ */
+export type SessionResult =
+  | { status: "anonymous"; user: null }
+  | { status: "signed-in"; user: NonNullable<SessionData["user"]> };
+
+/**
+ * The server said nobody is signed in — or we just signed them out. Frozen
+ * because it is seeded straight into the query cache and shared by every
+ * guard that falls back to it; nothing may edit the answer in place.
+ */
+export const ANONYMOUS_SESSION: SessionResult = Object.freeze({
+  status: "anonymous",
+  user: null,
+});
+
+/**
+ * How many times a session lookup that never got an answer is retried before
+ * the guards fall back to the cache (or the error screen). Two is enough to
+ * ride out a limiter window boundary or a single dropped request without
+ * making an outage worse.
+ */
+export const SESSION_RETRY_COUNT = 2;
+const SESSION_RETRY_BASE_MS = 300;
+const SESSION_RETRY_MAX_MS = 5_000;
+
 export const sessionQueryOptions = queryOptions({
   queryKey: ["session"] as const,
-  queryFn: async (): Promise<SessionData | null> => {
-    try {
-      return await getSession();
-    } catch {
-      // A failed session lookup means "not signed in" here, the same as it
-      // did when the app read Better Auth's session hook. Limen answers 401
-      // with `null` rather than throwing, so this only catches a network or
-      // 5xx failure — in which case the guards send the visitor to /login,
-      // which is the safe direction.
-      return null;
-    }
+  queryFn: async (): Promise<SessionResult> => {
+    // Throws `SessionUnavailableError` for anything that is not a definitive
+    // 401; see `lib/auth-client.ts`.
+    const session = await getSession();
+    const user = session?.user;
+
+    // A 200 that names nobody is the same answer as a 401. The old
+    // `isAuthenticated` drew the line at the email address and screens rely
+    // on it being there, so the line stays where it was.
+    return user?.email ? { status: "signed-in", user } : ANONYMOUS_SESSION;
   },
   staleTime: 30_000,
+  // Only a lookup that failed to happen is worth repeating. Anything else
+  // thrown here is a bug in the query function and should surface at once.
+  retry: (failureCount, error) =>
+    error instanceof SessionUnavailableError &&
+    failureCount < SESSION_RETRY_COUNT,
+  retryDelay: (attempt, error) => {
+    // The limiter tells us exactly how long it wants; retrying sooner just
+    // spends another request on another 429.
+    if (
+      error instanceof SessionUnavailableError &&
+      error.retryAfterMs !== null
+    ) {
+      // Capped, though: a limiter window can be a full minute away, and
+      // freezing a route guard for that long is worse than giving up and
+      // letting the cache (or the error screen's own retry) take over.
+      return Math.min(error.retryAfterMs, SESSION_RETRY_MAX_MS);
+    }
+    return Math.min(SESSION_RETRY_BASE_MS * 3 ** attempt, SESSION_RETRY_MAX_MS);
+  },
 });
 
 export const householdsQueryOptions = queryOptions({
@@ -99,8 +156,10 @@ export const householdsQueryOptions = queryOptions({
   },
 });
 
-export function isAuthenticated(session: SessionData | null): boolean {
-  return Boolean(session?.user?.email);
+export function isAuthenticated(
+  session: SessionResult | undefined,
+): session is Extract<SessionResult, { status: "signed-in" }> {
+  return session?.status === "signed-in";
 }
 
 /**
@@ -153,7 +212,7 @@ export async function signOutAndReset(queryClient: QueryClient): Promise<void> {
   } catch {
     // Deliberately swallowed; see above.
   }
-  queryClient.setQueryData(sessionQueryOptions.queryKey, null);
+  queryClient.setQueryData(sessionQueryOptions.queryKey, ANONYMOUS_SESSION);
   queryClient.setQueryData(
     householdsQueryOptions.queryKey,
     SIGNED_OUT_HOUSEHOLDS,
@@ -177,7 +236,10 @@ export function useSetupStatus(): SetupStatusResult {
 
 export function useSessionData(): SessionData | null {
   const { data } = useQuery(sessionQueryOptions);
-  return data ?? null;
+  // A lookup that failed leaves `data` at the last answer it did get, so the
+  // chrome keeps showing the account it was showing a moment ago rather than
+  // blanking out over a 429.
+  return data?.status === "signed-in" ? { user: data.user } : null;
 }
 
 export function useHouseholds(): HouseholdsResult {

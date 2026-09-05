@@ -18,10 +18,13 @@ import type {
 } from "@tanstack/react-query";
 import { type ParsedLocation, redirect } from "@tanstack/react-router";
 import type { HouseholdSummary, SessionData } from "../types";
+import { SessionUnavailableError } from "./auth-client";
 import {
+  ANONYMOUS_SESSION,
   householdsQueryOptions,
   isAuthenticated,
   PENDING_INVITE_KEY,
+  type SessionResult,
   type SetupStatusResult,
   sessionQueryOptions,
   setupStatusQueryOptions,
@@ -63,6 +66,84 @@ function read<T, TKey extends QueryKey>(
 /** `.then` that stays synchronous for values that are not promises. */
 function then<T, R>(value: Maybe<T>, next: (value: T) => Maybe<R>): Maybe<R> {
   return value instanceof Promise ? value.then(next) : next(value);
+}
+
+/**
+ * The session, read with the one rule that separates it from every other
+ * query here: **only a definitive 401 means signed out.**
+ *
+ * `sessionQueryOptions` rejects with `SessionUnavailableError` when the check
+ * could not be made at all — a 429 from Limen's 60/min limiter, a 5xx, a
+ * dropped connection, a deadline (`lib/session.ts`). When that happens:
+ *
+ *  - a previously cached answer is used and the navigation carries on. The
+ *    visitor is still signed in; the server just could not say so this
+ *    second, and bouncing them to `/login` over that is the bug this exists
+ *    to prevent.
+ *  - with nothing cached there is nothing honest to say. `whenUnavailable`
+ *    decides: the public routes settle for "anonymous" so sign-in stays
+ *    reachable during an outage, while the authed ones pass `null` and let
+ *    the error escape to the router's error screen, which offers a retry.
+ *
+ * Retries are for *finding out*, so they are switched off whenever the cache
+ * already holds an answer. Otherwise a 429 incident would make every single
+ * navigation sit through the backoff and spend three requests out of the
+ * sixty per minute that caused the 429 — paying, on the critical path, for
+ * information the guard is about to discard in favour of the cache. With
+ * nothing cached the retries are the whole point and stay on.
+ *
+ * A cached answer is never a licence to ignore the server: the fetch is still
+ * awaited, so a session revoked elsewhere still answers 401 and still lands
+ * the visitor on `/login`. This is only about what to do when the server does
+ * not answer at all.
+ */
+function readSession(
+  queryClient: QueryClient,
+  whenUnavailable: SessionResult | null,
+): Maybe<SessionResult> {
+  const cached = queryClient.getQueryData<SessionResult>(
+    sessionQueryOptions.queryKey,
+  );
+
+  const value = read(
+    queryClient,
+    cached === undefined
+      ? sessionQueryOptions
+      : { ...sessionQueryOptions, retry: false },
+  );
+  if (!(value instanceof Promise)) return value;
+
+  return value.catch((error: unknown) => {
+    // Only a check that could not be made is recoverable here. Anything else
+    // is a bug in the query function and must not be papered over with a
+    // stale session.
+    if (!(error instanceof SessionUnavailableError)) throw error;
+
+    // Re-read: the fetch may have been in flight long enough for the answer
+    // to have changed underneath the value read above.
+    const previous = queryClient.getQueryData<SessionResult>(
+      sessionQueryOptions.queryKey,
+    );
+
+    if (previous) {
+      // Write it back, unchanged, to re-date it. That is not bookkeeping: a
+      // single navigation runs this guard once per matched route, and a
+      // failed fetch leaves the entry invalidated, so without this every
+      // route in the chain re-asks a server that has just refused — turning
+      // one 429 into several. Re-dating says "this is the answer we are
+      // going with", and it holds for the same `staleTime` a successful
+      // check would have earned. An explicit `invalidateQueries` (sign-in,
+      // sign-out, an accepted invitation) still forces a fresh check.
+      queryClient.setQueryData(sessionQueryOptions.queryKey, previous);
+      return previous;
+    }
+
+    // Nothing cached: do not seed `whenUnavailable`. It is this guard's
+    // decision about one navigation, not an answer about the account, and
+    // caching it would keep a signed-in visitor on `/login` for 30 seconds.
+    if (whenUnavailable) return whenUnavailable;
+    throw error;
+  });
 }
 
 function pendingInviteToken(): string | null {
@@ -153,7 +234,9 @@ export interface SessionGuardResult {
  */
 export function requireSession(args: GuardArgs): Maybe<SessionGuardResult> {
   return then(requireSetupDone(args), (setup) =>
-    then(read(args.context.queryClient, sessionQueryOptions), (session) => {
+    // No fallback: with nothing cached, a session check that could not be
+    // made must reach the error screen and its retry, never `/login`.
+    then(readSession(args.context.queryClient, null), (session) => {
       if (!isAuthenticated(session)) {
         throw redirect({
           to: "/login",
@@ -161,7 +244,7 @@ export function requireSession(args: GuardArgs): Maybe<SessionGuardResult> {
           replace: true,
         });
       }
-      return { setup, session: session as SessionData };
+      return { setup, session: { user: session.user } };
     }),
   );
 }
@@ -169,12 +252,19 @@ export function requireSession(args: GuardArgs): Maybe<SessionGuardResult> {
 /** `/login` and friends: a signed-in visitor has no business here. */
 export function requireAnonymous(args: GuardArgs): Maybe<SetupStatusResult> {
   return then(requireSetupDone(args), (setup) =>
-    then(read(args.context.queryClient, sessionQueryOptions), (session) => {
-      if (isAuthenticated(session)) {
-        throw redirect({ to: "/", replace: true });
-      }
-      return setup;
-    }),
+    // Falls back to "anonymous": if we cannot find out who this is, the way
+    // *in* has to stay open. Showing the sign-in page to someone who turns
+    // out to be signed in costs them a click; an error screen in front of
+    // sign-in during an outage costs them the app.
+    then(
+      readSession(args.context.queryClient, ANONYMOUS_SESSION),
+      (session) => {
+        if (isAuthenticated(session)) {
+          throw redirect({ to: "/", replace: true });
+        }
+        return setup;
+      },
+    ),
   );
 }
 

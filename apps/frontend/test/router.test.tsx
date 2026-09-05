@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { safeRedirect } from "../src/lib/guards";
 import {
+  ANONYMOUS_SESSION,
   clearAuthQueries,
   householdsQueryOptions,
   sessionQueryOptions,
@@ -284,7 +285,9 @@ describe("signing out", () => {
 
     await signOutAndReset(queryClient);
 
-    expect(queryClient.getQueryData(sessionQueryOptions.queryKey)).toBeNull();
+    expect(queryClient.getQueryData(sessionQueryOptions.queryKey)).toEqual(
+      ANONYMOUS_SESSION,
+    );
     expect(queryClient.getQueryData(householdsQueryOptions.queryKey)).toEqual({
       households: [],
       error: null,
@@ -333,7 +336,9 @@ describe("signing out", () => {
 
     await expect(signOutAndReset(queryClient)).resolves.toBeUndefined();
 
-    expect(queryClient.getQueryData(sessionQueryOptions.queryKey)).toBeNull();
+    expect(queryClient.getQueryData(sessionQueryOptions.queryKey)).toEqual(
+      ANONYMOUS_SESSION,
+    );
     expect(queryClient.getQueryData(householdsQueryOptions.queryKey)).toEqual({
       households: [],
       error: null,
