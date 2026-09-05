@@ -312,15 +312,20 @@ still retrying.
 
 ### Messages answer 406
 
-Look for `email_rejected` or `email_parse_failed` in the log; the `reason`
-field says which:
+Two events produce a 406, and they carry different fields.
 
-| Reason | Fix |
+**`email_rejected`** names the cause in a `reason` field:
+
+| `reason` | Fix |
 | --- | --- |
 | `unknown_recipient` | The local part is not a household slug in this installation. Check the address in household settings — and remember the local part must equal the slug exactly |
 | `too_large` | The message exceeded 2 MiB of raw MIME. Verification mail is tiny; this is usually a newsletter or something with a large attachment, and refusing it is correct |
 | `quarantine_full` | 200 unreviewed rows in this household's quarantine. Work through **Needs review**; the next message is accepted |
-| *(`email_parse_failed`)* | The message was not parseable as MIME, or the route is missing its `mime` suffix so no `body-mime` field was sent |
+
+**`email_parse_failed`** has no `reason` — it carries an **`error`** field with
+the parser's own words. Either the message was not parseable as MIME, or the
+route is missing its `mime` suffix so no `body-mime` field was sent at all
+(`error: "the request carried no body-mime field"`).
 
 ### Messages arrive but land in Needs review
 

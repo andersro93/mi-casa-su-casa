@@ -219,8 +219,10 @@ has no account. Setup always creates a household of its own — add the new
 owner to the existing households with the promotion query above, then remove
 the throwaway household from the UI if you do not want it.
 
-Remove `SETUP_SECRET` from the environment again once you are done. The route
-locks itself (409 for any secret), so keeping the secret only adds risk.
+Rotate `SETUP_SECRET` once you are done. It cannot be *removed* — the config
+loader requires it on every boot and the container will not start without it —
+but the route locks itself again and answers 409 *before* the secret is
+compared, so the value is inert from the moment setup completes.
 
 **If setup refuses with "Setup is already in progress or has been
 completed"**, a previous attempt claimed the installation and crashed. The
@@ -234,7 +236,7 @@ above again.
 | Secret | How | Effect |
 | --- | --- | --- |
 | `AUTH_SECRET` | Change it in the environment and restart | **Every session is invalidated** — everyone signs in again. Password hashes and two-factor secrets are unaffected; the same value is hashed into the two-factor encryption key, so the enrolments survive |
-| `SETUP_SECRET` | Change it in the environment and restart | None while setup is locked — it is only read by `/setup`. Remove it entirely after first run; set a new one only when reopening setup (§4) |
+| `SETUP_SECRET` | Change it in the environment and restart | None while setup is locked: `/setup` answers 409 before the secret is compared, so the value is inert. It cannot be removed — the config loader requires it at boot — so rotate it freely, and set a value you mean when reopening setup (§4) |
 | `MAILGUN_WEBHOOK_SIGNING_KEY` | Rotate it in Mailgun first, then in the environment, then restart | Expect a short burst of `inbound_rejected` with `reason: signature` — messages Mailgun signed with the old key and is still retrying. They stop within Mailgun's retry window |
 | SMTP credentials (`SMTP_URL`) | Change and restart | Nothing in flight to lose: mail is sent one message per connection, and a failed send is logged (`invitation_email_failed`, `password_reset_email_failed`) rather than queued |
 | `POSTGRES_PASSWORD` / `DATABASE_URL` | Change it in Postgres, then in the environment, then restart | The app fails at boot on a wrong value rather than serving with a broken pool — which is the loud failure you want |

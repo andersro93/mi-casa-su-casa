@@ -94,9 +94,13 @@ Then open `https://casa.example.com/setup` and claim the installation. The
 form asks for the `OWNER_EMAIL` and `SETUP_SECRET` you just set, your name and
 a password, and the name and slug of the first household. The slug becomes the
 local part of that household's inbound address (`casa` →
-`casa@casa.example.com`). `/setup` locks permanently once it succeeds — after
-that it answers 409 for any secret — so you can drop `SETUP_SECRET` from the
-environment on the next restart.
+`casa@casa.example.com`). `/setup` locks permanently once it succeeds: it
+answers 409 *before* the secret is compared, so from that moment the value
+stops mattering.
+
+**Keep the variable set anyway.** The config loader requires all nine on every
+boot and refuses to start without them, so `SETUP_SECRET` cannot be removed —
+only rotated, which it is now free to be.
 
 Mail will not arrive yet: point `EMAIL_DOMAIN`'s MX records at Mailgun and add
 the route first — see [Receiving mail with Mailgun](#receiving-mail-with-mailgun)
@@ -142,6 +146,12 @@ maintained upstream. The SPA, the OpenAPI spec, the SQL migrations and the
 IANA timezone database are all compiled into the binary. There is no volume,
 because the app writes nothing to disk.
 
+Two things worth knowing before you commit to the image: every release also
+ships the bare binaries, so Docker is optional
+([Running without Docker](#running-without-docker)), and everything published
+is cosign-signed, so you can check what you pulled
+([Verifying a release](#verifying-a-release)).
+
 ### Configuration
 
 Environment variables only, validated at startup — and *every* problem is
@@ -153,7 +163,7 @@ than making you fix one variable per restart. **Nine are required:**
 | `DATABASE_URL` | Postgres connection string, e.g. `postgres://micasa:pw@db:5432/micasa` |
 | `APP_URL` | The public origin people type. Sessions are signed and the links in outbound mail are built from it, and the loader **refuses a non-`https://` value** unless `ENVIRONMENT` is `development` or `test`. A wrong value breaks sign-in in ways that look like anything except a configuration error |
 | `AUTH_SECRET` | At least 32 characters — `openssl rand -hex 32`. Hashed into the 32-byte key the auth layer wants. Changing it signs everyone out |
-| `SETUP_SECRET` | The one-time secret `/setup` asks for on first run, so a freshly exposed instance cannot be claimed by whoever finds it first. Any strong passphrase |
+| `SETUP_SECRET` | The one-time secret `/setup` asks for on first run, so a freshly exposed instance cannot be claimed by whoever finds it first. Any strong passphrase. Still required at every boot once setup is locked — the value stops mattering, the variable does not |
 | `OWNER_EMAIL` | The address of the first account, created by that same `/setup` run. Lower-cased, and the form's address must match it |
 | `EMAIL_DOMAIN` | The domain household inboxes live on — each household receives mail at `<slug>@EMAIL_DOMAIN`. A bare lower-case hostname like `casa.example.com`: no scheme, no `@` |
 | `MAILGUN_WEBHOOK_SIGNING_KEY` | Mailgun's **HTTP webhook signing key** (not the API key). Every inbound POST is verified against it |
@@ -230,11 +240,21 @@ connection over `SMTP_URL`:
 | `smtp://host:587` | STARTTLS, **required** — a relay that offers no upgrade is refused rather than spoken to in the clear |
 | `smtps://host:465` | TLS from the first byte |
 | `smtp://user:pass@host:587` | PLAIN authentication with the userinfo |
-| `smtp://host:1025?starttls=off` | Never upgrade. For an operator with a reason we did not anticipate — spelled out in the URL, so it shows up in a review of the deployment rather than hiding behind an "insecure" flag |
+| `smtp://host:1025?starttls=off` | Never upgrade. What a plain relay on a private network needs — see the note below |
 
-The STARTTLS requirement is waived only for a loopback host (`localhost`,
-`127.0.0.1`, `::1`) — the sidecar relay or mail catcher a deployment runs next
-to the app. URL-encode the password if it contains `@ : / #`.
+The STARTTLS requirement is waived only for a **loopback host** — `localhost`
+or a loopback IP such as `127.0.0.1` or `::1`, and nothing else.
+
+> **The trap:** a plain relay reached by a *container or service name* is not
+> loopback. `smtp://mailpit:1025` on a compose network, or
+> `smtp://smtp.internal:25` on a cluster, hits the STARTTLS requirement and
+> every send fails against a relay that offers no upgrade. Either put the
+> relay on loopback, or say so in the URL:
+> `smtp://mailpit:1025?starttls=off`. It is spelled out there deliberately, so
+> it shows up in a review of the deployment rather than hiding behind an
+> "insecure" flag nobody reads.
+
+URL-encode the password if it contains `@ : / #`.
 
 Mailgun's own relay works fine here, so receiving and sending can be the same
 account: `smtps://postmaster%40casa.example.com:<smtp-password>@smtp.eu.mailgun.org:465`.
@@ -464,8 +484,8 @@ mise run snapshot    # full GoReleaser dry run: archives, SBOMs, local image; no
 tests and cannot run as concurrent packages against one database.
 
 After editing `openapi/mi-casa.yaml`, run `go generate ./...` from
-`apps/server` (needs `oapi-codegen` on `PATH` — `mise install` puts it there)
-and `bun run gen:client` from the root. Generated code is committed; neither
+`apps/server` (needs `oapi-codegen` **and** `sqlc` on `PATH` — `mise install`
+puts both there) and `bun run gen:client` from the root. Generated code is committed; neither
 CI nor the image runs a code generator, and a drift test fails when the
 committed output is stale.
 
@@ -594,6 +614,7 @@ apps/server/                        the Go module (github.com/andersro93/mi-casa
       ├─ mail/                      Mailgun webhook verification, MIME parsing, SMTP sending
       ├─ ratelimit/                 the app's own Postgres-backed limiter
       ├─ repo/                      household-scoped SQL
+      ├─ security/                  constant-time comparison, keyed address digests, token minting
       ├─ web/                       static asset serving, security headers, the embedded SPA
       └─ testrig/                   the in-process HTTP rig the route tests drive
 apps/frontend/     @mi-casa/frontend  React SPA (screens, PWA plumbing) + tests

@@ -31,14 +31,14 @@ bodies and verification codes are never logged.**
 | `email_quarantined` | info | inbound mail was held for review | `from`, `to`, `rawSize`, `messageId`, `householdId`, `reason`, `truncated` |
 | `email_rejected` | info | mail refused permanently (406) | `reason` (`unknown_recipient`, `too_large`, `quarantine_full`), `from`, `to`, `max` / `pending` |
 | `email_parse_failed` | error | the message was not parseable as MIME, or carried no `body-mime` (406) | `from`, `to`, `rawSize`, `error` |
-| `email_ingest_failed` | error | storing the message failed, or a panic escaped the webhook handler (500 — the sender retries) | `from`, `to`, `messageId`, `error` |
+| `email_ingest_failed` | error | storing the message failed, or a panic escaped the webhook handler (500 — the sender retries) | storing: `from`, `to`, `rawSize`, `messageId`, `error`. A panic carries `path` and `error` only — there is no parsed message to describe |
 | `invitation_email_failed` | error | an invitation could not be delivered (the invitation is still created, with a copyable link) | `invitationId`, `to`, `error` |
 | `password_reset_email_failed` | error | a reset link could not be delivered (the route still answers 200, so it cannot be used to probe which addresses have accounts) | `to`, `error` |
-| `invitation_accept_failed` | error | a step of invitation acceptance failed; a half-made account is rolled back | `invitationId`, `during`, `error` |
+| `invitation_accept_failed` | error | a step of invitation acceptance failed; a half-made account is rolled back | `invitationId`, `error`; the cleanup and sign-in steps add `during` |
 | `retention_completed` | info | the nightly purge finished | `scheduledFor`, `messagesPurged`, `quarantinePurged`, `batches`, `durationMs` |
 | `retention_failed` | error | the purge did not finish — nothing was recorded, so `/readyz` goes stale | `scheduledFor`, `durationMs`, `error` |
-| `setup_failed` | error | first-run setup failed and was compensated | `userId`, `during`, `error` |
-| `setup_cleanup_failed` | error | the compensation itself failed — the installation may be stuck `in_progress` | `userId`, `during`, `error` |
+| `setup_failed` | error | first-run setup failed and was compensated | `error`; the sign-in step adds `userId` and `during` |
+| `setup_cleanup_failed` | error | the compensation itself failed — the installation may be stuck `in_progress` | `error`, plus either `userId` (deleting the account) or `during` (releasing the claim) |
 | `setup_recovered_existing_owner` | warn | an interrupted earlier setup had already created the owner; the bookkeeping was finished instead | `userId` |
 | `setup_orphan_user_removed` | warn | an interrupted earlier setup left an account with no household; it was removed so the retry can proceed | `userId` |
 | `member_removed` | info | an owner removed a member | `householdId`, `userId`, `byUserId` |
