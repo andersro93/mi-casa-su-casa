@@ -43,6 +43,8 @@ import (
 	"github.com/andersro93/mi-casa-su-casa/server/internal/config"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/db"
 	dbgen "github.com/andersro93/mi-casa-su-casa/server/internal/db/gen"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/ratelimit"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/repo"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/web"
 )
 
@@ -470,14 +472,22 @@ func buildDeps(ctx context.Context, cfg *config.Config) (api.Deps, func(), error
 		return api.Deps{}, nil, err
 	}
 
+	repository := repo.New(pool)
+
 	deps := api.Deps{
 		Pool:             pool,
 		Q:                q,
+		Repo:             repository,
+		RateLimit:        ratelimit.NewPostgres(repository),
 		Now:              time.Now,
 		AppURL:           cfg.AppURL,
 		AppName:          cfg.AppName,
 		EmailDomain:      cfg.EmailDomain,
 		TrustedProxyHops: cfg.TrustedProxyHops,
+		// Only "development" widens the same-site policy to a local dev
+		// server; config.IsDevelopmentLike also covers "test", which must
+		// not loosen a security check on a deployed environment.
+		DevMode: cfg.Environment == "development",
 	}
 	return deps, closePool, nil
 }

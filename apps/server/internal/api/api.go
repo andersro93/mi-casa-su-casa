@@ -36,7 +36,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/andersro93/mi-casa-su-casa/server/internal/api/gen"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/auth"
 	dbgen "github.com/andersro93/mi-casa-su-casa/server/internal/db/gen"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/ratelimit"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/repo"
 )
 
 // Deps is every collaborator the API layer needs, assembled by the
@@ -44,12 +47,30 @@ import (
 // below this one reads os.Getenv or opens a connection, which is what makes
 // the handlers testable against a real database and a pinned clock.
 //
-// Later tasks add fields (the auth service, the rate-limit store, the
-// outbound mailer); the shape below is what the health probes and the
+// Later tasks add fields (the outbound mailer, the scheduler's clock); the
+// shape below is what the health probes, the middleware chain and the
 // container's boot need today.
 type Deps struct {
 	Pool *pgxpool.Pool
 	Q    *dbgen.Queries
+
+	// Auth, Repo and RateLimit are the collaborators the middleware chain
+	// is built from (internal/api/middleware.Deps). They live here rather
+	// than being constructed in NewHandler because the composition root is
+	// the only place allowed to open a connection or read a secret.
+	Auth      auth.Service
+	Repo      *repo.Repo
+	RateLimit ratelimit.Store
+
+	// IPDigest turns a client address into the opaque value rate-limit keys
+	// are built from — auth.Service.IPDigest, so the app's own limiter
+	// buckets a caller exactly as Limen's does.
+	IPDigest func(string) string
+
+	// DevMode is ENVIRONMENT=development, and only that: it widens the
+	// same-site policy to accept a local Vite dev server on another port.
+	// "test" is deliberately excluded (see middleware.SameSite).
+	DevMode bool
 
 	// Now is the clock every handler reads instead of calling time.Now
 	// directly, so tests can pin both sides of a comparison — readiness'
