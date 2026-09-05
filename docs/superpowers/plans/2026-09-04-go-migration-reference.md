@@ -586,11 +586,22 @@ Sign-in with 2FA enabled: the plugin's after-hook on `signin` revokes the
 issued session, sets a challenge cookie and answers `200
 {"two_factor_required": true}`; the client then calls `/two-factor/verify`.
 
-**Allowed** in Mi Casa: `signin`, `signout`, `me`, `list-sessions`,
-`revoke-sessions`, `passwords-request-reset`, `passwords-reset`,
-`passwords-change`, and every two-factor route except `otp-send`.
+**Allowed** in Mi Casa: `signin`, `signout`, `me`,
+`passwords-request-reset`, `passwords-reset`, `passwords-change`, and every
+two-factor route except `otp-send` (whose real IDs are
+`two-factor-initiate-setup`, `two-factor-finalize-setup`,
+`two-factor-disable`, `two-factor-verify`, `totp-uri`, `get-backup-codes`,
+`update-backup-codes`).
 **Disabled**: `signup`, `passwords-set`, `usernames-check`, `verify-email`,
-`email-verifications`, `otp-send`.
+`email-verifications`, `otp-send`, `list-sessions`, `revoke-sessions`.
+
+`list-sessions` and `revoke-sessions` are disabled on purpose (Task 10
+review): `GET /api/auth/sessions` serialises every session Limen holds for
+the caller **including its raw token**, so one XSS or one logged response
+body yields live credentials for every device the account owns. The device
+list and its revocation belong to `/api/settings` (§A2), which returns the
+row id and the address digest and never a token; `revoke-sessions` is that
+route's sibling and has no caller.
 
 ## B4. Schema
 

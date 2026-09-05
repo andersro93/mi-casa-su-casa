@@ -138,10 +138,18 @@ type Service interface {
 }
 
 type service struct {
-	limen    *limen.Limen
-	core     *limen.LimenCore
-	cred     credentialpassword.API
-	pool     *pgxpool.Pool
+	limen *limen.Limen
+	core  *limen.LimenCore
+	cred  credentialpassword.API
+	pool  *pgxpool.Pool
+	// handler is built once, in New. Limen's Handler() is a CONSTRUCTOR, not
+	// an accessor: it re-registers every route and, on the way, its
+	// resolveRuleOverride DELETES each matched custom rule from the shared
+	// rate-limiter config map. A second call would therefore hand back a
+	// router whose sign-in, reset and two-factor limits had silently fallen
+	// back to the 60/min default — the brake quietly loosened by the act of
+	// asking for the handler twice.
+	handler  http.Handler
 	ipDigest func(string) string
 	appURL   string
 	// sendReset is Config.SendPasswordReset, kept so the closure Limen holds
@@ -186,6 +194,12 @@ func New(cfg Config) (Service, error) {
 	// without asking operators to count characters. The two-factor plugin
 	// inherits this same key for encrypting TOTP secrets at rest — see
 	// twoFactorPlugin below for why it is not given one of its own.
+	//
+	// NEVER set LIMEN_SECRET or LIMEN_TOTP_SECRET in this process's
+	// environment. Both are read before the fallback to Config.Secret, so
+	// either one would displace this hash as the two-factor encryption key —
+	// silently, and (unless it happens to be exactly 32 bytes) fatally at the
+	// first enrolment rather than at startup.
 	secret := sha256.Sum256([]byte(cfg.Secret))
 
 	// One extractor for both the session metadata and the rate limiter. It
@@ -225,6 +239,10 @@ func New(cfg Config) (Service, error) {
 			// A self-hosted instance behind plain HTTP (or a dev machine)
 			// would otherwise silently never receive a Secure cookie.
 			limen.WithHTTPCookieSecure(strings.HasPrefix(cfg.AppURL, "https://")),
+			// With no trusted origins Limen's origin check passes everything,
+			// which makes it no check at all. The SPA is served from APP_URL
+			// and nothing else calls these routes from a browser.
+			limen.WithHTTPTrustedOrigins([]string{cfg.AppURL}),
 			limen.WithHTTPDisabledPaths(disabledRouteIDs()),
 			limen.WithHTTPRateLimiter(
 				limen.WithRateLimiterKeyGenerator(requestDigest),
@@ -262,6 +280,7 @@ func New(cfg Config) (Service, error) {
 	s.limen = instance
 	s.core = core.core
 	s.cred = credentialpassword.Use(instance)
+	s.handler = enforcePasswordMaxLength(instance.Handler())
 	return s, nil
 }
 
@@ -345,9 +364,18 @@ var knownRouteIDs = []string{
 //     whoever sent the invitation, not by a confirmation mail.
 //   - otp-send: the plugin does not even register it with OTP disabled;
 //     naming it keeps the allowlist honest if that default changes.
+//   - list-sessions: GET /api/auth/sessions serialises every session Limen
+//     holds for the caller INCLUDING its raw token, so one XSS or one logged
+//     response body hands over live credentials for every device the account
+//     owns. The device list belongs to /api/settings (REF §A2), which returns
+//     the row id and the address digest and never a token.
+//   - revoke-sessions: the sibling of the above, with no caller — signing
+//     other devices out goes through /api/settings too, which can check what
+//     it is revoking. An unauthenticated-looking POST that ends every session
+//     a cookie owns is a denial-of-service primitive nothing needs.
 func allowedRouteIDs() []string {
 	return []string{
-		"me", "list-sessions", "signout", "revoke-sessions",
+		"me", "signout",
 		"signin",
 		"passwords-request-reset", "passwords-reset", "passwords-change",
 		"two-factor-initiate-setup", "two-factor-finalize-setup",
@@ -374,8 +402,10 @@ func disabledRouteIDs() []string {
 	return disabled
 }
 
-// Handler returns Limen's router.
-func (s *service) Handler() http.Handler { return s.limen.Handler() }
+// Handler returns the auth router: Limen's own, behind the password-length
+// guard. It is the value New built — see service.handler for why calling
+// Limen's Handler() a second time would quietly weaken the rate limits.
+func (s *service) Handler() http.Handler { return s.handler }
 
 // CreateUser creates an account with a usable password.
 //

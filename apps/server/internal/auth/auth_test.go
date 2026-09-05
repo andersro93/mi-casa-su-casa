@@ -21,6 +21,7 @@ import (
 // the SPA depends on, and a fake would only prove that our wrapper compiles.
 
 const (
+	testAppURL   = "http://localhost:8080"
 	testSecret   = "test-auth-secret-at-least-32-bytes-long"
 	testPassword = "correct horse battery"
 	testEmail    = "resident@example.test"
@@ -58,7 +59,7 @@ func newEnv(t *testing.T) *env {
 	e := &env{t: t, rig: rig, clientIP: testClientIP, cookies: map[string]string{}}
 
 	svc, err := auth.New(auth.Config{
-		AppURL:  "http://localhost:8080",
+		AppURL:  testAppURL,
 		AppName: "Mi Casa Su Casa",
 		Secret:  testSecret,
 		Pool:    rig.Pool,
@@ -97,6 +98,12 @@ func (e *env) request(method, path string, body any) *http.Request {
 	r.RemoteAddr = e.clientIP + ":54321"
 	if body != nil {
 		r.Header.Set("Content-Type", "application/json")
+	}
+	// Limen rejects a mutating request whose Origin is not APP_URL. A browser
+	// sets this header on every cross-document POST without being asked; the
+	// tests have to say it out loud.
+	if method != http.MethodGet {
+		r.Header.Set("Origin", testAppURL)
 	}
 	for name, value := range e.cookies {
 		r.AddCookie(&http.Cookie{Name: name, Value: value})
@@ -164,6 +171,10 @@ func TestDisabledRoutesAre404(t *testing.T) {
 		{http.MethodPost, "/verify-email", map[string]any{"token": "x"}},
 		{http.MethodPost, "/email-verifications", nil},
 		{http.MethodPost, "/two-factor/otp/send", nil},
+		// Limen's session list hands a session's raw token back to whoever
+		// holds a cookie; the device list is /api/settings' job (REF §A2).
+		{http.MethodGet, "/sessions", nil},
+		{http.MethodPost, "/revoke-sessions", nil},
 	}
 
 	for _, tc := range cases {
@@ -320,18 +331,11 @@ func TestPasswordResetFlow(t *testing.T) {
 	if sent.name != testName {
 		t.Errorf("name = %q, want %q", sent.name, testName)
 	}
-	if !strings.HasPrefix(sent.url, "http://localhost:8080/reset-password?token=") {
+	if !strings.HasPrefix(sent.url, testAppURL+"/reset-password?token=") {
 		t.Fatalf("url = %q, want APP_URL/reset-password?token=…", sent.url)
 	}
 
-	parsed, err := url.Parse(sent.url)
-	if err != nil {
-		t.Fatalf("parse reset url: %v", err)
-	}
-	token := parsed.Query().Get("token")
-	if token == "" {
-		t.Fatal("reset url carries no token")
-	}
+	token := resetToken(t, sent.url)
 
 	const newPassword = "a whole new passphrase"
 	w = e.do(http.MethodPost, auth.BasePath+"/passwords/reset", map[string]any{
@@ -392,6 +396,17 @@ func TestTwoFactorFlow(t *testing.T) {
 	}
 	if !enabled {
 		t.Fatal("two_factor_enabled is still false after finalize-setup")
+	}
+
+	// The same fact through the interface the app branches on. finalize-setup
+	// rotates the session, so this also proves the jar followed the new
+	// cookie.
+	enrolled, err := e.svc.SessionFromRequest(e.request(http.MethodGet, "/api/settings", nil))
+	if err != nil {
+		t.Fatalf("SessionFromRequest: %v", err)
+	}
+	if enrolled == nil || !enrolled.TwoFactorEnabled {
+		t.Fatalf("SessionFromRequest = %+v, want TwoFactorEnabled", enrolled)
 	}
 
 	// Ten backup codes, read while the enrolment session is still live.
@@ -470,6 +485,32 @@ func TestTwoFactorFlow(t *testing.T) {
 	}
 }
 
+// TestForeignOriginIsRejected proves WithHTTPTrustedOrigins is doing
+// something: with no origins configured Limen's check passes everything,
+// which is how a form on someone else's page gets to POST here with the
+// browser's cookies attached.
+func TestForeignOriginIsRejected(t *testing.T) {
+	e := newEnv(t)
+	e.createUser(testName, testEmail, testPassword)
+
+	r := e.request(http.MethodPost, auth.BasePath+"/signin/credential", map[string]any{
+		"credential": testEmail,
+		"password":   testPassword,
+	})
+	r.Header.Set("Origin", "https://evil.test")
+
+	w := httptest.NewRecorder()
+	e.mux.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+	}
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == auth.CookieName && cookie.Value != "" {
+			t.Fatal("a cross-origin sign-in issued a session cookie")
+		}
+	}
+}
+
 // TestSignInRateLimit pins REF §A8's brake on credential stuffing: five
 // attempts a minute per client address, wrong password or right.
 func TestSignInRateLimit(t *testing.T) {
@@ -489,6 +530,88 @@ func TestSignInRateLimit(t *testing.T) {
 	e.clientIP = "127.0.0.2"
 	if w := e.signIn(testEmail, testPassword); w.Code != http.StatusOK {
 		t.Fatalf("another client: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestHandlerIsBuiltOnceSoRateLimitsSurvive guards a trap in Limen: its
+// Handler() is a constructor, and building the router consumes the custom
+// rate-limit rules out of the shared config map (resolveRuleOverride deletes
+// each one it matches). A service that called it per request — or simply
+// twice — would serve a router with the sign-in brake replaced by the 60/min
+// default, with nothing to show for it.
+func TestHandlerIsBuiltOnceSoRateLimitsSurvive(t *testing.T) {
+	e := newEnv(t)
+	e.createUser(testName, testEmail, testPassword)
+
+	// Ask a second time and drive every request through what comes back.
+	second := http.NewServeMux()
+	second.Handle(auth.BasePath+"/", e.svc.Handler())
+	e.mux = second
+
+	for attempt := 1; attempt <= 5; attempt++ {
+		if w := e.signIn(testEmail, "wrong"); w.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: want 401, got %d: %s", attempt, w.Code, w.Body.String())
+		}
+	}
+	if w := e.signIn(testEmail, testPassword); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("sixth attempt through the second handler: want 429, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestPasswordMaxLengthOnReset and its sibling below cover the half of
+// REF §A8's 12..128 that Limen cannot enforce: the credential plugin has a
+// minimum-length option and no maximum, so the cap lives in a middleware in
+// front of its handler. Both tests carry a real token or session, so a broken
+// guard shows up as a 200 rather than as a differently-worded rejection.
+func TestPasswordMaxLengthOnReset(t *testing.T) {
+	e := newEnv(t)
+	e.createUser(testName, testEmail, testPassword)
+
+	if w := e.do(http.MethodPost, auth.BasePath+"/passwords/request-reset", map[string]any{"email": testEmail}); w.Code != http.StatusOK {
+		t.Fatalf("request-reset: %d %s", w.Code, w.Body.String())
+	}
+	token := resetToken(t, e.resets[0].url)
+
+	w := e.do(http.MethodPost, auth.BasePath+"/passwords/reset", map[string]any{
+		"token":        token,
+		"new_password": strings.Repeat("x", 129),
+	})
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("129 characters: want 422, got %d: %s", w.Code, w.Body.String())
+	}
+	assertLimenMessage(t, w, "new_password must have a length of at most 128")
+
+	// The token is untouched and 128 characters still works, so the guard
+	// rejects the password rather than breaking the route.
+	w = e.do(http.MethodPost, auth.BasePath+"/passwords/reset", map[string]any{
+		"token":        token,
+		"new_password": strings.Repeat("x", 128),
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("128 characters: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPasswordMaxLengthOnChange(t *testing.T) {
+	e := newEnv(t)
+	e.createUser(testName, testEmail, testPassword)
+	e.signIn(testEmail, testPassword)
+
+	w := e.do(http.MethodPost, auth.BasePath+"/passwords/change", map[string]any{
+		"current_password": testPassword,
+		"new_password":     strings.Repeat("x", 129),
+	})
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("129 characters: want 422, got %d: %s", w.Code, w.Body.String())
+	}
+	assertLimenMessage(t, w, "new_password must have a length of at most 128")
+
+	w = e.do(http.MethodPost, auth.BasePath+"/passwords/change", map[string]any{
+		"current_password": testPassword,
+		"new_password":     strings.Repeat("x", 128),
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("128 characters: want 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -569,6 +692,40 @@ func TestDeleteUser(t *testing.T) {
 	}
 	if sessions != 0 {
 		t.Fatalf("want 0 sessions, got %d", sessions)
+	}
+}
+
+// resetToken pulls the token out of the link SendPasswordReset was handed.
+func resetToken(t *testing.T, link string) string {
+	t.Helper()
+
+	parsed, err := url.Parse(link)
+	if err != nil {
+		t.Fatalf("parse reset url %q: %v", link, err)
+	}
+	token := parsed.Query().Get("token")
+	if token == "" {
+		t.Fatalf("reset url %q carries no token", link)
+	}
+	return token
+}
+
+// assertLimenMessage checks that a rejection is shaped like one of Limen's
+// own — {"message": …} — so no client needs a special case for ours.
+func assertLimenMessage(t *testing.T, w *httptest.ResponseRecorder, want string) {
+	t.Helper()
+
+	if contentType := w.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
+		t.Errorf("Content-Type = %q, want JSON", contentType)
+	}
+	var body struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode %s: %v", w.Body.String(), err)
+	}
+	if body.Message != want {
+		t.Errorf("message = %q, want %q", body.Message, want)
 	}
 }
 
