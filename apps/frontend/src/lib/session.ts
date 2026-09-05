@@ -76,11 +76,15 @@ export type SessionResult =
   | { status: "anonymous"; user: null }
   | { status: "signed-in"; user: NonNullable<SessionData["user"]> };
 
-/** The server said nobody is signed in — or we just signed them out. */
-export const ANONYMOUS_SESSION: SessionResult = {
+/**
+ * The server said nobody is signed in — or we just signed them out. Frozen
+ * because it is seeded straight into the query cache and shared by every
+ * guard that falls back to it; nothing may edit the answer in place.
+ */
+export const ANONYMOUS_SESSION: SessionResult = Object.freeze({
   status: "anonymous",
   user: null,
-};
+});
 
 /**
  * How many times a session lookup that never got an answer is retried before

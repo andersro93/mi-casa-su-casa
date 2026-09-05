@@ -75,16 +75,51 @@ export class SessionUnavailableError extends Error {
   }
 }
 
-/** `Retry-After`, in either of the two forms RFC 9110 allows. */
+/**
+ * How long the session check waits before deciding the connection is not
+ * going to answer.
+ *
+ * There has to be a deadline. `fetch` on its own never gives up, so a
+ * half-open connection — a dropped Wi-Fi handover, a proxy that accepted the
+ * socket and died — leaves the guard's promise pending forever and the app
+ * stuck behind its loading screen, with no error, no retry and no way out.
+ * Limen's own SDK defaulted to 30s; half that is still far longer than a
+ * healthy `/me` and half as long to sit staring at a spinner.
+ */
+export const SESSION_TIMEOUT_MS = 15_000;
+
+/**
+ * `Retry-After`, in either of the two forms RFC 9110 allows.
+ *
+ * A value that has already elapsed — `0`, a negative delta, a date in the
+ * past — is reported as *absent* rather than as "retry now": honouring it
+ * literally is how one 429 becomes three in the space of a millisecond.
+ */
 function retryAfterMs(headers: Headers): number | null {
   const raw = headers.get("Retry-After")?.trim();
   if (!raw) return null;
 
   const seconds = Number(raw);
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+  if (Number.isFinite(seconds)) return seconds > 0 ? seconds * 1_000 : null;
 
   const at = Date.parse(raw);
-  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+  if (Number.isNaN(at)) return null;
+
+  const delay = at - Date.now();
+  return delay > 0 ? delay : null;
+}
+
+/**
+ * An abort — ours on the deadline, or the browser tearing the page down.
+ *
+ * Read off `name` rather than `instanceof Error`: an abort surfaces as a
+ * `DOMException`, and jsdom's does not inherit from `Error`, so the obvious
+ * check quietly misclassifies every timeout in the tests as a plain network
+ * failure.
+ */
+function isAbort(error: unknown): boolean {
+  const name = (error as { name?: unknown } | null | undefined)?.name;
+  return name === "TimeoutError" || name === "AbortError";
 }
 
 /**
@@ -115,47 +150,69 @@ function retryAfterMs(headers: Headers): number | null {
  * envelope `mode: "off"`, so the parsed body is the payload.
  */
 export async function getSession(): Promise<SessionData | null> {
-  let response: Response;
-  try {
-    // `globalThis.fetch` per call rather than a captured reference, for the
-    // same reason lib/api.ts dispatches through a closure: a later
-    // replacement (a test's stub, a polyfill) must still be honoured.
-    response = await globalThis.fetch(`${API_BASE}${AUTH_BASE_PATH}/me`, {
-      method: "GET",
-      credentials: "include",
-      headers: { Accept: "application/json" },
-    });
-  } catch (cause) {
-    throw new SessionUnavailableError(
-      "The session check could not reach the server",
-      0,
-      null,
-      { cause },
+  // A hand-rolled controller rather than `AbortSignal.timeout`: it lets the
+  // deadline cover reading the body as well as opening the connection, it
+  // clears itself the moment the answer lands, and — unlike the platform's
+  // internal timer — it is a `setTimeout`, so a test can drive it.
+  const deadline = new AbortController();
+  const timer = setTimeout(() => {
+    deadline.abort(
+      new DOMException("The session check timed out", "TimeoutError"),
     );
-  }
-
-  // The one definitive answer: no session, or one the server will not honour.
-  if (response.status === 401) return null;
-
-  if (!response.ok) {
-    throw new SessionUnavailableError(
-      `The session check answered ${response.status}`,
-      response.status,
-      retryAfterMs(response.headers),
-    );
-  }
+  }, SESSION_TIMEOUT_MS);
 
   try {
-    return defaultSessionParse(await response.json()) as SessionData;
-  } catch (cause) {
-    // A 200 whose body is not a session is a failure of the check, not proof
-    // that nobody is signed in.
-    throw new SessionUnavailableError(
-      "The session check answered with something unreadable",
-      response.status,
-      null,
-      { cause },
-    );
+    let response: Response;
+    try {
+      // `globalThis.fetch` per call rather than a captured reference, for the
+      // same reason lib/api.ts dispatches through a closure: a later
+      // replacement (a test's stub, a polyfill) must still be honoured.
+      response = await globalThis.fetch(`${API_BASE}${AUTH_BASE_PATH}/me`, {
+        method: "GET",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+        signal: deadline.signal,
+      });
+    } catch (cause) {
+      throw new SessionUnavailableError(
+        isAbort(cause)
+          ? "The session check timed out"
+          : "The session check could not reach the server",
+        0,
+        null,
+        { cause },
+      );
+    }
+
+    // The one definitive answer: no session, or one the server will not
+    // honour.
+    if (response.status === 401) return null;
+
+    if (!response.ok) {
+      throw new SessionUnavailableError(
+        `The session check answered ${response.status}`,
+        response.status,
+        retryAfterMs(response.headers),
+      );
+    }
+
+    try {
+      return defaultSessionParse(await response.json()) as SessionData;
+    } catch (cause) {
+      // A 200 whose body is not a session — or one whose stream stalled past
+      // the deadline — is a failure of the check, not proof that nobody is
+      // signed in.
+      throw new SessionUnavailableError(
+        isAbort(cause)
+          ? "The session check timed out"
+          : "The session check answered with something unreadable",
+        isAbort(cause) ? 0 : response.status,
+        null,
+        { cause },
+      );
+    }
+  } finally {
+    clearTimeout(timer);
   }
 }
 

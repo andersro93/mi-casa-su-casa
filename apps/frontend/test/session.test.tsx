@@ -13,9 +13,14 @@ import "@testing-library/jest-dom/vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SESSION_RETRY_COUNT, sessionQueryOptions } from "../src/lib/session";
+import {
+  ANONYMOUS_SESSION,
+  SESSION_RETRY_COUNT,
+  sessionQueryOptions,
+} from "../src/lib/session";
 import type { HouseholdSummary, SessionData } from "../src/types";
 import { readRequest } from "./fetch-mock";
 
@@ -188,6 +193,58 @@ describe("a failing session lookup is not a sign-out", () => {
     expect(guardError(router)).toBeNull();
   });
 
+  it("spends one request, not three, when it already knows who this is", async () => {
+    // Backoff is for finding out. With an answer already in hand there is
+    // nothing to find out, and sitting through ~1.2s of it on every
+    // navigation — while spending three of the sixty requests a minute that
+    // caused the 429 in the first place — makes the incident worse.
+    authState.session = signedIn;
+    mockApi();
+
+    const queryClient = testQueryClient();
+    const warmUp = routerAt("/casa/inbox", queryClient);
+    await warmUp.load();
+
+    authState.failure = rateLimited();
+    authState.calls = 0;
+    await queryClient.invalidateQueries({
+      queryKey: sessionQueryOptions.queryKey,
+    });
+
+    const router = routerAt("/casa/inbox", queryClient);
+    await router.load();
+
+    expect(router.state.location.pathname).toBe("/casa/inbox");
+    expect(guardError(router)).toBeNull();
+    expect(authState.calls).toBe(1);
+  });
+
+  it("does send the visitor to /login when the session is genuinely revoked", async () => {
+    // The other side of the coin: a cached session must not become a licence
+    // to ignore the server. Signed out on another device, or an expiry — the
+    // server answers 401 and that answer wins over anything cached.
+    authState.session = signedIn;
+    mockApi();
+
+    const queryClient = testQueryClient();
+    const warmUp = routerAt("/casa/inbox", queryClient);
+    await warmUp.load();
+    expect(warmUp.state.location.pathname).toBe("/casa/inbox");
+
+    authState.session = null;
+    await queryClient.invalidateQueries({
+      queryKey: sessionQueryOptions.queryKey,
+    });
+
+    const router = routerAt("/casa/inbox", queryClient);
+    await router.load();
+
+    expect(router.state.location.pathname).toBe("/login");
+    expect(queryClient.getQueryData(sessionQueryOptions.queryKey)).toEqual(
+      ANONYMOUS_SESSION,
+    );
+  });
+
   it("does not sign anyone out over a 5xx or a dead network", async () => {
     authState.session = signedIn;
     mockApi();
@@ -231,9 +288,11 @@ describe("a failing session lookup is not a sign-out", () => {
     render(<RouterProvider router={router} />);
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/couldn.t check|sign|session/i);
-    expect(
-      screen.getByRole("button", { name: /try again/i }),
-    ).toBeInTheDocument();
+
+    // The button is the whole point of the screen: it must actually ask again.
+    const spent = authState.calls;
+    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
+    await waitFor(() => expect(authState.calls).toBeGreaterThan(spent));
   });
 
   it("still sends a genuinely signed-out visitor to /login", async () => {
@@ -360,6 +419,79 @@ describe("the session request itself", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(calls.filter((url) => url.endsWith("/api/auth/me"))).toHaveLength(1);
+  });
+
+  it("gives up on a half-open connection instead of hanging the guard", async () => {
+    // Without a deadline, a connection that opens and never answers leaves
+    // `beforeLoad` pending forever — the app stuck behind its loading screen
+    // with no error, no retry and no way out.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            const { signal } = init ?? {};
+            signal?.addEventListener("abort", () => reject(signal.reason));
+          }),
+      ),
+    );
+
+    vi.resetModules();
+    const actual = await vi.importActual<
+      typeof import("../src/lib/auth-client")
+    >("../src/lib/auth-client");
+
+    vi.useFakeTimers();
+    try {
+      const settled = actual.getSession().then(
+        () => null,
+        (caught: unknown) => caught,
+      );
+      await vi.advanceTimersByTimeAsync(actual.SESSION_TIMEOUT_MS + 1_000);
+
+      const error = await settled;
+      expect(error).toBeInstanceOf(actual.SessionUnavailableError);
+      const unavailable = error as InstanceType<
+        typeof actual.SessionUnavailableError
+      >;
+      // Nothing was learned about the session, so: not signed out.
+      expect(unavailable.status).toBe(0);
+      expect(unavailable.message).toMatch(/timed out/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats a Retry-After of zero or less as no Retry-After at all", async () => {
+    let header = "0";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: "slow down" }), {
+            status: 429,
+            headers: {
+              "content-type": "application/json",
+              "retry-after": header,
+            },
+          }),
+      ),
+    );
+
+    vi.resetModules();
+    const actual = await vi.importActual<
+      typeof import("../src/lib/auth-client")
+    >("../src/lib/auth-client");
+
+    for (const value of ["0", "-5", "not-a-date"]) {
+      header = value;
+      const error = (await actual.getSession().catch((e: unknown) => e)) as {
+        retryAfterMs: number | null;
+      };
+      // A zero would otherwise mean "retry immediately", which is how a
+      // client turns one 429 into three.
+      expect(error.retryAfterMs).toBeNull();
+    }
   });
 
   it("reports 401 as anonymous and everything else as unavailable", async () => {
