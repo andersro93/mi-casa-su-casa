@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -382,10 +383,23 @@ func logStartupConfig(cfg *config.Config) {
 	log.Printf("  app url:      %s", cfg.AppURL)
 	log.Printf("  email domain: %s", cfg.EmailDomain)
 	log.Printf("  environment:  %s", cfg.Environment)
-	// Loud on purpose: this build has no outbound transport, so password
-	// resets and invitation mails are logged and dropped (internal/mail's
-	// LogSender). Remove this line together with that placeholder.
-	log.Print("  outbound mail: NOT CONFIGURED — messages are logged and dropped")
+	log.Printf("  outbound mail: %s as %s", redactedSMTPURL(cfg.SMTPURL), cfg.OutboundFrom)
+}
+
+// redactedSMTPURL is SMTP_URL with the password removed, for the boot log. The
+// relay and the username are what an operator needs to see; the credential is
+// not, and a boot log is the easiest place in the system to leak one.
+func redactedSMTPURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "(unparseable SMTP_URL)"
+	}
+	if parsed.User != nil {
+		if _, hasPassword := parsed.User.Password(); hasPassword {
+			parsed.User = url.UserPassword(parsed.User.Username(), "redacted")
+		}
+	}
+	return parsed.Redacted()
 }
 
 // notifyShutdown subscribes to SIGTERM and SIGINT and returns the channel
@@ -481,11 +495,14 @@ func buildDeps(ctx context.Context, cfg *config.Config) (api.Deps, func(), error
 
 	repository := repo.New(pool)
 
-	// The outbound transport. LogSender writes a line and drops the message:
-	// the SMTP sender arrives in a later task, and until it does an operator
-	// should see in the log that mail was skipped rather than wonder why an
-	// invitation never landed. See internal/mail's LogSender doc comment.
-	var mailer mail.Sender = mail.LogSender{}
+	// The outbound transport, dialled per message against SMTP_URL. Built
+	// here and not lazily on first use: a mistyped relay URL should stop the
+	// boot, not surface as a failed password reset days later.
+	mailer, err := mail.NewSMTPSender(cfg.SMTPURL, cfg.OutboundFrom)
+	if err != nil {
+		closePool()
+		return api.Deps{}, nil, err
+	}
 
 	// The password-reset hook Limen calls. It has no context and ignores the
 	// result — the route answers 200 either way, deliberately, so it cannot be
@@ -520,6 +537,11 @@ func buildDeps(ctx context.Context, cfg *config.Config) (api.Deps, func(), error
 		Repo:      repository,
 		RateLimit: ratelimit.NewPostgres(repository),
 		Mail:      mailer,
+		// The inbound webhook's guards (internal/api's inbound.go): the key
+		// every Mailgun POST is signed with, and a replay guard that lives as
+		// long as this process.
+		MailgunSigningKey: cfg.MailgunSigningKey,
+		Replay:            mail.NewReplayGuard(),
 		// The app's own limiter buckets a caller exactly as Limen's does, so
 		// one client cannot get two independent budgets by switching routes.
 		IPDigest:         authService.IPDigest(),

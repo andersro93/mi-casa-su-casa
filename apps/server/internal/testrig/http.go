@@ -102,19 +102,24 @@ func App(t *testing.T) *AppRig {
 
 	repository := repo.New(rig.Pool)
 	app.Deps = api.Deps{
-		Pool:        rig.Pool,
-		Q:           rig.Q,
-		Auth:        svc,
-		Repo:        repository,
-		RateLimit:   ratelimit.NewPostgres(repository),
-		Mail:        app.Mail,
-		IPDigest:    svc.IPDigest(),
-		Now:         app.now,
-		AppURL:      AppURL,
-		AppName:     "Mi Casa Su Casa",
-		EmailDomain: EmailDomain,
-		SetupSecret: SetupSecret,
-		OwnerEmail:  OwnerEmail,
+		Pool:      rig.Pool,
+		Q:         rig.Q,
+		Auth:      svc,
+		Repo:      repository,
+		RateLimit: ratelimit.NewPostgres(repository),
+		Mail:      app.Mail,
+		// The inbound webhook's two halves: the key MailgunForm signs with,
+		// and a guard of this rig's own so one test's tokens cannot make
+		// another test's delivery look like a replay.
+		MailgunSigningKey: MailgunSigningKey,
+		Replay:            mail.NewReplayGuard(),
+		IPDigest:          svc.IPDigest(),
+		Now:               app.now,
+		AppURL:            AppURL,
+		AppName:           "Mi Casa Su Casa",
+		EmailDomain:       EmailDomain,
+		SetupSecret:       SetupSecret,
+		OwnerEmail:        OwnerEmail,
 	}
 	app.Handler = api.NewHandler(app.Deps)
 	return app

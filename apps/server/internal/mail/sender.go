@@ -3,8 +3,6 @@ package mail
 import (
 	"context"
 	"sync"
-
-	applog "github.com/andersro93/mi-casa-su-casa/server/internal/log"
 )
 
 // Ports the transport half of src/server/email/sender.ts (REF §A3,
@@ -81,36 +79,4 @@ func (s *RecordingSender) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sent = nil
-}
-
-// LogSender is the placeholder the composition root wires until the SMTP
-// sender lands: it writes one `mail_send_skipped` line per message and drops
-// it.
-//
-// It reports SUCCESS, deliberately. A skipped message is not a delivery
-// failure — nothing went wrong, there is simply no transport configured yet —
-// and returning an error here would fill the log with
-// `password_reset_email_failed` and make every invitation report
-// `emailSent:false` for a reason that has nothing to do with the invitation.
-// The trade is that an installation running this build silently sends no
-// mail, which is why the boot log says so out loud (cmd/mi-casa's
-// logStartupConfig) and why the warn level is not info: nobody should mistake
-// these lines for delivery.
-//
-// REMOVE THIS the moment internal/mail grows a real SMTP sender; it exists so
-// the seam and its call sites are settled ahead of the transport.
-type LogSender struct{}
-
-var _ Sender = LogSender{}
-
-// Send logs and drops. Only the envelope is logged — never the bodies, which
-// carry reset links and, for other message kinds later, verification codes
-// (REF §A7: never log message bodies or codes).
-func (LogSender) Send(_ context.Context, msg Message) error {
-	applog.Event(applog.LevelWarn, "mail_send_skipped", map[string]any{
-		"to":      msg.To,
-		"subject": msg.Subject,
-		"reason":  "no outbound mail transport is configured in this build",
-	})
-	return nil
 }

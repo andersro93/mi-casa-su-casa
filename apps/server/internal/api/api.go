@@ -72,6 +72,15 @@ type Deps struct {
 	// call it directly.
 	Mail mail.Sender
 
+	// MailgunSigningKey and Replay authenticate the inbound webhook
+	// (inbound.go): the HTTP webhook signing key every Mailgun POST is signed
+	// with, and the process-lifetime guard that refuses a signed request sent
+	// twice. Replay may be nil — a nil guard remembers nothing and refuses
+	// nothing, which is the right behaviour for a Deps built to test something
+	// else entirely.
+	MailgunSigningKey string
+	Replay            *mail.ReplayGuard
+
 	// IPDigest turns a client address into the opaque value rate-limit keys
 	// are built from — auth.Service.IPDigest, so the app's own limiter
 	// buckets a caller exactly as Limen's does.
@@ -144,8 +153,9 @@ func loadSpec() *openapi3.T {
 //
 //	LogFailures        one line per response with a status ≥ 400
 //	X-Content-Type-Options: nosniff
-//	SameSite           except /api/auth/, which does its own origin check
-//	spec validation    except /api/auth/; also the source of the JSON 404
+//	SameSite           except /api/auth/ (its own origin check) and the
+//	                   inbound webhook (a machine caller, signature-checked)
+//	spec validation    except those same two; also the source of the JSON 404
 //	per-operation      rate limit, then the auth tier (see routes.go)
 func NewHandler(d Deps) http.Handler {
 	spec := loadSpec()
@@ -168,6 +178,21 @@ func NewHandler(d Deps) http.Handler {
 	if d.Auth != nil {
 		mux.Handle(auth.BasePath+"/", d.Auth.Handler())
 	}
+
+	// Mailgun's inbound webhook, mounted directly for the same reasons: a
+	// signed multipart form the spec does not describe, from a caller with no
+	// session and no Origin header. Both wrappers below exclude its prefix —
+	// see skipSpecValidation and the exceptPrefix list — and it authenticates
+	// itself with the signature instead (inbound.go).
+	//
+	// Registered without a method so a GET is answered by the handler's own
+	// JSON 405 rather than by the mux's plain-text one. The subtree around it
+	// is mounted too, so a mistyped path under the excluded prefix gets this
+	// project's JSON 404 instead of the mux's plain-text one; Go 1.22 patterns
+	// prefer the more specific registration, so the webhook still wins for its
+	// own path.
+	mux.Handle(InboundBasePath, newInboundNotFoundHandler())
+	mux.Handle(MailgunInboundPath, newInboundHandler(d))
 
 	// Every operation in the spec, wrapped at the two generated-code layers
 	// (see routes.go): the http.Handler layer gets the JSON charset fixup,
@@ -193,7 +218,7 @@ func NewHandler(d Deps) http.Handler {
 	// answer this handler gives; the same-site guard refuses a forged
 	// mutation before validation or a handler runs.
 	handler := withSpecValidation(spec, mux)
-	handler = exceptPrefix(auth.BasePath+"/", middleware.SameSite(d.AppURL, d.DevMode))(handler)
+	handler = exceptPrefix(middleware.SameSite(d.AppURL, d.DevMode), auth.BasePath+"/", InboundBasePath)(handler)
 	handler = withNoSniff(handler)
 	handler = middleware.LogFailures()(handler)
 	return handler
@@ -214,18 +239,22 @@ func withNoSniff(next http.Handler) http.Handler {
 	})
 }
 
-// exceptPrefix applies mw to every request except those under prefix. It
-// exists for one exclusion — Limen's routes, which do their own origin check
-// (auth.New's WithHTTPTrustedOrigins) — and is written as a helper so that
-// exclusion is one readable line at the mount point rather than a path test
-// buried inside the middleware it excludes.
-func exceptPrefix(prefix string, mw func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+// exceptPrefix applies mw to every request except those under one of prefixes.
+// It exists for two exclusions — Limen's routes, which do their own origin
+// check (auth.New's WithHTTPTrustedOrigins), and the inbound webhook, whose
+// caller is a mail provider that sends no Origin at all and is authenticated
+// by its signature instead — and is written as a helper so those exclusions
+// are one readable line at the mount point rather than a path test buried
+// inside the middleware they exclude.
+func exceptPrefix(mw func(http.Handler) http.Handler, prefixes ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		wrapped := mw(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, prefix) {
-				next.ServeHTTP(w, r)
-				return
+			for _, prefix := range prefixes {
+				if strings.HasPrefix(r.URL.Path, prefix) {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			wrapped.ServeHTTP(w, r)
 		})
