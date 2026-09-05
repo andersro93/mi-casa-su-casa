@@ -35,7 +35,7 @@
   "scripts": {
     "build": "npm run build:client",
     "build:client": "vite build",
-    "check": "biome check .",
+    "check": "biome check . && tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:apply:local": "wrangler d1 migrations apply mi-casa-su-casa --local",
     "db:apply:preview": "wrangler d1 migrations apply mi-casa-su-casa-preview --remote --env preview",
