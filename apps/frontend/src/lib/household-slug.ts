@@ -1,6 +1,12 @@
 /**
  * Household slugs double as URL path segments and inbound email local parts,
  * so they must not collide with app routes or look like system mailboxes.
+ *
+ * The server owns this rule — `apps/server/internal/domain/slug.go` is what
+ * actually decides — and this module mirrors it so the SPA can say no before
+ * a round trip. Keep the two in step: the reserved set, the length bounds and
+ * the error strings are all asserted on the Go side in
+ * `apps/server/internal/domain/slug_test.go`.
  */
 export const RESERVED_HOUSEHOLD_SLUGS = new Set([
   "api",
@@ -32,6 +38,9 @@ export const RESERVED_HOUSEHOLD_SLUGS = new Set([
   "no-reply",
   "hostmaster",
   "webmaster",
+  // The container's probe endpoints, which the server also reserves.
+  "healthz",
+  "readyz",
 ]);
 
 export const HOUSEHOLD_SLUG_MIN_LENGTH = 2;
@@ -39,10 +48,6 @@ export const HOUSEHOLD_SLUG_MAX_LENGTH = 40;
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 export type SlugValidation = { ok: true } | { ok: false; error: string };
-
-export function normalizeHouseholdSlug(value: string | undefined | null) {
-  return value?.trim().toLowerCase() ?? "";
-}
 
 export function validateHouseholdSlug(slug: string): SlugValidation {
   if (!slug) {

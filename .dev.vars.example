@@ -1,4 +1,0 @@
-AUTH_SECRET=replace-with-a-long-random-secret
-SETUP_SECRET=replace-with-a-long-random-setup-secret
-# Sender address for invitation / password-reset emails (must be on your Email Routing domain)
-OUTBOUND_EMAIL_FROM=noreply@example.com

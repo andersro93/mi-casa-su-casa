@@ -12,8 +12,8 @@ deployment infrastructure the repository does not own.
 ## Workflow layout
 
 ```
-pull_request ──▶ ci-go.yml ──▶ test.yml (reusable)
-                     └──────▶ image: build → smoke test → preview push
+pull_request ──▶ ci.yml ──▶ test.yml (reusable)
+                    └──────▶ image: build → smoke test → preview push
 
 push to main ──▶ release.yml ──▶ version (svu)
                      ├────────▶ verify: test.yml on the merge commit
@@ -30,9 +30,9 @@ It runs against a real `postgres:17-alpine` service container:
 
 ```
 bun install --frozen-lockfile
-bun run check          # Biome + tsc
+bun run check          # Biome, then tsc over apps/frontend and e2e
 goreleaser check       # the release config is code too
-bun run test           # the TypeScript suite
+bun run test           # the SPA's Vitest suite
 cd apps/server && go vet ./...
 cd apps/server && go test -p 1 -count=1 ./...
 ```
@@ -46,7 +46,7 @@ The toolchain comes from `.mise.toml` via `jdx/mise-action`, with
 skips. CI itself never runs `go generate`: generated code is committed, and
 that test is what keeps it honest.
 
-### `CI (Go)` — `.github/workflows/ci-go.yml`
+### `CI` — `.github/workflows/ci.yml`
 
 Runs on every pull request, with `cancel-in-progress` concurrency keyed on the
 branch — a force-push obsoletes the running check rather than burning minutes
@@ -158,9 +158,9 @@ mise x -- svu next --v0    # what the next release would be
 
 ## Repository settings this assumes
 
-- **Branch protection on `main`**: pull requests only, with `CI (Go)`
-  required. `Tests` is reusable and reports under the calling workflow, so
-  require `CI (Go)`, not `Tests`.
+- **Branch protection on `main`**: pull requests only, with `CI` required.
+  `Tests` is reusable and reports under the calling workflow, so require
+  `CI`, not `Tests`.
 - **`packages: write`** for the workflow token, which is the default for
   workflows in this repository; GHCR is written with the built-in
   `GITHUB_TOKEN`, so there is no registry secret to manage.
@@ -189,24 +189,11 @@ preview, as described above.
 
 ---
 
-## Legacy Cloudflare workflows
+## Code scanning
 
-The original Cloudflare Workers deployment is still in the repository until
-the cutover release removes it, and so are its workflows. They are **not** the
-supported pipeline, and nothing in them touches the container:
-
-| File | What it did |
-| --- | --- |
-| `.github/workflows/ci.yml` | `npm run check`/`typecheck`/`test`/`build` for the Worker sources |
-| `.github/workflows/preview-deploy.yml` | Deployed each pull request to a shared preview Worker and preview D1 |
-| `.github/workflows/production-deploy.yml` | Applied D1 migrations and deployed the Worker on every push to `main` |
-| `.github/workflows/production-d1-migrate.yml` | Manual D1 migration recovery behind a protected environment |
-
-They need the Cloudflare account secrets (`CLOUDFLARE_ACCOUNT_ID`,
-`CLOUDFLARE_API_TOKEN`, `D1_DATABASE_ID_PREVIEW`, `D1_DATABASE_ID_PRODUCTION`)
-and the per-Worker dashboard variables described in the Worker's own
-configuration. If you are not running the Worker, none of that applies, and
-the workflows will simply fail or skip for want of secrets.
-
-`.github/workflows/codeql-analysis.yml` is not legacy — it scans both trees
-and stays.
+`.github/workflows/codeql-analysis.yml` runs outside the three workflows
+above, on pull requests, pushes to `main` and weekly. It analyses both trees
+in one matrix: `go` in `build-mode: manual` (an explicit `go build ./...` in
+`apps/server`, because the module is not at the repository root) and
+`javascript-typescript` in `build-mode: none` (extracted from source, with no
+install or build step).

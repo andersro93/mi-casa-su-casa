@@ -2,7 +2,7 @@ name: Tests
 
 # The single definition of "the Go suite is green": lint/typecheck, the
 # release config lint, the frontend/unit test suite, and Go vet + tests
-# against a real Postgres. Reusable — called by ci-go.yml (every pull
+# against a real Postgres. Reusable — called by ci.yml (every pull
 # request) and release.yml (every push to main), so the quality gate is
 # defined once and cannot drift between the two.
 
@@ -18,7 +18,7 @@ jobs:
 
     services:
       # The Go suite runs against a real Postgres — the whole point, given
-      # the backend's storage moved off D1/SQLite.
+      # the backend's storage is Postgres.
       postgres:
         image: postgres:17-alpine
         env:

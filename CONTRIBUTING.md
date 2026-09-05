@@ -44,7 +44,7 @@ Repository settings should enforce this with branch protection on `main`.
 Recommended protection rules:
 
 - require a pull request before merging
-- require the `CI (Go)` workflow to pass before merging
+- require the `CI` workflow to pass before merging
 - dismiss or re-run checks when the PR head changes
 - prevent direct pushes to `main`
 
@@ -104,8 +104,9 @@ mise run image       # multi-arch image via buildx
 mise run snapshot    # full GoReleaser dry run — nothing published
 ```
 
-Underneath, `bun run check` is Biome plus `tsc --noEmit`, and `bun run test`
-is the Vitest suite. `bun run format` writes Biome's formatting.
+Underneath, `bun run check` is Biome plus `bun run typecheck` (the SPA's
+`tsc --noEmit` and the Playwright suite's), and `bun run test` is the SPA's
+Vitest suite. `bun run format` writes Biome's formatting.
 
 After editing `openapi/mi-casa.yaml`, regenerate both sides and commit the
 output:

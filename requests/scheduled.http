@@ -1,4 +1,0 @@
-@baseUrl = http://localhost:8787
-
-### Trigger the scheduled retention cleanup locally
-GET {{baseUrl}}/__scheduled?cron=0+3+*+*+*

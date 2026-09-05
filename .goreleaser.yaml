@@ -127,22 +127,35 @@ changelog:
     exclude:
       - "^docs"
       - "^test"
-      - "^chore"
+      # Anchored on the colon, so a BREAKING chore — `chore!:` or
+      # `chore(scope)!:` — is NOT swallowed here. Under the --v0 rule a
+      # breaking change is what bumps the minor, so the one commit that most
+      # needs to reach the release notes was exactly the one this exclude
+      # used to drop. Routine `chore:` and `chore(deps):` still go.
+      - '^chore(\(.+\))?:'
       - "^ci"
       - "^style"
       - "merge conflict"
       - Merge pull request
       - Merge branch
   groups:
+    # First, and first for a reason: GoReleaser assigns a commit to the
+    # earliest group whose regexp matches, so this has to precede Features —
+    # `feat!:` matches both, and a breaking change is the thing a reader must
+    # not scroll past. The regexp is the `!:` marker on any type, scoped or
+    # not, which is what Conventional Commits calls breaking.
+    - title: Breaking changes
+      regexp: '^.*?[[:word:]]+(\([[:word:]]+\))??!:.+$'
+      order: 0
     - title: Features
       regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
-      order: 0
+      order: 1
     - title: Bug fixes
       regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
-      order: 1
+      order: 2
     - title: Performance
       regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
-      order: 2
+      order: 3
     - title: Other
       order: 999
 
@@ -150,6 +163,14 @@ release:
   github:
     owner: andersro93
     name: mi-casa-su-casa
+  header: |
+    Mi Casa Su Casa is self-hosted: one container, one Postgres. Start at the
+    [Self-hosting](https://github.com/andersro93/mi-casa-su-casa#self-hosting)
+    section of the README.
+
+    There is **no data migration from the Cloudflare Workers deployment** this
+    project began as. A new container starts with an empty database and runs
+    `/setup` again.
   footer: |
     **Container image:** `ghcr.io/andersro93/mi-casa-su-casa:{{ .Version }}` (linux/amd64 + linux/arm64, cosign-signed)
 

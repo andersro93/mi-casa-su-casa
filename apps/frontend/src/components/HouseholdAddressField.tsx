@@ -4,7 +4,7 @@ import {
   HOUSEHOLD_SLUG_MIN_LENGTH,
   RESERVED_HOUSEHOLD_SLUGS,
   validateHouseholdSlug,
-} from "@server/domain/household-slug";
+} from "@/lib/household-slug";
 
 /** Plain-language version of the slug rules, for inline validation. */
 export function describeSlugProblem(slug: string): string | null {

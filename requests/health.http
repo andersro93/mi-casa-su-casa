@@ -1,7 +1,0 @@
-@baseUrl = http://localhost:8787
-
-### Liveness health check
-GET {{baseUrl}}/api/health/live
-
-### Readiness health check
-GET {{baseUrl}}/api/health/ready

@@ -1,22 +1,16 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// The SPA's own build. The root vite.config.ts still builds the same sources
-// for the Cloudflare Worker deploy (it points `root` here); this config is
-// what `bun run --filter @mi-casa/frontend build` and `vite dev` use, and it
-// is where the SPA lands once the Worker is retired.
+// The SPA's build. `bun run --filter @mi-casa/frontend build` writes to
+// dist/client, which scripts/build-artifacts.sh copies into the Go binary's
+// embedded filesystem (apps/server/internal/web/dist).
 const srcPath = new URL("./src", import.meta.url).pathname;
-// One shared module still lives with the Worker sources — the household-slug
-// rules in `@server/domain/household-slug`, which the server validates
-// against too. The alias keeps it resolvable from here until P12 moves it.
-const serverPath = new URL("../../src/server", import.meta.url).pathname;
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
       "@": srcPath,
-      "@server": serverPath,
     },
   },
   build: {
@@ -49,9 +43,10 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    // `wrangler dev` used to serve both halves on one origin. The Go backend
-    // runs on 3000, so proxy the API and health endpoints to it and keep the
-    // client's same-origin (cookie-bearing) assumption working in dev.
+    // The SPA and the API share an origin in production (the Go binary
+    // serves both), so proxy the API and health endpoints to `bun run
+    // dev:server` on 3000 and keep the client's same-origin,
+    // cookie-bearing assumption working in dev too.
     proxy: {
       "/api": "http://localhost:3000",
       "/healthz": "http://localhost:3000",
