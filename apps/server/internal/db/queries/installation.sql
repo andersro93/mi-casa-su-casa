@@ -70,7 +70,14 @@ WHERE "id" = 1
 -- name: RecordRetentionRun :exec
 -- Stamped by the retention job on success only, so readiness can distinguish
 -- "the cron is running" from "the cron has been silently failing for weeks".
+--
+-- ran_at is a parameter rather than now() for the same reason
+-- BeginInstallationSetup takes stale_before: the value readiness later
+-- compares against a staleness window has to come from the caller's clock,
+-- so a test can pin both sides of that comparison instead of racing the
+-- database's wall time. It carries the TS predecessor's recordRetentionRun
+-- (nowIso) signature forward unchanged.
 UPDATE "app_installation"
-SET "last_retention_run_at" = now(),
+SET "last_retention_run_at" = sqlc.arg(ran_at)::timestamptz,
     "updated_at" = now()
 WHERE "id" = 1;

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -16,8 +17,8 @@ import (
 // somewhere else.
 func testDatabaseURL(t *testing.T) string {
 	t.Helper()
-	if url := os.Getenv("TEST_DATABASE_URL"); url != "" {
-		return url
+	if override := os.Getenv("TEST_DATABASE_URL"); override != "" {
+		return override
 	}
 	return "postgres://micasa:micasa@127.0.0.1:55433/micasa_test"
 }
@@ -53,17 +54,17 @@ func assertTableExists(ctx context.Context, t *testing.T, conn *sql.DB, table st
 }
 
 func TestApplyMigrations_CreatesSchema(t *testing.T) {
-	url := testDatabaseURL(t)
-	resetSchema(t, url)
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := ApplyMigrations(ctx, url); err != nil {
+	if err := ApplyMigrations(ctx, databaseURL); err != nil {
 		t.Fatalf("ApplyMigrations: %v", err)
 	}
 
-	conn, err := sql.Open("pgx", url)
+	conn, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatalf("open verify connection: %v", err)
 	}
@@ -79,17 +80,17 @@ func TestApplyMigrations_CreatesSchema(t *testing.T) {
 // setup-state read assumes exists (REF §A5): without it the first
 // GetInstallation after a fresh boot returns no rows instead of "pending".
 func TestApplyMigrations_SeedsInstallationRow(t *testing.T) {
-	url := testDatabaseURL(t)
-	resetSchema(t, url)
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := ApplyMigrations(ctx, url); err != nil {
+	if err := ApplyMigrations(ctx, databaseURL); err != nil {
 		t.Fatalf("ApplyMigrations: %v", err)
 	}
 
-	conn, err := sql.Open("pgx", url)
+	conn, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatalf("open verify connection: %v", err)
 	}
@@ -105,16 +106,16 @@ func TestApplyMigrations_SeedsInstallationRow(t *testing.T) {
 }
 
 func TestApplyMigrations_IsIdempotent(t *testing.T) {
-	url := testDatabaseURL(t)
-	resetSchema(t, url)
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := ApplyMigrations(ctx, url); err != nil {
+	if err := ApplyMigrations(ctx, databaseURL); err != nil {
 		t.Fatalf("first ApplyMigrations: %v", err)
 	}
-	if err := ApplyMigrations(ctx, url); err != nil {
+	if err := ApplyMigrations(ctx, databaseURL); err != nil {
 		t.Fatalf("second ApplyMigrations should be a no-op, got error: %v", err)
 	}
 }
@@ -126,14 +127,14 @@ func TestApplyMigrations_IsIdempotent(t *testing.T) {
 // pg_stat_activity for the waiting backend (Postgres's own bookkeeping)
 // rather than guessing from a fixed sleep.
 func TestApplyMigrations_BlocksOnAdvisoryLock(t *testing.T) {
-	url := testDatabaseURL(t)
-	resetSchema(t, url)
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
 
 	// A dedicated single-connection holder, exactly like ApplyMigrations
 	// itself uses, so pg_advisory_lock's per-session semantics apply here
 	// too: the lock stays held on this one physical connection until we
 	// explicitly unlock it below.
-	holder, err := sql.Open("pgx", url)
+	holder, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatalf("open holder connection: %v", err)
 	}
@@ -154,7 +155,7 @@ func TestApplyMigrations_BlocksOnAdvisoryLock(t *testing.T) {
 
 	migrationDone := make(chan error, 1)
 	go func() {
-		migrationDone <- ApplyMigrations(ctx, url)
+		migrationDone <- ApplyMigrations(ctx, databaseURL)
 	}()
 
 	sawWaiter := false
@@ -201,7 +202,18 @@ func TestApplyMigrations_BlocksOnAdvisoryLock(t *testing.T) {
 // provoke — and if ApplyMigrations ever called os.Exit, this test binary
 // would die instead of failing the assertion.
 func TestApplyMigrations_ReturnsErrorRatherThanExiting(t *testing.T) {
-	badURL := "postgres://micasa:micasa@127.0.0.1:55433/micasa_does_not_exist"
+	// Derived from the real URL by swapping only the database name — parsed,
+	// not concatenated, so any query parameters (sslmode and friends) that
+	// CI's TEST_DATABASE_URL carries survive intact. The failure then stays
+	// "that database does not exist" wherever the suite runs; a hard-coded
+	// loopback address would fail with "connection refused" under CI, which
+	// is a different bug than the one this test means to provoke.
+	parsed, err := url.Parse(testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("parse test database URL: %v", err)
+	}
+	parsed.Path += "_does_not_exist"
+	badURL := parsed.String()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
