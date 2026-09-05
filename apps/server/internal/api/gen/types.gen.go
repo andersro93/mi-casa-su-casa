@@ -7,6 +7,42 @@ import (
 	"time"
 )
 
+// Defines values for HouseholdSummaryRole.
+const (
+	HouseholdSummaryRoleMember HouseholdSummaryRole = "member"
+	HouseholdSummaryRoleOwner  HouseholdSummaryRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the HouseholdSummaryRole enum.
+func (e HouseholdSummaryRole) Valid() bool {
+	switch e {
+	case HouseholdSummaryRoleMember:
+		return true
+	case HouseholdSummaryRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HouseholdWithRoleRole.
+const (
+	HouseholdWithRoleRoleMember HouseholdWithRoleRole = "member"
+	HouseholdWithRoleRoleOwner  HouseholdWithRoleRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the HouseholdWithRoleRole enum.
+func (e HouseholdWithRoleRole) Valid() bool {
+	switch e {
+	case HouseholdWithRoleRoleMember:
+		return true
+	case HouseholdWithRoleRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvitationRole.
 const (
 	InvitationRoleMember InvitationRole = "member"
@@ -142,6 +178,22 @@ type AcceptInvitationRequest struct {
 	Password *string `json:"password,omitempty"`
 }
 
+// AccountSettings defines model for AccountSettings.
+type AccountSettings struct {
+	// Profile The account settings screen's view of the caller. `role` is always null: it carried Better Auth's global role in the TypeScript server, which the Go one has no counterpart for, and stays in the payload because the SPA reads it.
+	Profile  Profile          `json:"profile"`
+	Sessions []SessionSummary `json:"sessions"`
+}
+
+// CreateHouseholdRequest REF §A4's `createHousehold` schema. As with SetupRequest, only the shape is stated here: the slug is normalised (trimmed, lower-cased) before REF §A3's rules are applied to it, and the message each failure produces is the wording the SPA renders next to the input.
+type CreateHouseholdRequest struct {
+	// DisplayName Trimmed, 1..80 characters.
+	DisplayName string `json:"displayName"`
+
+	// Slug Trimmed, lower-cased, and subject to REF §A3's slug rules.
+	Slug string `json:"slug"`
+}
+
 // Error The failure envelope every error response in this API uses. `fields` carries one message per rejected input (keyed by the property or parameter name, `_` for the request body as a whole); `code` is a stable discriminator for the few failures a client must branch on rather than merely display.
 type Error struct {
 	Code   *string            `json:"code,omitempty"`
@@ -157,6 +209,41 @@ type Household struct {
 	Slug        string    `json:"slug"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
+
+// HouseholdList defines model for HouseholdList.
+type HouseholdList struct {
+	Households []HouseholdSummary `json:"households"`
+}
+
+// HouseholdResult defines model for HouseholdResult.
+type HouseholdResult struct {
+	// Household A newly created household: the switcher entry's keys plus the timestamps, so the client can drop it straight into its cache.
+	Household HouseholdWithRole `json:"household"`
+}
+
+// HouseholdSummary One entry in the household switcher: a household plus what the caller may do in it.
+type HouseholdSummary struct {
+	DisplayName string               `json:"displayName"`
+	Id          string               `json:"id"`
+	Role        HouseholdSummaryRole `json:"role"`
+	Slug        string               `json:"slug"`
+}
+
+// HouseholdSummaryRole defines model for HouseholdSummary.Role.
+type HouseholdSummaryRole string
+
+// HouseholdWithRole A newly created household: the switcher entry's keys plus the timestamps, so the client can drop it straight into its cache.
+type HouseholdWithRole struct {
+	CreatedAt   time.Time             `json:"createdAt"`
+	DisplayName string                `json:"displayName"`
+	Id          string                `json:"id"`
+	Role        HouseholdWithRoleRole `json:"role"`
+	Slug        string                `json:"slug"`
+	UpdatedAt   time.Time             `json:"updatedAt"`
+}
+
+// HouseholdWithRoleRole defines model for HouseholdWithRole.Role.
+type HouseholdWithRoleRole string
 
 // Invitation One invitation record. The token itself never appears — only its SHA-256 is stored, and the plaintext lives solely in the link.
 type Invitation struct {
@@ -229,6 +316,49 @@ type MembershipResult struct {
 	Member Member `json:"member"`
 }
 
+// Ok The acknowledgement every "it is done, and there is nothing to show for it" endpoint answers with.
+type Ok struct {
+	Ok bool `json:"ok"`
+}
+
+// Profile The account settings screen's view of the caller. `role` is always null: it carried Better Auth's global role in the TypeScript server, which the Go one has no counterpart for, and stays in the payload because the SPA reads it.
+type Profile struct {
+	Email            string             `json:"email"`
+	Households       []HouseholdSummary `json:"households"`
+	Id               string             `json:"id"`
+	Image            *string            `json:"image"`
+	Name             string             `json:"name"`
+	Role             *string            `json:"role"`
+	TwoFactorEnabled bool               `json:"twoFactorEnabled"`
+}
+
+// ProfileRequest REF §A4's `profile` schema. `image` is optional and an empty string clears the avatar; anything else must be an http(s) URL of at most 2048 characters, checked in Go so the message is the TypeScript's ("image must be an http(s) URL").
+type ProfileRequest struct {
+	// Image An http(s) URL, or "" to clear the avatar.
+	Image *string `json:"image,omitempty"`
+
+	// Name Trimmed, 1..80 characters.
+	Name string `json:"name"`
+}
+
+// ProfileResult defines model for ProfileResult.
+type ProfileResult struct {
+	// Profile The account settings screen's view of the caller. `role` is always null: it carried Better Auth's global role in the TypeScript server, which the Go one has no counterpart for, and stays in the payload because the SPA reads it.
+	Profile Profile `json:"profile"`
+}
+
+// SessionSummary One signed-in device. The session TOKEN is a bearer secret and never appears here — `isCurrent` is all the client needs to tell which row it is looking through. `ipAddress` is the digest Limen stored, not a readable address, and `impersonatedBy` is always null (the Go server has no impersonation).
+type SessionSummary struct {
+	CreatedAt      time.Time  `json:"createdAt"`
+	ExpiresAt      time.Time  `json:"expiresAt"`
+	Id             string     `json:"id"`
+	ImpersonatedBy *string    `json:"impersonatedBy"`
+	IpAddress      *string    `json:"ipAddress"`
+	IsCurrent      bool       `json:"isCurrent"`
+	UpdatedAt      *time.Time `json:"updatedAt"`
+	UserAgent      *string    `json:"userAgent"`
+}
+
 // SetupRequest REF §A4's `setup` schema. The shape — which properties exist, which are required, and that each is a string — is enforced here; the LENGTH and FORMAT rules named in each description below are enforced in Go (internal/api/setup.go's validateSetupBody) and deliberately not repeated as `minLength`/`pattern`.
 // Two reasons. The values are trimmed and lower-cased before they are checked, so a schema rule would be testing what was sent rather than what is kept; and the messages the SPA renders next to each input are REF §A4's exact wording, which a schema violation cannot produce.
 type SetupRequest struct {
@@ -268,6 +398,9 @@ type SetupStatus struct {
 // SetupStatusStatus defines model for SetupStatus.Status.
 type SetupStatusStatus string
 
+// HouseholdSlug defines model for HouseholdSlug.
+type HouseholdSlug = string
+
 // InvitationToken defines model for InvitationToken.
 type InvitationToken = string
 
@@ -294,8 +427,14 @@ type Readyz200JSONResponseBodyOk bool
 // Readyz503JSONResponseBodyOk defines parameters for Readyz.
 type Readyz503JSONResponseBodyOk bool
 
+// CreateHouseholdJSONRequestBody defines body for CreateHousehold for application/json ContentType.
+type CreateHouseholdJSONRequestBody = CreateHouseholdRequest
+
 // AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
 type AcceptInvitationJSONRequestBody = AcceptInvitationRequest
+
+// UpdateProfileJSONRequestBody defines body for UpdateProfile for application/json ContentType.
+type UpdateProfileJSONRequestBody = ProfileRequest
 
 // CompleteSetupJSONRequestBody defines body for CompleteSetup for application/json ContentType.
 type CompleteSetupJSONRequestBody = SetupRequest

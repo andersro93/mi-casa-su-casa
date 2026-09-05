@@ -76,6 +76,23 @@ var operationAuthTiers = map[string]authTier{
 	// Invitations (REF §A2, "Invitations — public"). See tierViewer.
 	"LookupInvitation": tierViewer,
 	"AcceptInvitation": tierViewer,
+
+	// Households (REF §A2, "Households — session required"). Only the leave
+	// route names a household in its path, and it is the one that needs the
+	// tenancy guard; the other two answer about the caller themselves, so
+	// their tenancy is the session.
+	"ListMyHouseholds": tierSession,
+	"CreateHousehold":  tierSession,
+	"LeaveHousehold":   tierHousehold,
+
+	// Settings (REF §A2, "Settings — session required"). Every one of these is
+	// about the caller's own account — there is no user id in any path — so
+	// the session is both the authentication and the subject.
+	"GetAccountSettings":     tierSession,
+	"ListSettingsHouseholds": tierSession,
+	"UpdateProfile":          tierSession,
+	"RevokeOtherSessions":    tierSession,
+	"RevokeSession":          tierSession,
 }
 
 // operationRateLimits maps an operationID to the rule its route is limited by.
@@ -85,6 +102,11 @@ var operationRateLimits = map[string]ratelimit.Rule{
 	"CompleteSetup":    ratelimit.Setup,
 	"LookupInvitation": ratelimit.Invitations,
 	"AcceptInvitation": ratelimit.Invitations,
+
+	// Household creation carries no secret, but each one claims an inbound
+	// email address, so the budget (10 per hour) is what keeps a signed-in
+	// caller from minting them faster than a person plausibly would.
+	"CreateHousehold": ratelimit.HouseholdCreate,
 }
 
 // publicAPIAllowlist is the exhaustive set of tierPublic operations allowed to

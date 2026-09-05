@@ -20,12 +20,36 @@ import (
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// CreateHousehold Create a household with the caller as its owner. Restricted (REF §A2): the installation owner may always; anybody else only while they belong to no household at all, so a member cannot mint extra households or squat inbound addresses. Rate limited (10 per hour).
+	// (POST /api/households)
+	CreateHousehold(w http.ResponseWriter, r *http.Request)
+	// ListMyHouseholds Every household the caller belongs to, for the household switcher. Ordered by lower-cased display name so the list does not reshuffle when somebody renames a household with a capital letter.
+	// (GET /api/households/me)
+	ListMyHouseholds(w http.ResponseWriter, r *http.Request)
+	// LeaveHousehold Give up your own membership of this household. Refused for the last owner, which is what keeps a household from being left with nobody who can administer it.
+	// (POST /api/households/{slug}/leave)
+	LeaveHousehold(w http.ResponseWriter, r *http.Request, slug HouseholdSlug)
 	// AcceptInvitation Accept an invitation, as the signed-in user or by creating the invited account. Rate limited with the lookup above.
 	// (POST /api/invitations/accept)
 	AcceptInvitation(w http.ResponseWriter, r *http.Request, params AcceptInvitationParams)
 	// LookupInvitation What an invitation link points at, for the invite page. Public and rate limited (20 per 10 minutes): together with accept, this is the one unauthenticated path that reveals whether a token exists.
 	// (GET /api/invitations/lookup)
 	LookupInvitation(w http.ResponseWriter, r *http.Request, params LookupInvitationParams)
+	// GetAccountSettings The account settings screen in one request: the caller's profile with their households, and their signed-in devices newest first.
+	// (GET /api/settings)
+	GetAccountSettings(w http.ResponseWriter, r *http.Request)
+	// ListSettingsHouseholds The caller's households, the same list GET /api/households/me answers with. It exists separately because the settings screen refetches it on its own after leaving a household.
+	// (GET /api/settings/households)
+	ListSettingsHouseholds(w http.ResponseWriter, r *http.Request)
+	// UpdateProfile Update the caller's display name and avatar.
+	// (PATCH /api/settings/profile)
+	UpdateProfile(w http.ResponseWriter, r *http.Request)
+	// RevokeOtherSessions Sign out everywhere else: every session of this account except the one this request arrived on.
+	// (DELETE /api/settings/sessions/others)
+	RevokeOtherSessions(w http.ResponseWriter, r *http.Request)
+	// RevokeSession Revoke one device. A session id that is not the caller's own revokes nothing and still answers 200 — deliberately, so the endpoint cannot be used to discover whether an id exists.
+	// (DELETE /api/settings/sessions/{sessionId})
+	RevokeSession(w http.ResponseWriter, r *http.Request, sessionId string)
 	// CompleteSetup Claim the installation: create the owner account, their first household, and lock setup. Rate limited (5 per 15 minutes) because the body carries SETUP_SECRET.
 	// (POST /api/setup/complete)
 	CompleteSetup(w http.ResponseWriter, r *http.Request)
@@ -48,6 +72,60 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// CreateHousehold operation middleware
+func (siw *ServerInterfaceWrapper) CreateHousehold(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateHousehold(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyHouseholds operation middleware
+func (siw *ServerInterfaceWrapper) ListMyHouseholds(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyHouseholds(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LeaveHousehold operation middleware
+func (siw *ServerInterfaceWrapper) LeaveHousehold(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug HouseholdSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LeaveHousehold(w, r, slug)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // AcceptInvitation operation middleware
 func (siw *ServerInterfaceWrapper) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +200,88 @@ func (siw *ServerInterfaceWrapper) LookupInvitation(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LookupInvitation(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSettingsHouseholds operation middleware
+func (siw *ServerInterfaceWrapper) ListSettingsHouseholds(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSettingsHouseholds(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeOtherSessions operation middleware
+func (siw *ServerInterfaceWrapper) RevokeOtherSessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeOtherSessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSession operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSession(w, r, sessionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -313,8 +473,207 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/setup/complete", wrapper.CompleteSetup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/invitations/lookup", wrapper.LookupInvitation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/invitations/accept", wrapper.AcceptInvitation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/households/me", wrapper.ListMyHouseholds)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/households", wrapper.CreateHousehold)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/households/{slug}/leave", wrapper.LeaveHousehold)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetAccountSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/households", wrapper.ListSettingsHouseholds)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/settings/profile", wrapper.UpdateProfile)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/sessions/others", wrapper.RevokeOtherSessions)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/sessions/{sessionId}", wrapper.RevokeSession)
 
 	return m
+}
+
+type CreateHouseholdRequestObject struct {
+	Body *CreateHouseholdJSONRequestBody
+}
+
+type CreateHouseholdResponseObject interface {
+	VisitCreateHouseholdResponse(w http.ResponseWriter) error
+}
+
+type CreateHousehold201JSONResponse HouseholdResult
+
+func (response CreateHousehold201JSONResponse) VisitCreateHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateHousehold400JSONResponse Error
+
+func (response CreateHousehold400JSONResponse) VisitCreateHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateHousehold401JSONResponse Error
+
+func (response CreateHousehold401JSONResponse) VisitCreateHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateHousehold403JSONResponse Error
+
+func (response CreateHousehold403JSONResponse) VisitCreateHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateHousehold409JSONResponse Error
+
+func (response CreateHousehold409JSONResponse) VisitCreateHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateHousehold429JSONResponse Error
+
+func (response CreateHousehold429JSONResponse) VisitCreateHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyHouseholdsRequestObject struct {
+}
+
+type ListMyHouseholdsResponseObject interface {
+	VisitListMyHouseholdsResponse(w http.ResponseWriter) error
+}
+
+type ListMyHouseholds200JSONResponse HouseholdList
+
+func (response ListMyHouseholds200JSONResponse) VisitListMyHouseholdsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyHouseholds401JSONResponse Error
+
+func (response ListMyHouseholds401JSONResponse) VisitListMyHouseholdsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LeaveHouseholdRequestObject struct {
+	Slug HouseholdSlug `json:"slug"`
+}
+
+type LeaveHouseholdResponseObject interface {
+	VisitLeaveHouseholdResponse(w http.ResponseWriter) error
+}
+
+type LeaveHousehold200JSONResponse Ok
+
+func (response LeaveHousehold200JSONResponse) VisitLeaveHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LeaveHousehold401JSONResponse Error
+
+func (response LeaveHousehold401JSONResponse) VisitLeaveHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LeaveHousehold403JSONResponse Error
+
+func (response LeaveHousehold403JSONResponse) VisitLeaveHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LeaveHousehold409JSONResponse Error
+
+func (response LeaveHousehold409JSONResponse) VisitLeaveHouseholdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type AcceptInvitationRequestObject struct {
@@ -530,6 +889,225 @@ func (response LookupInvitation429JSONResponse) VisitLookupInvitationResponse(w 
 	return err
 }
 
+type GetAccountSettingsRequestObject struct {
+}
+
+type GetAccountSettingsResponseObject interface {
+	VisitGetAccountSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetAccountSettings200JSONResponse AccountSettings
+
+func (response GetAccountSettings200JSONResponse) VisitGetAccountSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountSettings401JSONResponse Error
+
+func (response GetAccountSettings401JSONResponse) VisitGetAccountSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountSettings404JSONResponse Error
+
+func (response GetAccountSettings404JSONResponse) VisitGetAccountSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSettingsHouseholdsRequestObject struct {
+}
+
+type ListSettingsHouseholdsResponseObject interface {
+	VisitListSettingsHouseholdsResponse(w http.ResponseWriter) error
+}
+
+type ListSettingsHouseholds200JSONResponse HouseholdList
+
+func (response ListSettingsHouseholds200JSONResponse) VisitListSettingsHouseholdsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSettingsHouseholds401JSONResponse Error
+
+func (response ListSettingsHouseholds401JSONResponse) VisitListSettingsHouseholdsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProfileRequestObject struct {
+	Body *UpdateProfileJSONRequestBody
+}
+
+type UpdateProfileResponseObject interface {
+	VisitUpdateProfileResponse(w http.ResponseWriter) error
+}
+
+type UpdateProfile200JSONResponse ProfileResult
+
+func (response UpdateProfile200JSONResponse) VisitUpdateProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProfile400JSONResponse Error
+
+func (response UpdateProfile400JSONResponse) VisitUpdateProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProfile401JSONResponse Error
+
+func (response UpdateProfile401JSONResponse) VisitUpdateProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProfile404JSONResponse Error
+
+func (response UpdateProfile404JSONResponse) VisitUpdateProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOtherSessionsRequestObject struct {
+}
+
+type RevokeOtherSessionsResponseObject interface {
+	VisitRevokeOtherSessionsResponse(w http.ResponseWriter) error
+}
+
+type RevokeOtherSessions200JSONResponse Ok
+
+func (response RevokeOtherSessions200JSONResponse) VisitRevokeOtherSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeOtherSessions401JSONResponse Error
+
+func (response RevokeOtherSessions401JSONResponse) VisitRevokeOtherSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeSessionRequestObject struct {
+	SessionId string `json:"sessionId"`
+}
+
+type RevokeSessionResponseObject interface {
+	VisitRevokeSessionResponse(w http.ResponseWriter) error
+}
+
+type RevokeSession200JSONResponse Ok
+
+func (response RevokeSession200JSONResponse) VisitRevokeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeSession401JSONResponse Error
+
+func (response RevokeSession401JSONResponse) VisitRevokeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CompleteSetupRequestObject struct {
 	Body *CompleteSetupJSONRequestBody
 }
@@ -717,12 +1295,36 @@ func (response Readyz503JSONResponse) VisitReadyzResponse(w http.ResponseWriter)
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// CreateHousehold Create a household with the caller as its owner. Restricted (REF §A2): the installation owner may always; anybody else only while they belong to no household at all, so a member cannot mint extra households or squat inbound addresses. Rate limited (10 per hour).
+	// (POST /api/households)
+	CreateHousehold(ctx context.Context, request CreateHouseholdRequestObject) (CreateHouseholdResponseObject, error)
+	// ListMyHouseholds Every household the caller belongs to, for the household switcher. Ordered by lower-cased display name so the list does not reshuffle when somebody renames a household with a capital letter.
+	// (GET /api/households/me)
+	ListMyHouseholds(ctx context.Context, request ListMyHouseholdsRequestObject) (ListMyHouseholdsResponseObject, error)
+	// LeaveHousehold Give up your own membership of this household. Refused for the last owner, which is what keeps a household from being left with nobody who can administer it.
+	// (POST /api/households/{slug}/leave)
+	LeaveHousehold(ctx context.Context, request LeaveHouseholdRequestObject) (LeaveHouseholdResponseObject, error)
 	// AcceptInvitation Accept an invitation, as the signed-in user or by creating the invited account. Rate limited with the lookup above.
 	// (POST /api/invitations/accept)
 	AcceptInvitation(ctx context.Context, request AcceptInvitationRequestObject) (AcceptInvitationResponseObject, error)
 	// LookupInvitation What an invitation link points at, for the invite page. Public and rate limited (20 per 10 minutes): together with accept, this is the one unauthenticated path that reveals whether a token exists.
 	// (GET /api/invitations/lookup)
 	LookupInvitation(ctx context.Context, request LookupInvitationRequestObject) (LookupInvitationResponseObject, error)
+	// GetAccountSettings The account settings screen in one request: the caller's profile with their households, and their signed-in devices newest first.
+	// (GET /api/settings)
+	GetAccountSettings(ctx context.Context, request GetAccountSettingsRequestObject) (GetAccountSettingsResponseObject, error)
+	// ListSettingsHouseholds The caller's households, the same list GET /api/households/me answers with. It exists separately because the settings screen refetches it on its own after leaving a household.
+	// (GET /api/settings/households)
+	ListSettingsHouseholds(ctx context.Context, request ListSettingsHouseholdsRequestObject) (ListSettingsHouseholdsResponseObject, error)
+	// UpdateProfile Update the caller's display name and avatar.
+	// (PATCH /api/settings/profile)
+	UpdateProfile(ctx context.Context, request UpdateProfileRequestObject) (UpdateProfileResponseObject, error)
+	// RevokeOtherSessions Sign out everywhere else: every session of this account except the one this request arrived on.
+	// (DELETE /api/settings/sessions/others)
+	RevokeOtherSessions(ctx context.Context, request RevokeOtherSessionsRequestObject) (RevokeOtherSessionsResponseObject, error)
+	// RevokeSession Revoke one device. A session id that is not the caller's own revokes nothing and still answers 200 — deliberately, so the endpoint cannot be used to discover whether an id exists.
+	// (DELETE /api/settings/sessions/{sessionId})
+	RevokeSession(ctx context.Context, request RevokeSessionRequestObject) (RevokeSessionResponseObject, error)
 	// CompleteSetup Claim the installation: create the owner account, their first household, and lock setup. Rate limited (5 per 15 minutes) because the body carries SETUP_SECRET.
 	// (POST /api/setup/complete)
 	CompleteSetup(ctx context.Context, request CompleteSetupRequestObject) (CompleteSetupResponseObject, error)
@@ -774,6 +1376,87 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// CreateHousehold operation middleware
+func (sh *strictHandler) CreateHousehold(w http.ResponseWriter, r *http.Request) {
+	var request CreateHouseholdRequestObject
+
+	var body CreateHouseholdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateHousehold(ctx, request.(CreateHouseholdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateHousehold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateHouseholdResponseObject); ok {
+		if err := validResponse.VisitCreateHouseholdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMyHouseholds operation middleware
+func (sh *strictHandler) ListMyHouseholds(w http.ResponseWriter, r *http.Request) {
+	var request ListMyHouseholdsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMyHouseholds(ctx, request.(ListMyHouseholdsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMyHouseholds")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMyHouseholdsResponseObject); ok {
+		if err := validResponse.VisitListMyHouseholdsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LeaveHousehold operation middleware
+func (sh *strictHandler) LeaveHousehold(w http.ResponseWriter, r *http.Request, slug HouseholdSlug) {
+	var request LeaveHouseholdRequestObject
+
+	request.Slug = slug
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LeaveHousehold(ctx, request.(LeaveHouseholdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LeaveHousehold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LeaveHouseholdResponseObject); ok {
+		if err := validResponse.VisitLeaveHouseholdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // AcceptInvitation operation middleware
@@ -831,6 +1514,135 @@ func (sh *strictHandler) LookupInvitation(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LookupInvitationResponseObject); ok {
 		if err := validResponse.VisitLookupInvitationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountSettings operation middleware
+func (sh *strictHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request) {
+	var request GetAccountSettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountSettings(ctx, request.(GetAccountSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountSettingsResponseObject); ok {
+		if err := validResponse.VisitGetAccountSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSettingsHouseholds operation middleware
+func (sh *strictHandler) ListSettingsHouseholds(w http.ResponseWriter, r *http.Request) {
+	var request ListSettingsHouseholdsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSettingsHouseholds(ctx, request.(ListSettingsHouseholdsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSettingsHouseholds")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSettingsHouseholdsResponseObject); ok {
+		if err := validResponse.VisitListSettingsHouseholdsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateProfile operation middleware
+func (sh *strictHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	var request UpdateProfileRequestObject
+
+	var body UpdateProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProfile(ctx, request.(UpdateProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProfileResponseObject); ok {
+		if err := validResponse.VisitUpdateProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeOtherSessions operation middleware
+func (sh *strictHandler) RevokeOtherSessions(w http.ResponseWriter, r *http.Request) {
+	var request RevokeOtherSessionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeOtherSessions(ctx, request.(RevokeOtherSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeOtherSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeOtherSessionsResponseObject); ok {
+		if err := validResponse.VisitRevokeOtherSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeSession operation middleware
+func (sh *strictHandler) RevokeSession(w http.ResponseWriter, r *http.Request, sessionId string) {
+	var request RevokeSessionRequestObject
+
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeSession(ctx, request.(RevokeSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeSessionResponseObject); ok {
+		if err := validResponse.VisitRevokeSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

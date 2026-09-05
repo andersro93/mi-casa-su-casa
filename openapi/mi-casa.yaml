@@ -271,8 +271,268 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/households/me:
+    get:
+      operationId: listMyHouseholds
+      summary: >-
+        Every household the caller belongs to, for the household switcher.
+        Ordered by lower-cased display name so the list does not reshuffle
+        when somebody renames a household with a capital letter.
+      tags: [households]
+      responses:
+        "200":
+          description: The caller's households.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/households:
+    post:
+      operationId: createHousehold
+      summary: >-
+        Create a household with the caller as its owner. Restricted (REF §A2):
+        the installation owner may always; anybody else only while they belong
+        to no household at all, so a member cannot mint extra households or
+        squat inbound addresses. Rate limited (10 per hour).
+      tags: [households]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHouseholdRequest"
+      responses:
+        "201":
+          description: >-
+            The household, in the same shape as a /api/households/me entry so
+            the client can use it without a refetch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller may not create a household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The slug is taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited. `Retry-After` says when to come back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/households/{slug}/leave:
+    post:
+      operationId: leaveHousehold
+      summary: >-
+        Give up your own membership of this household. Refused for the last
+        owner, which is what keeps a household from being left with nobody who
+        can administer it.
+      tags: [households]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      responses:
+        "200":
+          description: The membership is gone; provider access cascaded with it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not a member of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The caller is the household's only owner.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings:
+    get:
+      operationId: getAccountSettings
+      summary: >-
+        The account settings screen in one request: the caller's profile with
+        their households, and their signed-in devices newest first.
+      tags: [settings]
+      responses:
+        "200":
+          description: The profile and the session list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountSettings"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The session's account no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings/households:
+    get:
+      operationId: listSettingsHouseholds
+      summary: >-
+        The caller's households, the same list GET /api/households/me answers
+        with. It exists separately because the settings screen refetches it on
+        its own after leaving a household.
+      tags: [settings]
+      responses:
+        "200":
+          description: The caller's households.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings/profile:
+    patch:
+      operationId: updateProfile
+      summary: Update the caller's display name and avatar.
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileRequest"
+      responses:
+        "200":
+          description: The profile as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The session's account no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings/sessions/others:
+    delete:
+      operationId: revokeOtherSessions
+      summary: >-
+        Sign out everywhere else: every session of this account except the one
+        this request arrived on.
+      tags: [settings]
+      responses:
+        "200":
+          description: The other sessions are gone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/settings/sessions/{sessionId}:
+    delete:
+      operationId: revokeSession
+      summary: >-
+        Revoke one device. A session id that is not the caller's own revokes
+        nothing and still answers 200 — deliberately, so the endpoint cannot be
+        used to discover whether an id exists.
+      tags: [settings]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: The session is gone, if it was the caller's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   parameters:
+    HouseholdSlug:
+      name: slug
+      in: path
+      required: true
+      description: >-
+        The household this request acts on. Every `{slug}` route is guarded by
+        the tenancy middleware, which turns it into a membership or refuses —
+        so the parameter is also the authorization boundary, not just a lookup
+        key.
+
+        REF §A3's length bounds (2..40) are deliberately NOT stated here. A
+        slug outside them cannot name a household, so it must be answered the
+        way every other non-membership is — 403, never a validation error that
+        distinguishes "no such household" from "not yours".
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
     InvitationToken:
       name: X-Invitation-Token
       in: header
@@ -293,6 +553,183 @@ components:
       schema:
         type: string
   schemas:
+    Ok:
+      type: object
+      description: >-
+        The acknowledgement every "it is done, and there is nothing to show
+        for it" endpoint answers with.
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    HouseholdSummary:
+      type: object
+      description: >-
+        One entry in the household switcher: a household plus what the caller
+        may do in it.
+      required: [id, slug, displayName, role]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+    HouseholdList:
+      type: object
+      required: [households]
+      properties:
+        households:
+          type: array
+          items:
+            $ref: "#/components/schemas/HouseholdSummary"
+    CreateHouseholdRequest:
+      type: object
+      description: >-
+        REF §A4's `createHousehold` schema. As with SetupRequest, only the
+        shape is stated here: the slug is normalised (trimmed, lower-cased)
+        before REF §A3's rules are applied to it, and the message each failure
+        produces is the wording the SPA renders next to the input.
+      required: [slug, displayName]
+      properties:
+        slug:
+          type: string
+          description: Trimmed, lower-cased, and subject to REF §A3's slug rules.
+        displayName:
+          type: string
+          description: Trimmed, 1..80 characters.
+    HouseholdWithRole:
+      type: object
+      description: >-
+        A newly created household: the switcher entry's keys plus the
+        timestamps, so the client can drop it straight into its cache.
+      required: [id, slug, displayName, createdAt, updatedAt, role]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        displayName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        role:
+          type: string
+          enum: [owner, member]
+    HouseholdResult:
+      type: object
+      required: [household]
+      properties:
+        household:
+          $ref: "#/components/schemas/HouseholdWithRole"
+    Profile:
+      type: object
+      description: >-
+        The account settings screen's view of the caller. `role` is always
+        null: it carried Better Auth's global role in the TypeScript server,
+        which the Go one has no counterpart for, and stays in the payload
+        because the SPA reads it.
+      required: [id, email, name, image, role, twoFactorEnabled, households]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        image:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        twoFactorEnabled:
+          type: boolean
+        households:
+          type: array
+          items:
+            $ref: "#/components/schemas/HouseholdSummary"
+    SessionSummary:
+      type: object
+      description: >-
+        One signed-in device. The session TOKEN is a bearer secret and never
+        appears here — `isCurrent` is all the client needs to tell which row
+        it is looking through. `ipAddress` is the digest Limen stored, not a
+        readable address, and `impersonatedBy` is always null (the Go server
+        has no impersonation).
+      required:
+        [
+          id,
+          isCurrent,
+          expiresAt,
+          ipAddress,
+          userAgent,
+          createdAt,
+          updatedAt,
+          impersonatedBy,
+        ]
+      properties:
+        id:
+          type: string
+        isCurrent:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        impersonatedBy:
+          type: string
+          nullable: true
+    AccountSettings:
+      type: object
+      required: [profile, sessions]
+      properties:
+        profile:
+          $ref: "#/components/schemas/Profile"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSummary"
+    ProfileResult:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          $ref: "#/components/schemas/Profile"
+    ProfileRequest:
+      type: object
+      description: >-
+        REF §A4's `profile` schema. `image` is optional and an empty string
+        clears the avatar; anything else must be an http(s) URL of at most
+        2048 characters, checked in Go so the message is the TypeScript's
+        ("image must be an http(s) URL").
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Trimmed, 1..80 characters.
+        image:
+          type: string
+          description: An http(s) URL, or "" to clear the avatar.
     Error:
       type: object
       description: >-
