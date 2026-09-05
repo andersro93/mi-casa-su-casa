@@ -1,10 +1,12 @@
 # Toolchain pin for Mi Casa Su Casa — the single source of truth for dev AND
 # CI. `mise install` in the repo gives everyone the same Go + Bun + Node plus
 # the codegen tools `go generate` expects on PATH (sqlc, oapi-codegen, goose).
-# CI installs from this same file via jdx/mise-action, but only `go bun node`
-# (install_args) — the codegen tools are compiled from source and CI never
-# runs `go generate` (generated code is committed; a drift-guard test
-# enforces it).
+# CI installs from this same file via jdx/mise-action, naming per job only
+# what that job runs (install_args): the test job adds the codegen tools and
+# goreleaser, the image job adds svu, the release job adds goreleaser,
+# cosign and syft. CI never runs `go generate` — generated code is
+# committed and a drift-guard test enforces it — but the codegen binaries
+# are still installed because that test shells out to them.
 [tools]
 go = "1.27.0"
 bun = "1.4"
@@ -29,7 +31,7 @@ run = [
 
 [tasks.check]
 description = "Lint, typecheck, i18n coverage, goreleaser config"
-run = ["bun run check", "[ ! -f .goreleaser.yaml ] || goreleaser check"]
+run = ["bun run check", "goreleaser check"]
 
 [tasks.artifacts]
 description = "SPA + both server binaries → dist/server/linux/<arch>/mi-casa"
