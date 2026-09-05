@@ -1,0 +1,21 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/db/queries"
+    schema: "internal/db/migrations"
+    gen:
+      go:
+        package: "gen"
+        out: "internal/db/gen"
+        sql_package: "pgx/v5"
+        # Nullable columns become pointers rather than sql.Null* wrappers, so
+        # a struct field maps straight onto the OpenAPI types' `*string`
+        # optionals without a conversion layer in between.
+        emit_pointers_for_null_types: true
+        # The schema has both "rate_limit" (the app's own limiter) and
+        # "rate_limits" (Limen's), which sqlc's default singularization would
+        # map to the same Go name "RateLimit" — a duplicate declaration that
+        # does not compile. Exact table names keep every generated struct
+        # named after its table (RateLimit, RateLimits, Users, ...), which
+        # resolves the collision without renaming either table.
+        emit_exact_table_names: true
