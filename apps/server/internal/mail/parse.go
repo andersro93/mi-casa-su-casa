@@ -158,8 +158,16 @@ func walkEntity(entity *message.Entity, depth int, text, html *[]string) {
 
 	if parts := entity.MultipartReader(); parts != nil {
 		for {
-			part, err := parts.NextPart()
-			if err != nil {
+			// The error is deliberately ignored in favour of the part itself.
+			// go-message returns a readable part *together* with an error when
+			// that part has an unknown Content-Transfer-Encoding or charset —
+			// it is undecoded, not unusable — and stopping there would
+			// silently drop every later sibling, including the one carrying
+			// the verification code. postal-mime fell back to a pass-through
+			// decoder rather than abandoning the message, and so do we: such a
+			// part contributes its bytes as they arrived.
+			part, _ := parts.NextPart()
+			if part == nil {
 				// io.EOF ends a well-formed multipart; anything else is a
 				// truncated or malformed one, and the parts read so far are
 				// still the best body available.

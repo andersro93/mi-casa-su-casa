@@ -568,3 +568,61 @@ func TestParseRejectsAMessageWithUnreadableHeaders(t *testing.T) {
 		t.Error("Parse returned no error for a message without a header block")
 	}
 }
+
+// go-message reports an unknown Content-Transfer-Encoding or charset by
+// returning the part *together with* an error — the part is still readable,
+// just undecoded. Treating that error as the end of the multipart would drop
+// every sibling after it, including the one carrying the code. postal-mime
+// never aborted a message over this; it fell back to a pass-through decoder.
+func TestParseKeepsWalkingAfterAPartWithAnUnknownTransferEncoding(t *testing.T) {
+	parsed := parseOK(t, rawMessage(
+		"From: Service <login@service.example>",
+		"To: casa@example.com",
+		"Subject: Bogus encoding first",
+		`Content-Type: multipart/mixed; boundary="b1"`,
+		"",
+		"--b1",
+		"Content-Type: text/plain; charset=utf-8",
+		"Content-Transfer-Encoding: x-bogus-encoding",
+		"",
+		"raw bytes kept as-is",
+		"--b1",
+		"Content-Type: text/plain; charset=utf-8",
+		"",
+		"Your verification code is 999999",
+		"--b1--",
+		"",
+	), testEnvelopeFrom, "casa@example.com")
+
+	want := "raw bytes kept as-is\nYour verification code is 999999"
+	if parsed.TextBody != want {
+		t.Errorf("TextBody = %q, want %q", parsed.TextBody, want)
+	}
+}
+
+func TestParseKeepsWalkingAfterAPartWithAnUnknownCharset(t *testing.T) {
+	parsed := parseOK(t, rawMessage(
+		"From: Service <login@service.example>",
+		"To: casa@example.com",
+		"Subject: Bogus charset first",
+		`Content-Type: multipart/mixed; boundary="b1"`,
+		"",
+		"--b1",
+		"Content-Type: text/plain; charset=x-not-a-charset",
+		"",
+		"undecodable part",
+		"--b1",
+		"Content-Type: text/plain; charset=utf-8",
+		"",
+		"Your verification code is 999999",
+		"--b1--",
+		"",
+	), testEnvelopeFrom, "casa@example.com")
+
+	if !strings.Contains(parsed.TextBody, "Your verification code is 999999") {
+		t.Errorf("TextBody = %q, want the sibling after the undecodable part", parsed.TextBody)
+	}
+	if !strings.Contains(parsed.TextBody, "undecodable part") {
+		t.Errorf("TextBody = %q, want the undecodable part's bytes as they arrived", parsed.TextBody)
+	}
+}

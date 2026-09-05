@@ -488,6 +488,10 @@ func deleteAfter(receivedAt time.Time) time.Time {
 // there is none, or when it does not parse. It ports the TypeScript's
 // normalizeDateHeader: the header is a sender-controlled string, so a
 // nonsensical one becomes a null column rather than an ingest failure.
+//
+// net/mail.ParseDate is stricter than JavaScript's `new Date`, so a loose
+// non-RFC-5322 date the Workers deployment would have stored is null here.
+// The column is display-only, and received_at is the server clock either way.
 func normalizeDateHeader(dateHeader *string) *time.Time {
 	if dateHeader == nil {
 		return nil
