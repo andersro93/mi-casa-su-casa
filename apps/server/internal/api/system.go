@@ -48,7 +48,10 @@ func (s server) Healthz(context.Context, gen.HealthzRequestObject) (gen.HealthzR
 // setupConfigured is unconditionally true. Its TypeScript predecessor
 // reported whether OWNER_EMAIL and SETUP_SECRET were set; internal/config
 // requires both at boot, so a running process cannot be missing them. The
-// field stays in the payload because the SPA reads it.
+// field stays in the payload for parity with the TypeScript readiness
+// response, so an operator's existing probe or dashboard that reads it keeps
+// working; the SPA does not call /readyz at all — it reads `isConfigured`
+// from GET /api/setup/status.
 func (s server) Readyz(ctx context.Context, _ gen.ReadyzRequestObject) (gen.ReadyzResponseObject, error) {
 	installation, err := s.Q.GetInstallation(ctx)
 	if err != nil {

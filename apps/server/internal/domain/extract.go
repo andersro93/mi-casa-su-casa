@@ -24,22 +24,25 @@ import (
 //   - JavaScript's `\s` also matches NBSP and the other Unicode spaces, while
 //     Go's matches only the ASCII five. A "verification code" in an HTML
 //     mail would otherwise stop being a keyword, so the class is spelled out
-//     as jsWhitespace below.
+//     as JSWhitespace below.
 //   - the piece split used lookbehind and lookahead, which RE2 has not; it is
 //     a byte loop in splitTokenRun instead.
 
-// jsWhitespace is JavaScript's `\s` written out for RE2. Keep it in sync with
-// the copy in internal/mail/html.go, which needs the same set to collapse
-// whitespace the way the TypeScript stripHtml did.
-const jsWhitespace = `[\t\n\v\f\r \x{00a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}]`
+// JSWhitespace is JavaScript's `\s` written out for RE2, which knows only the
+// ASCII five. It is exported because internal/mail needs the identical set to
+// collapse whitespace the way the TypeScript stripHtml did — the two were
+// separate constants with "keep in sync" comments on both, which is one
+// declaration too many for a 28-character character class that must not
+// diverge.
+const JSWhitespace = `[\t\n\v\f\r \x{00a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}]`
 
 // keywordPattern is the TypeScript KEYWORD_PATTERN, case-insensitive and
 // word-bounded. Go's `\b`, like JavaScript's without the `u` flag, is defined
 // over ASCII word characters, so "código" still bounds the same way.
 var keywordPattern = regexp.MustCompile(
 	`(?i)\b(?:(?:verification|verify|security|one[- ]?time|login|log-?in|sign[- ]?in|access|` +
-		`confirmation|auth(?:entication|orization)?|2fa|two[- ]factor)` + jsWhitespace + `+` +
-		`(?:code|pin|passcode|password|otp)|passcode|otp|pin` + jsWhitespace + `+code|` +
+		`confirmation|auth(?:entication|orization)?|2fa|two[- ]factor)` + JSWhitespace + `+` +
+		`(?:code|pin|passcode|password|otp)|passcode|otp|pin` + JSWhitespace + `+code|` +
 		`code|kode|c[oó]digo|codice)\b`,
 )
 

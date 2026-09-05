@@ -1,6 +1,6 @@
 // Package config loads and validates Mi Casa Su Casa's process
 // configuration from environment variables. This replaces
-// apps/server/src/env.ts (the Workers env-var contract): the same "parse
+// the removed src/server/env.ts (the Workers env-var contract): the same "parse
 // once at startup, fail loudly with every problem at once" rule applies, so
 // a malformed DATABASE_URL kills the container on boot — a crash-looping
 // pod is loud and obvious — rather than surfacing as a 500 on the first

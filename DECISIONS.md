@@ -35,8 +35,8 @@ container. These were settled before any code was written:
   existence are worth, and password hashes do not carry over regardless.
 - **Landing incrementally on `main`.** The Go code grew beside `src/` rather
   than on a long-lived branch, so every pull request left `main` deployable on
-  Cloudflare, and the Worker keeps working until a single cutover release
-  removes it.
+  Cloudflare, and the Worker kept working until a single cutover release
+  removed it — see "The cutover" below.
 
 ## Process
 
@@ -250,6 +250,49 @@ container. These were settled before any code was written:
 - **The cron probe is not part of the image smoke test.** The smoke test covers
   `migrate`, the default mode, `/readyz`, the SPA and the webhook's 401; a
   scheduled run adds time without adding much signal.
+
+## The cutover — 2026-09-05
+
+The Cloudflare Workers backend was removed in one commit rather than being
+left to rot beside the Go one. What went: `src/`, `test/`, `migrations/` (the
+D1 schema — the goose migrations live in `apps/server/internal/db/migrations`),
+`wrangler.jsonc`, `drizzle.config.ts`, `requests/`, the root `vite.config.ts`
+and `vitest.config.ts`, `.dev.vars.example`, and the four Cloudflare
+workflows. `ci-go.yml` took the vacated name `ci.yml`.
+
+- **This is a breaking change.** Not to an API — to the deployment model. A
+  Worker on D1 and Cloudflare Email Routing is not a container on Postgres and
+  Mailgun, and there is no data migration between them (decided up front, see
+  "The migration off Cloudflare"). Anyone still on the Worker stays on the last
+  release that contained it.
+- **The root `package.json` is now only a workspace root**: Biome, TypeScript,
+  Playwright and `otpauth` — everything the SPA needs moved to
+  `apps/frontend`, and `npm`/`package-lock.json` went with the Worker. Bun is
+  the only JavaScript toolchain. Dependabot keeps reading `bun.lock` through
+  the `npm` ecosystem, which is unrelated.
+- **One shared module survived the delete**: the household-slug rules the SPA
+  imported from `@server/domain/household-slug` now live at
+  `apps/frontend/src/lib/household-slug.ts`. `apps/server/internal/domain/slug.go`
+  is the authority; the copy is pre-submit validation, and the reserved set now
+  matches the Go one exactly (it gained `healthz` and `readyz`).
+- **The `Ports src/server/…` comments in the Go packages stay.** They name a
+  path that no longer exists, deliberately: they are provenance for a port, and
+  the original is one `git log` away. Rewriting seventy comments to say
+  "formerly" would have bought nothing.
+- **CodeQL now scans both trees**, `go` in `build-mode: manual` (the module is
+  not at the repository root, so autobuild is not dependable) and
+  `javascript-typescript` in `build-mode: none`.
+- **The changelog now has a `Breaking changes` group, and `^chore` no longer
+  excludes `chore!:`.** Writing this commit exposed both: `.goreleaser.yaml`
+  dropped every `^chore` commit from the release notes, so the one commit that
+  most needed to be in them — the breaking change that bumps the minor under
+  `--v0` — would have vanished. The exclude is now anchored on the colon
+  (`^chore(\(.+\))?:`), so routine chores still go and breaking ones stay, and
+  a `Breaking changes` group matching the `!:` marker on any type is declared
+  first, because GoReleaser assigns a commit to the earliest group that
+  matches and `feat!:` matches Features too. The release header now says there
+  is no data migration from the Workers deployment, where a reader arriving
+  from an old install will actually see it.
 
 ## Accepted limitations
 

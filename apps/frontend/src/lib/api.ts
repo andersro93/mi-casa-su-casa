@@ -2,7 +2,7 @@
  * The typed HTTP client for every `/api/*` route the Go server serves.
  *
  * `api-schema.d.ts` is generated from `openapi/mi-casa.yaml` (root script
- * `npm run gen:client`) and committed; `test/api-schema.test.ts` fails if the
+ * `bun run gen:client`) and committed; `test/api-schema.test.ts` fails if the
  * spec moves without it. That generated `paths` type is what makes
  * `client.GET("/api/inbox/{slug}/providers", …)` check its path parameters,
  * its query string and its request body at compile time — the whole point of

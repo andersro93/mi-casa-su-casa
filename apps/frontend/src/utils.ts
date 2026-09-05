@@ -1,10 +1,5 @@
 import type { SessionData } from "./types";
 
-export function buildHouseholdPath(slug: string, path: string = "") {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `/${slug}${normalizedPath}`;
-}
-
 export function getProviderAccessToggleRequest(shouldHaveAccess: boolean): {
   method: "POST" | "DELETE";
   statusMessage: string;

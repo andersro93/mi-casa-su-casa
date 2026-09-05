@@ -30,7 +30,7 @@ run = [
 ]
 
 [tasks.check]
-description = "Lint, typecheck, i18n coverage, goreleaser config"
+description = "Lint, typecheck, goreleaser config"
 run = ["bun run check", "goreleaser check"]
 
 [tasks.artifacts]

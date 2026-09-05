@@ -7,7 +7,7 @@
 
   *"mi casa su casa" — my house is your house*
 
-  [![CI (Go)](https://github.com/andersro93/mi-casa-su-casa/actions/workflows/ci-go.yml/badge.svg)](https://github.com/andersro93/mi-casa-su-casa/actions/workflows/ci-go.yml)
+  [![CI](https://github.com/andersro93/mi-casa-su-casa/actions/workflows/ci.yml/badge.svg)](https://github.com/andersro93/mi-casa-su-casa/actions/workflows/ci.yml)
   [![Release](https://github.com/andersro93/mi-casa-su-casa/actions/workflows/release.yml/badge.svg)](https://github.com/andersro93/mi-casa-su-casa/actions/workflows/release.yml)
   [![Latest release](https://img.shields.io/github/v/release/andersro93/mi-casa-su-casa?sort=semver&label=release)](https://github.com/andersro93/mi-casa-su-casa/releases)
   [![Container image](https://img.shields.io/badge/ghcr.io-mi--casa--su--casa-2496ed)](https://github.com/andersro93/mi-casa-su-casa/pkgs/container/mi-casa-su-casa)
@@ -330,6 +330,13 @@ per process, so two `worker` replicas — or a `worker` alongside a CronJob —
 run every night's purge twice. The purge is idempotent, so that is wasteful
 rather than wrong, but it is still worth designing against.
 
+One caveat on scaling out: the sign-in rate limiter is in-process, so every
+replica carries its own budget and the effective limit multiplies by the
+replica count. A deployment that cares should put a rate limit in front of
+`/api/auth/` at the proxy — see
+[Rate limiting](docs/operations.md#rate-limiting) in `docs/operations.md` for
+which limits live where, and why the inbound webhook has none.
+
 The contributor stack has one-off services for both, behind the `tools`
 profile so `docker compose up` does not start them:
 
@@ -629,23 +636,6 @@ docker-compose.test.yml             Postgres for the Go suite
 `apps/server` is a Go module and deliberately *not* a bun workspace: the two
 toolchains never call each other, and the Dockerfile is the only place they
 meet.
-
-## Cloudflare Workers deployment (legacy)
-
-Mi Casa Su Casa began as a Cloudflare Worker, and that deployment is still in
-this repository — `src/`, `wrangler.jsonc`, `migrations/` (the D1 schema),
-`test/`, and the `ci.yml`, `preview-deploy.yml`, `production-deploy.yml` and
-`production-d1-migrate.yml` workflows. It keeps working until the cutover
-release removes it, so nothing is lost mid-migration.
-
-**It is not the supported way to run this project.** The Worker uses
-Cloudflare Email Routing and D1 rather than Mailgun and Postgres, there is no
-data migration between the two, and the container starts with an empty
-database. If you are still running it, the pipeline is described under "Legacy
-Cloudflare workflows" in
-[`docs/ci-cd-architecture.md`](docs/ci-cd-architecture.md).
-
-Everything else in this README describes the container.
 
 ## Contributing
 

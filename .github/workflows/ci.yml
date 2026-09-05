@@ -1,67 +1,294 @@
 name: CI
 
-on:
-  pull_request:
-  push:
-    branches:
-      - main
+# The PR gate: "is this change good?" — the full suite (test.yml), then the
+# image built once from native artifacts, smoke-tested, and pushed as a
+# semver-prerelease preview. Pushes to main are release.yml's business:
+# merging IS releasing.
+
+on: pull_request
 
 permissions:
   contents: read
 
+# A force-push to a PR obsoletes the running check — cancel it instead of
+# letting it burn minutes to report on a commit nobody can merge.
+concurrency:
+  group: ci-${{ github.head_ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
+  test:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
+  # The image has to build and RUN, not merely typecheck — and it is
+  # published as a preview so the publish path is exercised on every change
+  # rather than first tried during a release.
+  #
+  # Preview tags are semver prereleases of the release they precede
+  # (0.2.0-pr.123 sorts below 0.2.0), so they can never be mistaken for a
+  # release. release.yml is what produces bare version tags and `latest`.
+  image:
+    needs: test
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
     steps:
+      # Full history and tags: svu computes the upcoming version from
+      # Conventional Commits since the last v* tag, and a shallow clone has
+      # neither.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 22
-          cache: npm
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: npm ci
+      # Only what this job runs: go and bun to build the artifacts, svu to
+      # name the preview. The codegen tools in .mise.toml are compiled from
+      # source and nothing here runs `go generate` — that drift guard lives
+      # in test.yml, which has already passed by the time this job starts.
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "go bun node aqua:caarlos0/svu"
 
-      # All pull requests deploy to one shared preview D1. Two open PRs that
-      # both add "0012_*.sql" with different names would be applied in PR
-      # order and never match main, so refuse migration numbers that already
-      # exist on main under another name, and require the branch to continue
-      # main's sequence.
-      - name: Check migration numbering against main
-        if: github.event_name == 'pull_request'
+      # mise does not cache Go modules; do it directly, keyed on the module
+      # that actually owns go.sum.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('apps/server/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # What the next release WOULD be (same --v0 rule as release.yml), so
+      # the preview tags sort below it as prereleases of it.
+      - name: Compute version
+        id: version
         run: |
-          set -euo pipefail
-          git fetch --no-tags --depth=1 origin main
-          mapfile -t main_files < <(git ls-tree --name-only origin/main migrations/ | xargs -n1 basename | grep -E '^[0-9]{4}_.*\.sql$' | sort)
-          mapfile -t branch_files < <(ls migrations | grep -E '^[0-9]{4}_.*\.sql$' | sort)
-          declare -A main_by_number
-          for f in "${main_files[@]}"; do main_by_number["${f:0:4}"]="$f"; done
-          status=0
-          for f in "${branch_files[@]}"; do
-            n="${f:0:4}"
-            if [[ -n "${main_by_number[$n]:-}" && "${main_by_number[$n]}" != "$f" ]]; then
-              echo "::error::migrations/$f reuses number $n which main already has as ${main_by_number[$n]}; renumber it"
-              status=1
-            fi
+          tag=$(svu next --v0)
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # Everything the image COPYs, compiled natively — the Dockerfile
+      # itself is COPY-only, so the buildx assemble below takes seconds and
+      # nothing ever runs under QEMU. Both architectures land in
+      # dist/server, which the preview push at the end reuses.
+      - name: Build artifacts (SPA + both server binaries)
+        run: bash scripts/build-artifacts.sh
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # Two kinds of pull request get a read-only GITHUB_TOKEN, and pushing
+      # from either would fail with a 403 that has nothing to do with the
+      # change under test — after the smoke test has already passed, which
+      # is the worst possible place to learn it:
+      #
+      #   - a fork, because a fork's token can never write to this repo;
+      #   - Dependabot, whose runs are always treated as untrusted and given
+      #     the read-only token EVEN on an in-repo branch. The head repo
+      #     check alone does not catch it, so the actor is checked too.
+      #
+      # Build and smoke-test both; just do not publish a preview.
+      - name: Can this run push?
+        id: gate
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ] \
+            || [ "${{ github.actor }}" = "dependabot[bot]" ]; then
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to the container registry
+        if: steps.gate.outputs.push == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Plain single-arch build for the smoke test: the artifacts are
+      # prebuilt, so this is one COPY. No layer cache needed — there is
+      # nothing worth caching any more.
+      - name: Build image
+        run: docker build -t mi-casa:ci .
+
+      - name: Smoke-test the image
+        run: |
+          docker network create mi-casa-ci
+          docker run -d --name pg --network mi-casa-ci \
+            -e POSTGRES_USER=micasa -e POSTGRES_PASSWORD=micasa -e POSTGRES_DB=micasa \
+            postgres:17-alpine
+          # -h 127.0.0.1 forces the probe over TCP. Without it pg_isready
+          # checks the Unix socket, which already accepts during initdb's
+          # socket-only first start — before the restart that opens TCP —
+          # so the migrate one-off below could race a "ready" Postgres that
+          # refused TCP connections.
+          for _ in $(seq 1 30); do
+            docker exec pg pg_isready -h 127.0.0.1 -U micasa -d micasa && break
+            sleep 1
           done
-          for f in "${main_files[@]}"; do
-            if [[ ! -f "migrations/$f" ]]; then
-              echo "::error::migrations/$f exists on main but not on this branch; rebase onto main"
-              status=1
-            fi
+
+          # No volume, no object store, no /data: everything the app keeps
+          # lives in Postgres, so a bare `docker run` is the whole
+          # deployment. config.Load demands every one of these at boot even
+          # when the feature behind it is never used — which is exactly why
+          # a smoke test that only compiled the binary would miss a
+          # regression here.
+          #
+          # ENVIRONMENT=test is what makes the http:// APP_URL legal: outside
+          # development and test the loader refuses anything but https,
+          # because an http origin means session cookies without Secure.
+          #
+          # SMTP_URL points at a port nothing is listening on, deliberately:
+          # the sender dials the relay only when a mail is actually sent, and
+          # this smoke test never sends one. It is here because config.Load
+          # requires the variable, not because mail is exercised — the
+          # Playwright suite (a later phase) is what runs a real Mailpit.
+          env_args=(
+            -e DATABASE_URL=postgres://micasa:micasa@pg:5432/micasa
+            -e ENVIRONMENT=test
+            -e APP_URL=http://localhost:3000
+            -e AUTH_SECRET=ci-smoke-test-secret-at-least-32-bytes-long
+            -e SETUP_SECRET=ci-smoke-test-setup-secret
+            -e OWNER_EMAIL=owner@example.com
+            -e EMAIL_DOMAIN=example.com
+            -e MAILGUN_WEBHOOK_SIGNING_KEY=ci-smoke-test-signing-key
+            -e SMTP_URL=smtp://127.0.0.1:1025
+            -e OUTBOUND_EMAIL_FROM=no-reply@example.com
+          )
+
+          # Migrations must apply from the image itself.
+          docker run --rm --network mi-casa-ci "${env_args[@]}" mi-casa:ci \
+            migrate
+
+          # The default mode: migrate (again, a no-op under the advisory
+          # lock), then serve with the in-process scheduler — what a
+          # single-container deployment actually runs.
+          docker run -d --name app --network mi-casa-ci -p 3000:3000 \
+            "${env_args[@]}" mi-casa:ci
+
+          # It must actually serve, not merely start. /readyz proves it
+          # reached Postgres; "/" proves the embedded SPA wins there — pure
+          # route ordering, and just as easy to break the other way if a
+          # health or API route ever stops taking priority over the
+          # static-file fallback. `id="root"` rather than the title, because
+          # the committed placeholder index.html carries the same title: a
+          # build that skipped scripts/spa-embed-overlay.sh must fail here.
+          for _ in $(seq 1 30); do
+            curl -fsS http://localhost:3000/healthz && break
+            sleep 1
           done
-          exit $status
+          curl -fsS http://localhost:3000/readyz | grep -q '"ok":true'
+          curl -fsS http://localhost:3000/ | grep -q 'id="root"'
 
-      - name: Lint and format check
-        run: npm run check
+          # The server is a compiled Go binary in a shell-less image, and
+          # `go test` runs against source — so this probe is the only thing
+          # standing between a build/link regression and production. It
+          # needs no fixtures.
+          #
+          # An unsigned webhook post must answer 401. Reaching that answer
+          # means the router mounted the inbound subtree outside the spec
+          # validator and the same-site guard, the multipart form parsed,
+          # and HMAC verification ran — a broken build gives 404 or 500 here,
+          # not 401. An empty body-mime is fine: the signature is checked
+          # before the message is ever looked at.
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -X POST -F body-mime=@/dev/null -F timestamp=1 -F token=x -F signature=deadbeef \
+            http://localhost:3000/api/inbound/mailgun/mime)
+          test "$status" = "401" || { echo "webhook probe returned $status, expected 401"; exit 1; }
 
-      - name: Typecheck
-        run: npm run typecheck
+      # The Playwright suite drives the SAME image through a real browser:
+      # first-run setup, sign-in, two-step verification with a generated TOTP,
+      # invitations delivered to Mailpit, an inbound Mailgun webhook turning
+      # into a code on screen. It needs a stack the smoke test does not have
+      # (Mailpit as the SMTP relay, APP_URL matching the published port), so
+      # the smoke stack comes down and scripts/e2e-stack.sh — the same script
+      # `mise run e2e` uses locally — brings its own up around mi-casa:ci.
+      # No second build: E2E_IMAGE points at the image already sitting here.
+      - name: Start the e2e stack (same image, plus Mailpit)
+        run: |
+          docker rm -f app pg || true
+          docker network rm mi-casa-ci || true
+          E2E_IMAGE=mi-casa:ci bash scripts/e2e-stack.sh up
 
-      - name: Run tests
-        run: npm run test
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-playwright-
 
-      - name: Build
-        run: npm run build
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps chromium
+
+      - name: E2E tests
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3300
+        run: cd e2e && bunx playwright test
+
+      # The trace of a failed run is the only way to see what the browser saw;
+      # the runner is thrown away seconds later.
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          if-no-files-found: ignore
+
+      # Only after the smoke test: an image that does not serve must never
+      # reach the registry, not even as a preview.
+      #
+      # Two tags per push: <next>-pr.<n> moves with the PR (grab the PR's
+      # current state), <next>-pr.<n>.<sha> never moves. Both are valid
+      # semver prereleases of the release they precede.
+      - name: Push preview image (multi-arch)
+        if: steps.gate.outputs.push == 'true'
+        run: |
+          short=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          pr="${{ github.event.pull_request.number }}"
+          moving="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-pr.${pr}"
+          pinned="${moving}.${short}"
+          # The same context the smoke-tested image came from — dist/server
+          # still holds both binaries from the artifact step, so buildx just
+          # re-runs the COPY per platform and pushes the manifest list. No
+          # rebuild, hence no scripts/build-artifacts.sh here.
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t "$moving" -t "$pinned" --push .
+          {
+            echo "### Preview image"
+            echo
+            echo '```'
+            echo "docker pull $moving"
+            echo '```'
+            echo
+            echo "Also tagged \`$pinned\` (immutable)."
+            echo "Next release would be **${{ steps.version.outputs.tag }}**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Whatever failed above, the container's own log is the only place
+      # that says why — the image has no shell to go poking around in.
+      # Both stacks are named, because the failure could be in either.
+      # Last, so it catches a failure in any step before it, the preview
+      # push included.
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          docker logs app || true
+          docker logs mi-casa-e2e-app || true
+
+      # The runner is thrown away either way; this keeps a re-run on a
+      # self-hosted runner from tripping over a name that is still taken.
+      - name: Tear down the stacks
+        if: always()
+        run: |
+          docker rm -f app pg || true
+          docker network rm mi-casa-ci || true
+          bash scripts/e2e-stack.sh down || true

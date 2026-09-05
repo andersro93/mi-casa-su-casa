@@ -375,7 +375,7 @@ func schedulerSummary() string {
 // tier (`server` mode) horizontally but still wants one long-running process
 // owning the cron-shaped work. Exactly one `worker` replica should run at a
 // time: the scheduler fires once per process, so two of them would run every
-// night'"'"'s purge twice.
+// night's purge twice.
 //
 // The bare /healthz on PORT is not optional: the image's HEALTHCHECK probes
 // /healthz regardless of mode, so without it a `worker` container would
@@ -496,7 +496,7 @@ func signalName(s os.Signal) string {
 //
 // stopScheduler runs BEFORE the HTTP drain, and runs on either exit path.
 // Order matters: stopping the scheduler first means no new job starts while
-// the server is draining, and the scheduler'"'"'s own grace period (bounded, see
+// the server is draining, and the scheduler's own grace period (bounded, see
 // internal/cron) overlaps nothing rather than eating into the drain window.
 // Pass a no-op for a mode that schedules nothing.
 func serveUntilSignal(sig <-chan os.Signal, srv *http.Server, stopScheduler func()) int {

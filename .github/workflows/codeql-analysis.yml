@@ -19,30 +19,46 @@ concurrency:
 
 jobs:
   analyze:
-    name: Analyze
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Go backend. Go is a compiled language, so CodeQL has to watch
+          # a real build — and the module is not at the repository root
+          # (apps/server owns go.mod), which autobuild is not dependable
+          # about finding. `manual` plus an explicit `go build ./...` in the
+          # module directory leaves nothing to guess.
+          - language: go
+            build-mode: manual
+          # The SPA. JavaScript/TypeScript is extracted straight from source:
+          # there is nothing to build, and no dependency install to do.
+          - language: javascript-typescript
+            build-mode: none
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      # The same Go pin the rest of CI uses, so CodeQL observes a build from
+      # the toolchain the release itself is built with.
+      - if: matrix.language == 'go'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
+          install_args: "go"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
-          languages: javascript-typescript
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
 
-      # CodeQL needs the compiled sources, not the test suite (CI runs that).
       - name: Build for analysis
-        run: npm run build
+        if: matrix.build-mode == 'manual'
+        run: cd apps/server && go build ./...
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
-          category: "/language:javascript-typescript"
+          category: "/language:${{ matrix.language }}"

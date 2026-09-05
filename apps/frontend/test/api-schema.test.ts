@@ -15,7 +15,7 @@
  *  - a route was added, removed or renamed (paths), the change most likely to
  *    be missed by eye
  *
- * When this fails: run `npm run gen:client` from the repo root, commit the
+ * When this fails: run `bun run gen:client` from the repo root, commit the
  * regenerated file, and paste the new checksum below.
  */
 import { createHash } from "node:crypto";
@@ -56,7 +56,7 @@ describe("api-schema.d.ts", () => {
     const actual = createHash("sha256").update(spec).digest("hex");
     expect(
       actual,
-      "openapi/mi-casa.yaml changed: run `npm run gen:client` at the repo root, commit apps/frontend/src/lib/api-schema.d.ts, and update SPEC_SHA256 in this test",
+      "openapi/mi-casa.yaml changed: run `bun run gen:client` at the repo root, commit apps/frontend/src/lib/api-schema.d.ts, and update SPEC_SHA256 in this test",
     ).toBe(SPEC_SHA256);
   });
 
