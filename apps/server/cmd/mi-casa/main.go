@@ -40,9 +40,14 @@ import (
 
 	"github.com/andersro93/mi-casa-su-casa/server/internal/api"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/api/respond"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/auth"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/config"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/db"
 	dbgen "github.com/andersro93/mi-casa-su-casa/server/internal/db/gen"
+	applog "github.com/andersro93/mi-casa-su-casa/server/internal/log"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/mail"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/ratelimit"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/repo"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/web"
 )
 
@@ -377,6 +382,10 @@ func logStartupConfig(cfg *config.Config) {
 	log.Printf("  app url:      %s", cfg.AppURL)
 	log.Printf("  email domain: %s", cfg.EmailDomain)
 	log.Printf("  environment:  %s", cfg.Environment)
+	// Loud on purpose: this build has no outbound transport, so password
+	// resets and invitation mails are logged and dropped (internal/mail's
+	// LogSender). Remove this line together with that placeholder.
+	log.Print("  outbound mail: NOT CONFIGURED — messages are logged and dropped")
 }
 
 // notifyShutdown subscribes to SIGTERM and SIGINT and returns the channel
@@ -470,14 +479,61 @@ func buildDeps(ctx context.Context, cfg *config.Config) (api.Deps, func(), error
 		return api.Deps{}, nil, err
 	}
 
-	deps := api.Deps{
+	repository := repo.New(pool)
+
+	// The outbound transport. LogSender writes a line and drops the message:
+	// the SMTP sender arrives in a later task, and until it does an operator
+	// should see in the log that mail was skipped rather than wonder why an
+	// invitation never landed. See internal/mail's LogSender doc comment.
+	var mailer mail.Sender = mail.LogSender{}
+
+	// The password-reset hook Limen calls. It has no context and ignores the
+	// result — the route answers 200 either way, deliberately, so it cannot be
+	// used to probe which addresses have accounts — so a failure here is
+	// logged and nothing else (REF §A7's password_reset_email_failed).
+	authService, err := auth.New(auth.Config{
+		AppURL:           cfg.AppURL,
+		AppName:          cfg.AppName,
+		Secret:           cfg.AuthSecret,
 		Pool:             pool,
-		Q:                q,
+		TrustedProxyHops: cfg.TrustedProxyHops,
+		SendPasswordReset: func(ctx context.Context, to, name, link string) error {
+			if err := mailer.Send(ctx, mail.PasswordReset(to, name, link)); err != nil {
+				applog.Event(applog.LevelError, "password_reset_email_failed", map[string]any{
+					"to":    to,
+					"error": err.Error(),
+				})
+				return err
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		closePool()
+		return api.Deps{}, nil, err
+	}
+
+	deps := api.Deps{
+		Pool:      pool,
+		Q:         q,
+		Auth:      authService,
+		Repo:      repository,
+		RateLimit: ratelimit.NewPostgres(repository),
+		Mail:      mailer,
+		// The app's own limiter buckets a caller exactly as Limen's does, so
+		// one client cannot get two independent budgets by switching routes.
+		IPDigest:         authService.IPDigest(),
 		Now:              time.Now,
 		AppURL:           cfg.AppURL,
 		AppName:          cfg.AppName,
 		EmailDomain:      cfg.EmailDomain,
 		TrustedProxyHops: cfg.TrustedProxyHops,
+		SetupSecret:      cfg.SetupSecret,
+		OwnerEmail:       cfg.OwnerEmail,
+		// Only "development" widens the same-site policy to a local dev
+		// server; config.IsDevelopmentLike also covers "test", which must
+		// not loosen a security check on a deployed environment.
+		DevMode: cfg.Environment == "development",
 	}
 	return deps, closePool, nil
 }
