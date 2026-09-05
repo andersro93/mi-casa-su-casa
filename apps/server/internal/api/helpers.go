@@ -70,6 +70,22 @@ func householdFrom(ctx context.Context) *middleware.Household {
 	return middleware.HouseholdFrom(r)
 }
 
+// householdContext is the pair every household-scoped handler opens with: the
+// caller and the household the tenancy guard resolved.
+//
+// ok is false only if such a route were ever mounted without tierHousehold or
+// tierOwner, in which case refusing is the failure that leaks nothing. Each
+// handler answers its own 403 rather than sharing one, because the generated
+// response types are per-operation.
+func (s server) householdContext(ctx context.Context) (*auth.Session, *middleware.Household, bool) {
+	viewer := viewerFrom(ctx)
+	household := householdFrom(ctx)
+	if viewer == nil || household == nil {
+		return nil, nil, false
+	}
+	return viewer, household, true
+}
+
 // emailPattern is REF §A4's email rule verbatim: deliberately loose, because
 // the authoritative test of an address is whether mail to it arrives, and a
 // stricter pattern only rejects addresses that work.

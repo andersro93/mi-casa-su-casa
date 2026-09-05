@@ -30,7 +30,7 @@ import (
 // pending invitation whose link has already stopped working — the expiry is a
 // timestamp, and nothing else would notice it had passed.
 func (s server) ListInvitations(ctx context.Context, _ gen.ListInvitationsRequestObject) (gen.ListInvitationsResponseObject, error) {
-	_, household, ok := s.adminContext(ctx)
+	_, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.ListInvitations403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -52,7 +52,7 @@ func (s server) ListInvitations(ctx context.Context, _ gen.ListInvitationsReques
 
 // CreateInvitation invites somebody, optionally scoped to a set of providers.
 func (s server) CreateInvitation(ctx context.Context, request gen.CreateInvitationRequestObject) (gen.CreateInvitationResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.CreateInvitation403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -90,7 +90,7 @@ func (s server) CreateInvitation(ctx context.Context, request gen.CreateInvitati
 // scope — the same handler body as CreateInvitation minus the scope, and the
 // same `invitation.created` audit entry, exactly as the TypeScript had it.
 func (s server) CreateMember(ctx context.Context, request gen.CreateMemberRequestObject) (gen.CreateMemberResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.CreateMember403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -113,7 +113,7 @@ func (s server) CreateMember(ctx context.Context, request gen.CreateMemberReques
 
 // ResendInvitation reissues a pending invitation with a new token.
 func (s server) ResendInvitation(ctx context.Context, request gen.ResendInvitationRequestObject) (gen.ResendInvitationResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.ResendInvitation403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -146,7 +146,7 @@ func (s server) ResendInvitation(ctx context.Context, request gen.ResendInvitati
 
 // CancelInvitation makes an invitation's link stop working.
 func (s server) CancelInvitation(ctx context.Context, request gen.CancelInvitationRequestObject) (gen.CancelInvitationResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.CancelInvitation403JSONResponse(errorBody("Forbidden")), nil
 	}

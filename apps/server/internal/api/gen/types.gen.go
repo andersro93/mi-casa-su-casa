@@ -79,6 +79,27 @@ func (e HouseholdWithRoleRole) Valid() bool {
 	}
 }
 
+// Defines values for InboxMessageStatus.
+const (
+	InboxMessageStatusExpired InboxMessageStatus = "expired"
+	InboxMessageStatusNew     InboxMessageStatus = "new"
+	InboxMessageStatusUsed    InboxMessageStatus = "used"
+)
+
+// Valid indicates whether the value is a known member of the InboxMessageStatus enum.
+func (e InboxMessageStatus) Valid() bool {
+	switch e {
+	case InboxMessageStatusExpired:
+		return true
+	case InboxMessageStatusNew:
+		return true
+	case InboxMessageStatusUsed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvitationRole.
 const (
 	InvitationRoleMember InvitationRole = "member"
@@ -365,6 +386,47 @@ type HouseholdWithRole struct {
 // HouseholdWithRoleRole defines model for HouseholdWithRole.Role.
 type HouseholdWithRoleRole string
 
+// InboxMessage One message in a provider's inbox. snake_case keys, as above.
+type InboxMessage struct {
+	ExtractedCode       *string            `json:"extracted_code"`
+	FromHeader          *string            `json:"from_header"`
+	HouseholdSlug       string             `json:"household_slug"`
+	Id                  string             `json:"id"`
+	ProviderDisplayName string             `json:"provider_display_name"`
+	ProviderKey         string             `json:"provider_key"`
+	ReceivedAt          time.Time          `json:"received_at"`
+	Status              InboxMessageStatus `json:"status"`
+	Subject             *string            `json:"subject"`
+	TextBody            string             `json:"text_body"`
+}
+
+// InboxMessageStatus defines model for InboxMessage.Status.
+type InboxMessageStatus string
+
+// InboxMessagePage defines model for InboxMessagePage.
+type InboxMessagePage struct {
+	Messages []InboxMessage `json:"messages"`
+
+	// Page The keyset page the server actually served: the limit it applied (after clamping) and the cursor for the next, older page.
+	// `nextBefore` is null when this was the last page, which is what the SPA checks to decide whether to offer "load more".
+	Page PageInfo `json:"page"`
+
+	// Provider Which provider a page of messages belongs to. camelCase here while the rows below are snake_case, because that is the shape the SPA has read since the Workers deployment.
+	Provider InboxProvider `json:"provider"`
+}
+
+// InboxMessageResult defines model for InboxMessageResult.
+type InboxMessageResult struct {
+	// Message One message in a provider's inbox. snake_case keys, as above.
+	Message InboxMessage `json:"message"`
+}
+
+// InboxProvider Which provider a page of messages belongs to. camelCase here while the rows below are snake_case, because that is the shape the SPA has read since the Workers deployment.
+type InboxProvider struct {
+	DisplayName string `json:"displayName"`
+	ProviderKey string `json:"providerKey"`
+}
+
 // Invitation One invitation record. The token itself never appears — only its SHA-256 is stored, and the plaintext lives solely in the link.
 type Invitation struct {
 	AcceptedAt       *time.Time           `json:"acceptedAt"`
@@ -478,9 +540,22 @@ type MembershipResult struct {
 	Member Member `json:"member"`
 }
 
+// MessageStatusRequest REF §A4's `messageStatus` schema. `status` is a plain string rather than an enum for the same reason `matchType` is (see SenderRuleRequest): the rejection must read "status must be new, used or expired", and an enum violation cannot say that.
+type MessageStatusRequest struct {
+	// Status `new`, `used` or `expired`.
+	Status string `json:"status"`
+}
+
 // Ok The acknowledgement every "it is done, and there is nothing to show for it" endpoint answers with.
 type Ok struct {
 	Ok bool `json:"ok"`
+}
+
+// PageInfo The keyset page the server actually served: the limit it applied (after clamping) and the cursor for the next, older page.
+// `nextBefore` is null when this was the last page, which is what the SPA checks to decide whether to offer "load more".
+type PageInfo struct {
+	Limit      int        `json:"limit"`
+	NextBefore *time.Time `json:"nextBefore"`
 }
 
 // Profile The account settings screen's view of the caller. `role` is always null: it carried Better Auth's global role in the TypeScript server, which the Go one has no counterpart for, and stays in the payload because the SPA reads it.
@@ -553,6 +628,66 @@ type ProviderRequest struct {
 type ProviderResult struct {
 	// Provider One provider. snake_case keys, deliberately: it is what the TypeScript returned and what the SPA reads.
 	Provider Provider `json:"provider"`
+}
+
+// ProviderSummary One provider's tile on the inbox landing page: its counts plus a preview of the newest message. snake_case keys, deliberately: it is what the TypeScript returned and what the SPA reads.
+// The `latest_*` fields are null — present and null, never missing — for a provider that has received nothing yet.
+type ProviderSummary struct {
+	DisplayName      string     `json:"display_name"`
+	HouseholdSlug    string     `json:"household_slug"`
+	LatestCode       *string    `json:"latest_code"`
+	LatestMessageId  *string    `json:"latest_message_id"`
+	LatestReceivedAt *time.Time `json:"latest_received_at"`
+	LatestStatus     *string    `json:"latest_status"`
+	LatestSubject    *string    `json:"latest_subject"`
+	MessageCount     int        `json:"message_count"`
+	NewCount         int        `json:"new_count"`
+	ProviderKey      string     `json:"provider_key"`
+}
+
+// ProviderSummaryList defines model for ProviderSummaryList.
+type ProviderSummaryList struct {
+	Providers []ProviderSummary `json:"providers"`
+}
+
+// QuarantineMessage One row of the needs-review queue. `provider_key` and `provider_display_name` are the literals "quarantine" and "Quarantine" so the SPA can render it with the same component as an inbox row, and `envelope_from` is included because who the mail server said sent it is the main thing an owner reviews.
+type QuarantineMessage struct {
+	EnvelopeFrom        string    `json:"envelope_from"`
+	ExtractedCode       *string   `json:"extracted_code"`
+	FromHeader          *string   `json:"from_header"`
+	HouseholdSlug       string    `json:"household_slug"`
+	Id                  string    `json:"id"`
+	ProviderDisplayName string    `json:"provider_display_name"`
+	ProviderKey         string    `json:"provider_key"`
+	QuarantineReason    string    `json:"quarantine_reason"`
+	ReceivedAt          time.Time `json:"received_at"`
+	Status              string    `json:"status"`
+	Subject             *string   `json:"subject"`
+	TextBody            string    `json:"text_body"`
+}
+
+// QuarantineMessagePage defines model for QuarantineMessagePage.
+type QuarantineMessagePage struct {
+	Messages []QuarantineMessage `json:"messages"`
+
+	// Page The keyset page the server actually served: the limit it applied (after clamping) and the cursor for the next, older page.
+	// `nextBefore` is null when this was the last page, which is what the SPA checks to decide whether to offer "load more".
+	Page PageInfo `json:"page"`
+}
+
+// QuarantineReviewRequest REF §A4's `quarantineReview` schema. `action` is a plain string for the reason MessageStatusRequest's `status` is; `providerKey` is required in practice for a release, but the 400 that says so is the handler's, because it names the field.
+type QuarantineReviewRequest struct {
+	// Action `dismiss` or `release`.
+	Action string `json:"action"`
+
+	// ProviderKey The provider to release into. Trimmed, lower-cased, 1..40. Required for a release, ignored for a dismissal.
+	ProviderKey *string `json:"providerKey,omitempty"`
+}
+
+// QuarantineReviewResult The outcome of one review. `releasedMessage` is the stored copy for a release and null for a dismissal — present and null, never missing.
+type QuarantineReviewResult struct {
+	ReleasedMessage *InboxMessage `json:"releasedMessage"`
+	ReviewedAt      time.Time     `json:"reviewedAt"`
 }
 
 // RoleChangeRequest REF §A4's `roleChange` schema. See CreateMemberRequest for why `role` is not an enum here.
@@ -655,11 +790,44 @@ type InvitationToken = string
 // MemberUserId defines model for MemberUserId.
 type MemberUserId = string
 
+// MessageId defines model for MessageId.
+type MessageId = string
+
+// PageBefore defines model for PageBefore.
+type PageBefore = string
+
+// PageLimit defines model for PageLimit.
+type PageLimit = int
+
 // ProviderId defines model for ProviderId.
 type ProviderId = string
 
 // SenderRuleId defines model for SenderRuleId.
 type SenderRuleId = string
+
+// ListProviderMessagesParams defines parameters for ListProviderMessages.
+type ListProviderMessagesParams struct {
+	// Limit How many rows to return. Clamped to 1..200 in Go, with 50 for a missing value.
+	// Deliberately declared WITHOUT `minimum`/`maximum`: the TypeScript clamped an out-of-range limit rather than rejecting it, and a client that asks for 9999 should get 200 rows, not a validation error on a page it can no longer navigate away from.
+	// The type IS stated, which is the one place this diverges from that predecessor: `limit=abc` is a 400 from request validation here, where the TypeScript's `Number(...)` turned it into NaN and fell back to the default. Saying "integer" is worth that — a client sending a non-number is broken, and every value a working client sends is clamped rather than refused.
+	Limit *PageLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Before The keyset cursor: return only rows older than this instant, which is the previous page's `nextBefore`.
+	// Declared as a plain string rather than `format: date-time` for the same reason `limit` has no bounds: a cursor that does not parse is IGNORED (the newest page is returned) rather than rejected, exactly as the TypeScript's normalizePageOptions did.
+	Before *PageBefore `form:"before,omitempty" json:"before,omitempty"`
+}
+
+// ListQuarantineParams defines parameters for ListQuarantine.
+type ListQuarantineParams struct {
+	// Limit How many rows to return. Clamped to 1..200 in Go, with 50 for a missing value.
+	// Deliberately declared WITHOUT `minimum`/`maximum`: the TypeScript clamped an out-of-range limit rather than rejecting it, and a client that asks for 9999 should get 200 rows, not a validation error on a page it can no longer navigate away from.
+	// The type IS stated, which is the one place this diverges from that predecessor: `limit=abc` is a 400 from request validation here, where the TypeScript's `Number(...)` turned it into NaN and fell back to the default. Saying "integer" is worth that — a client sending a non-number is broken, and every value a working client sends is clamped rather than refused.
+	Limit *PageLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Before The keyset cursor: return only rows older than this instant, which is the previous page's `nextBefore`.
+	// Declared as a plain string rather than `format: date-time` for the same reason `limit` has no bounds: a cursor that does not parse is IGNORED (the newest page is returned) rather than rejected, exactly as the TypeScript's normalizePageOptions did.
+	Before *PageBefore `form:"before,omitempty" json:"before,omitempty"`
+}
 
 // AcceptInvitationParams defines parameters for AcceptInvitation.
 type AcceptInvitationParams struct {
@@ -713,6 +881,12 @@ type UpdateHouseholdSettingsJSONRequestBody = HouseholdSettingsRequest
 
 // CreateHouseholdJSONRequestBody defines body for CreateHousehold for application/json ContentType.
 type CreateHouseholdJSONRequestBody = CreateHouseholdRequest
+
+// UpdateMessageStatusJSONRequestBody defines body for UpdateMessageStatus for application/json ContentType.
+type UpdateMessageStatusJSONRequestBody = MessageStatusRequest
+
+// ReviewQuarantineMessageJSONRequestBody defines body for ReviewQuarantineMessage for application/json ContentType.
+type ReviewQuarantineMessageJSONRequestBody = QuarantineReviewRequest
 
 // AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
 type AcceptInvitationJSONRequestBody = AcceptInvitationRequest

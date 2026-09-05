@@ -381,6 +381,249 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/inbox/{slug}/providers:
+    get:
+      operationId: listInboxProviders
+      summary: >-
+        The inbox landing page: one tile per provider the caller may read,
+        with its message counts and a preview of the newest message.
+
+        A member route rather than an owner one, with the per-provider check
+        INSIDE it: an owner sees every provider in the household, a member
+        only the ones they have been granted. That is the whole point of
+        provider access — the household's mail is split per mailbox, not
+        per role.
+      tags: [inbox]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+      responses:
+        "200":
+          description: The providers this caller may read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderSummaryList"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not a member of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/inbox/{slug}/providers/{providerKey}:
+    get:
+      operationId: listProviderMessages
+      summary: >-
+        One provider's inbox, newest first, one keyset page at a time.
+
+        The 403 for a member without access to this provider is answered
+        BEFORE the provider is looked up, so a member cannot use the
+        difference between 403 and 404 to enumerate which providers the
+        household has.
+      tags: [inbox]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - name: providerKey
+          in: path
+          required: true
+          description: >-
+            The provider's key, scoped to the household in the path. Bounded
+            the way `revokeProviderAccess` bounds its own copy (REF §A4's
+            `providerAccess` rules), because a path parameter has no `fields`
+            entry to render a Go-side message against.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 40
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageBefore"
+      responses:
+        "200":
+          description: The page of messages, with the cursor for the next one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxMessagePage"
+        "400":
+          description: The provider key or a page parameter is not of the stated shape.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >-
+            The caller is not a member of this household, or is a member
+            without access to this provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: This household has no such provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/inbox/{slug}/messages/{messageId}/status:
+    patch:
+      operationId: updateMessageStatus
+      summary: >-
+        Mark one message new, used or expired — the "I have used this code"
+        button.
+
+        The message is looked up before the body is validated, deliberately:
+        a status the server does not know, sent for a message that is not
+        this household's, is answered 404 rather than 400, so the route never
+        confirms the existence of a message the caller may not read.
+      tags: [inbox]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/MessageId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageStatusRequest"
+      responses:
+        "200":
+          description: The message as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxMessageResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >-
+            The caller is not a member of this household, or is a member
+            without access to the message's provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: This household has no such message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/inbox/{slug}/quarantine:
+    get:
+      operationId: listQuarantine
+      summary: >-
+        The needs-review queue: mail that could not be attributed to a
+        provider, unreviewed rows only, newest first.
+
+        Owner-only. Quarantined mail is by definition mail nobody has decided
+        who may read yet, so it cannot be shown behind per-provider access.
+      tags: [inbox]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageBefore"
+      responses:
+        "200":
+          description: The page of quarantined messages, with the cursor for the next one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuarantineMessagePage"
+        "400":
+          description: A page parameter is not of the stated shape.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/inbox/{slug}/quarantine/{messageId}/review:
+    post:
+      operationId: reviewQuarantineMessage
+      summary: >-
+        Work through one needs-review row: dismiss it, or release it into a
+        provider's inbox.
+
+        A release copies the row into that provider's messages — keeping the
+        original received_at and delete_after, so releasing does not extend
+        retention — and marks the quarantine row reviewed, in one
+        transaction. Owner-only, and audited either way.
+      tags: [inbox]
+      parameters:
+        - $ref: "#/components/parameters/HouseholdSlug"
+        - $ref: "#/components/parameters/MessageId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuarantineReviewRequest"
+      responses:
+        "200":
+          description: >-
+            The review. `releasedMessage` is the stored copy for a release
+            and null for a dismissal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuarantineReviewResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The caller is not an owner of this household.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: >-
+            This household has no such provider, or no such unreviewed
+            quarantine message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/settings:
     get:
       operationId: getAccountSettings
@@ -1400,6 +1643,53 @@ components:
         type: string
         minLength: 1
         maxLength: 200
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      description: >-
+        A message's id — an inbox message for the status route, a quarantined
+        one for the review route. Scoped to the household in the path, so an
+        id from another household is a 404 rather than a leak.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    PageLimit:
+      name: limit
+      in: query
+      required: false
+      description: >-
+        How many rows to return. Clamped to 1..200 in Go, with 50 for a
+        missing value.
+
+        Deliberately declared WITHOUT `minimum`/`maximum`: the TypeScript
+        clamped an out-of-range limit rather than rejecting it, and a client
+        that asks for 9999 should get 200 rows, not a validation error on a
+        page it can no longer navigate away from.
+
+        The type IS stated, which is the one place this diverges from that
+        predecessor: `limit=abc` is a 400 from request validation here, where
+        the TypeScript's `Number(...)` turned it into NaN and fell back to the
+        default. Saying "integer" is worth that — a client sending a
+        non-number is broken, and every value a working client sends is
+        clamped rather than refused.
+      schema:
+        type: integer
+    PageBefore:
+      name: before
+      in: query
+      required: false
+      description: >-
+        The keyset cursor: return only rows older than this instant, which is
+        the previous page's `nextBefore`.
+
+        Declared as a plain string rather than `format: date-time` for the
+        same reason `limit` has no bounds: a cursor that does not parse is
+        IGNORED (the newest page is returned) rather than rejected, exactly as
+        the TypeScript's normalizePageOptions did.
+      schema:
+        type: string
   schemas:
     Ok:
       type: object
@@ -2139,3 +2429,253 @@ components:
           type: boolean
         emailError:
           type: string
+    ProviderSummary:
+      type: object
+      description: >-
+        One provider's tile on the inbox landing page: its counts plus a
+        preview of the newest message. snake_case keys, deliberately: it is
+        what the TypeScript returned and what the SPA reads.
+
+        The `latest_*` fields are null — present and null, never missing —
+        for a provider that has received nothing yet.
+      required:
+        [
+          household_slug,
+          provider_key,
+          display_name,
+          message_count,
+          new_count,
+          latest_received_at,
+          latest_message_id,
+          latest_subject,
+          latest_code,
+          latest_status,
+        ]
+      properties:
+        household_slug:
+          type: string
+        provider_key:
+          type: string
+        display_name:
+          type: string
+        message_count:
+          type: integer
+        new_count:
+          type: integer
+        latest_received_at:
+          type: string
+          format: date-time
+          nullable: true
+        latest_message_id:
+          type: string
+          nullable: true
+        latest_subject:
+          type: string
+          nullable: true
+        latest_code:
+          type: string
+          nullable: true
+        latest_status:
+          type: string
+          nullable: true
+    ProviderSummaryList:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderSummary"
+    InboxProvider:
+      type: object
+      description: >-
+        Which provider a page of messages belongs to. camelCase here while the
+        rows below are snake_case, because that is the shape the SPA has read
+        since the Workers deployment.
+      required: [providerKey, displayName]
+      properties:
+        providerKey:
+          type: string
+        displayName:
+          type: string
+    InboxMessage:
+      type: object
+      description: One message in a provider's inbox. snake_case keys, as above.
+      required:
+        [
+          id,
+          household_slug,
+          provider_key,
+          provider_display_name,
+          subject,
+          from_header,
+          text_body,
+          extracted_code,
+          status,
+          received_at,
+        ]
+      properties:
+        id:
+          type: string
+        household_slug:
+          type: string
+        provider_key:
+          type: string
+        provider_display_name:
+          type: string
+        subject:
+          type: string
+          nullable: true
+        from_header:
+          type: string
+          nullable: true
+        text_body:
+          type: string
+        extracted_code:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [new, used, expired]
+        received_at:
+          type: string
+          format: date-time
+    QuarantineMessage:
+      type: object
+      description: >-
+        One row of the needs-review queue. `provider_key` and
+        `provider_display_name` are the literals "quarantine" and
+        "Quarantine" so the SPA can render it with the same component as an
+        inbox row, and `envelope_from` is included because who the mail
+        server said sent it is the main thing an owner reviews.
+      required:
+        [
+          id,
+          household_slug,
+          provider_key,
+          provider_display_name,
+          subject,
+          from_header,
+          envelope_from,
+          text_body,
+          extracted_code,
+          status,
+          quarantine_reason,
+          received_at,
+        ]
+      properties:
+        id:
+          type: string
+        household_slug:
+          type: string
+        provider_key:
+          type: string
+        provider_display_name:
+          type: string
+        subject:
+          type: string
+          nullable: true
+        from_header:
+          type: string
+          nullable: true
+        envelope_from:
+          type: string
+        text_body:
+          type: string
+        extracted_code:
+          type: string
+          nullable: true
+        status:
+          type: string
+        quarantine_reason:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+    PageInfo:
+      type: object
+      description: >-
+        The keyset page the server actually served: the limit it applied
+        (after clamping) and the cursor for the next, older page.
+
+        `nextBefore` is null when this was the last page, which is what the
+        SPA checks to decide whether to offer "load more".
+      required: [limit, nextBefore]
+      properties:
+        limit:
+          type: integer
+        nextBefore:
+          type: string
+          format: date-time
+          nullable: true
+    InboxMessagePage:
+      type: object
+      required: [provider, messages, page]
+      properties:
+        provider:
+          $ref: "#/components/schemas/InboxProvider"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxMessage"
+        page:
+          $ref: "#/components/schemas/PageInfo"
+    QuarantineMessagePage:
+      type: object
+      required: [messages, page]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuarantineMessage"
+        page:
+          $ref: "#/components/schemas/PageInfo"
+    InboxMessageResult:
+      type: object
+      required: [message]
+      properties:
+        message:
+          $ref: "#/components/schemas/InboxMessage"
+    MessageStatusRequest:
+      type: object
+      description: >-
+        REF §A4's `messageStatus` schema. `status` is a plain string rather
+        than an enum for the same reason `matchType` is (see
+        SenderRuleRequest): the rejection must read "status must be new, used
+        or expired", and an enum violation cannot say that.
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: "`new`, `used` or `expired`."
+    QuarantineReviewRequest:
+      type: object
+      description: >-
+        REF §A4's `quarantineReview` schema. `action` is a plain string for
+        the reason MessageStatusRequest's `status` is; `providerKey` is
+        required in practice for a release, but the 400 that says so is the
+        handler's, because it names the field.
+      required: [action]
+      properties:
+        action:
+          type: string
+          description: "`dismiss` or `release`."
+        providerKey:
+          type: string
+          description: >-
+            The provider to release into. Trimmed, lower-cased, 1..40.
+            Required for a release, ignored for a dismissal.
+    QuarantineReviewResult:
+      type: object
+      description: >-
+        The outcome of one review. `releasedMessage` is the stored copy for a
+        release and null for a dismissal — present and null, never missing.
+      required: [reviewedAt, releasedMessage]
+      properties:
+        reviewedAt:
+          type: string
+          format: date-time
+        releasedMessage:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/InboxMessage"

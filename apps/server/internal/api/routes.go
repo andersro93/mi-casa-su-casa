@@ -94,6 +94,19 @@ var operationAuthTiers = map[string]authTier{
 	"RevokeOtherSessions":    tierSession,
 	"RevokeSession":          tierSession,
 
+	// Inbox (REF §A2, "Inbox — member of :slug"). The tiers are NOT uniform
+	// here, and the split is the point: reading mail is scoped per provider,
+	// so the three message routes are tierHousehold and check provider access
+	// INSIDE the handler (an owner sees everything; a member only what they
+	// were granted). Quarantine is tierOwner because a quarantined message is
+	// by definition one nobody has yet decided who may read — there is no
+	// provider to scope it by, so it cannot be shown to a member at all.
+	"ListInboxProviders":      tierHousehold,
+	"ListProviderMessages":    tierHousehold,
+	"UpdateMessageStatus":     tierHousehold,
+	"ListQuarantine":          tierOwner,
+	"ReviewQuarantineMessage": tierOwner,
+
 	// Admin (REF §A2, "Admin — owner of :slug"). Every one of them, without
 	// exception: the TypeScript mounted requireHouseholdContext and
 	// requireOwner on `/:slug/*` for the whole admin router, so "owner" was a

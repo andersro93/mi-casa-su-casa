@@ -46,7 +46,7 @@ var leadingAts = regexp.MustCompile(`^@+`)
 // ListProviderConfigurations answers the provider settings screen: every
 // provider with its rule count, and every rule.
 func (s server) ListProviderConfigurations(ctx context.Context, _ gen.ListProviderConfigurationsRequestObject) (gen.ListProviderConfigurationsResponseObject, error) {
-	_, household, ok := s.adminContext(ctx)
+	_, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.ListProviderConfigurations403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -68,7 +68,7 @@ func (s server) ListProviderConfigurations(ctx context.Context, _ gen.ListProvid
 
 // CreateProvider adds a provider.
 func (s server) CreateProvider(ctx context.Context, request gen.CreateProviderRequestObject) (gen.CreateProviderResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.CreateProvider403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -102,7 +102,7 @@ func (s server) CreateProvider(ctx context.Context, request gen.CreateProviderRe
 
 // UpdateProvider renames a provider or changes its key.
 func (s server) UpdateProvider(ctx context.Context, request gen.UpdateProviderRequestObject) (gen.UpdateProviderResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.UpdateProvider403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -151,7 +151,7 @@ func (s server) UpdateProvider(ctx context.Context, request gen.UpdateProviderRe
 // carry verification codes, and leaving them readable after the mailbox they
 // belonged to was deleted would be the opposite of what the owner asked for.
 func (s server) DeleteProvider(ctx context.Context, request gen.DeleteProviderRequestObject) (gen.DeleteProviderResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.DeleteProvider403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -174,7 +174,7 @@ func (s server) DeleteProvider(ctx context.Context, request gen.DeleteProviderRe
 
 // CreateSenderRule points an address or a domain at a provider.
 func (s server) CreateSenderRule(ctx context.Context, request gen.CreateSenderRuleRequestObject) (gen.CreateSenderRuleResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.CreateSenderRule403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -214,7 +214,7 @@ func (s server) CreateSenderRule(ctx context.Context, request gen.CreateSenderRu
 
 // UpdateSenderRule repoints a rule or changes what it matches.
 func (s server) UpdateSenderRule(ctx context.Context, request gen.UpdateSenderRuleRequestObject) (gen.UpdateSenderRuleResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.UpdateSenderRule403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -261,7 +261,7 @@ func (s server) UpdateSenderRule(ctx context.Context, request gen.UpdateSenderRu
 // DeleteSenderRule removes a rule. Messages already filed under its provider
 // stay: the rule decided where new mail goes, not who owns what arrived.
 func (s server) DeleteSenderRule(ctx context.Context, request gen.DeleteSenderRuleRequestObject) (gen.DeleteSenderRuleResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.DeleteSenderRule403JSONResponse(errorBody("Forbidden")), nil
 	}
