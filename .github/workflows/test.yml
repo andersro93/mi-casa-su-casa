@@ -1,9 +1,10 @@
 name: Tests
 
 # The single definition of "the Go suite is green": lint/typecheck, the
-# frontend/unit test suite, and Go vet + tests against a real Postgres.
-# Reusable — called by ci-go.yml on every pull request, so the quality gate
-# is defined once.
+# release config lint, the frontend/unit test suite, and Go vet + tests
+# against a real Postgres. Reusable — called by ci-go.yml (every pull
+# request) and release.yml (every push to main), so the quality gate is
+# defined once and cannot drift between the two.
 
 on:
   workflow_call:
@@ -43,11 +44,13 @@ jobs:
       # apps/server/internal/api/spec_sync_test.go runs oapi-codegen from
       # PATH to guard against generated-code drift and never skips, and
       # sqlc is installed so a future sqlc drift test can do the same.
-      # cache: true lets mise-action cache these Go-built tools instead of
-      # recompiling them on every run.
+      # goreleaser is here for the config lint below — the release
+      # pipeline's own config, checked on every PR rather than at release
+      # time. cache: true lets mise-action cache these Go-built tools
+      # instead of recompiling them on every run.
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          install_args: "go bun node go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen go:github.com/sqlc-dev/sqlc/cmd/sqlc"
+          install_args: "go bun node go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen go:github.com/sqlc-dev/sqlc/cmd/sqlc aqua:goreleaser/goreleaser"
           cache: true
 
       # mise does not cache Go modules; do it directly, keyed on the module
@@ -65,6 +68,12 @@ jobs:
 
       - name: Lint + typecheck
         run: bun run check
+
+      # The release pipeline's config is code too — a broken .goreleaser.yaml
+      # should fail here, not halfway through a release that has already
+      # pushed a tag.
+      - name: GoReleaser config check
+        run: goreleaser check
 
       - name: Frontend tests
         run: bun run test

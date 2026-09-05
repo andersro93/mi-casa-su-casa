@@ -1,0 +1,6 @@
+# The image is COPY-only (see Dockerfile): everything is built natively by
+# scripts/build-artifacts.sh first. So the build context is an allowlist —
+# ignore the whole tree, then admit the one thing the Dockerfile COPYs.
+# This also keeps secrets (.dev.vars and friends) structurally out of reach.
+*
+!dist/server

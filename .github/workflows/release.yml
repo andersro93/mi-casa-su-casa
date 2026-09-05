@@ -1,0 +1,269 @@
+name: Release
+
+# Merging IS releasing: every push to main with releasable commits
+# (feat/fix/perf/breaking since the last tag) tags and publishes
+# automatically. The PR review that approved the merge is the approval
+# gate. Docs/chore/ci-only merges end green without releasing.
+#
+# The manual dispatch remains for exactly two things:
+#   - dry_run: the full pipeline as a snapshot, nothing pushed/tagged/signed
+#   - allow_major: permit 1.0.0 — reaching a new major stays a deliberate
+#     human act, never a side effect of merging
+#
+# The version is NOT typed in by hand. svu computes it from Conventional
+# Commits since the last v* tag, which is why CLAUDE.md mandates the commit
+# format — the changelog (GoReleaser) and the version number (svu) are both
+# downstream of it.
+#
+# This workflow TAGS, then GoReleaser BUILDS AND PUBLISHES everything from
+# the tag: binaries, archives, checksums, SBOMs, cosign signatures, the
+# multi-arch image, and the GitHub Release with changelog. The tag comes
+# FIRST because GoReleaser releases from a tag; a failed publish deletes it
+# again, so a tag never points at a release that does not exist.
+#
+# It does not roll out: where the container runs is deployment
+# infrastructure this repo does not own. Rolling out means, in order:
+#
+#   1. `/app/mi-casa migrate` as a one-off (Job / initContainer / compose
+#      `migrate` service). Before the new image serves traffic: migrations
+#      are append-only, so old code running briefly against a newer schema
+#      is safe, whereas new code against an older schema is not.
+#   2. Point the deployment at the new tag and let the rollout proceed.
+#      /readyz gates each replica; SIGTERM drains it.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compute and build, but do not push or tag"
+        type: boolean
+        default: true
+      allow_major:
+        description: "Permit a 1.0.0 release (breaking changes bump minor while the major is 0)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Rapid merges serialize: the second run computes its version from the tag
+# the first one just created.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      releasable: ${{ steps.v.outputs.releasable }}
+      # "true" only for a real publish: a push with releasable commits, or a
+      # non-dry dispatch. Downstream jobs key off these two rather than
+      # re-deriving event logic.
+      publish: ${{ steps.mode.outputs.publish }}
+      dry: ${{ steps.mode.outputs.dry }}
+    steps:
+      # Tags and full history are the inputs to the calculation.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "aqua:caarlos0/svu"
+
+      # svu reads Conventional Commits since the last v* tag. --v0 keeps
+      # breaking changes bumping the minor while the major is 0; the
+      # allow_major input drops it to permit 1.0.0.
+      - name: Compute version
+        id: v
+        run: |
+          current=$(svu current)
+          if [ "${{ inputs.allow_major }}" = "true" ]; then
+            tag=$(svu next)
+          else
+            tag=$(svu next --v0)
+          fi
+          version="${tag#v}"
+          releasable=true
+          if [ "$tag" = "$current" ]; then releasable=false; fi
+          {
+            echo "tag=$tag"; echo "version=$version"; echo "releasable=$releasable"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Version"
+            echo "- current: \`$current\`"
+            echo "- next:    \`$tag\` (releasable: $releasable)"
+          } | tee "$GITHUB_STEP_SUMMARY"
+
+      # On a push, an unreleasable merge (docs/chore/ci only) is a normal,
+      # green outcome — the app did not change, so nothing ships and the
+      # later jobs are skipped. On a manual dispatch it is a refusal instead:
+      # a human pressing the button expects a release to exist.
+      - name: Decide what this run does
+        id: mode
+        run: |
+          dry=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            dry=true
+          fi
+          publish=false
+          if [ "${{ steps.v.outputs.releasable }}" = "true" ] && [ "$dry" = "false" ]; then
+            publish=true
+          fi
+          echo "dry=$dry" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          if [ "$publish" = "false" ] && [ "$dry" = "false" ]; then
+            echo "Nothing releasable since ${{ steps.v.outputs.tag }} — skipping." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Refuse an empty manual release
+        if: github.event_name == 'workflow_dispatch' && steps.v.outputs.releasable != 'true' && steps.mode.outputs.dry != 'true'
+        run: |
+          echo "No feat/fix/perf/breaking commits since the last tag — nothing to release."
+          exit 1
+
+  # The merge commit is not the PR head the PR's CI tested, so the suite
+  # runs once more on exactly what ships. Skipped entirely for unreleasable
+  # merges — nothing would ship anyway.
+  verify:
+    needs: version
+    if: needs.version.outputs.publish == 'true' || needs.version.outputs.dry == 'true'
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
+  publish:
+    needs: [version, verify]
+    if: needs.version.outputs.publish == 'true' || needs.version.outputs.dry == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      # The artifact this job publishes is the container image. There is no
+      # hosted deployment this repo owns, so the honest default is the
+      # package page the image lands on; set the PRODUCTION_URL repository
+      # variable to point at a real instance instead.
+      url: ${{ vars.PRODUCTION_URL || format('https://github.com/{0}/pkgs/container/mi-casa-su-casa', github.repository) }}
+    permissions:
+      contents: write   # the git tag + the GitHub Release
+      packages: write   # ghcr.io
+      id-token: write   # keyless cosign signing (GitHub OIDC)
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "go bun node aqua:goreleaser/goreleaser aqua:sigstore/cosign aqua:anchore/syft"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('apps/server/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      # GoReleaser's before hook builds the SPA; that needs node_modules.
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # dockers_v2 builds both platforms with an SBOM attestation in one
+      # buildx run — that needs the docker-container driver, which this
+      # action creates and selects (the runner's default "docker" driver
+      # supports neither attestations nor multi-platform pushes).
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Log in to the container registry
+        if: needs.version.outputs.publish == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Dry run: the full pipeline (binaries, archives, SBOMs, image build)
+      # with nothing pushed, tagged or signed.
+      - name: GoReleaser (snapshot)
+        if: needs.version.outputs.dry == 'true'
+        run: |
+          trap 'bash scripts/restore-embed-overlay.sh' EXIT
+          goreleaser release --snapshot --clean --skip=sign
+
+      # GoReleaser auto-skips signing in snapshot mode, which is exactly how
+      # a cosign flag incompatibility once reached a real release. Exercise
+      # the same sign + verify invocations against a throwaway blob so the
+      # dry run proves them too (OIDC is available here; nothing uploads).
+      - name: Cosign flags smoke
+        if: needs.version.outputs.dry == 'true'
+        run: |
+          echo smoke > /tmp/cosign-smoke.txt
+          cosign sign-blob --yes --bundle=/tmp/cosign-smoke.sigstore.json /tmp/cosign-smoke.txt
+          cosign verify-blob \
+            --bundle /tmp/cosign-smoke.sigstore.json \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@.*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            /tmp/cosign-smoke.txt
+
+      # The real thing. GoReleaser releases FROM a tag, so the tag is
+      # created first — and deleted again below if anything after it fails,
+      # preserving the "never a tag without a release" property.
+      - name: Tag the release
+        if: needs.version.outputs.publish == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ needs.version.outputs.tag }}" -m "${{ needs.version.outputs.tag }}"
+          git push origin "${{ needs.version.outputs.tag }}"
+
+      - name: GoReleaser (publish)
+        id: goreleaser
+        if: needs.version.outputs.publish == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          trap 'bash scripts/restore-embed-overlay.sh' EXIT
+          goreleaser release --clean
+
+      # The tag exists from the step above the publish; if the publish did
+      # not finish, it must not survive — "never a tag without a release".
+      #
+      # `failure()` alone is not enough: a run cancelled between the tag push
+      # and the end of GoReleaser (a timeout, someone pressing Cancel, a
+      # superseded queue entry) leaves the tag behind, because a cancelled
+      # job is not a failed one. Keying on the publish step's own outcome
+      # covers failure, cancellation and "never started" alike — and
+      # `always()` is what lets this step run at all in a cancelled job.
+      #
+      # Both deletions are idempotent (`|| true`): there is usually no
+      # GitHub Release to delete, and on a re-run there may be no tag either.
+      - name: Delete the tag on failure
+        if: always() && needs.version.outputs.publish == 'true' && steps.goreleaser.outcome != 'success'
+        run: |
+          gh release delete "${{ needs.version.outputs.tag }}" --yes || true
+          git push --delete origin "${{ needs.version.outputs.tag }}" || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          {
+            if [ "${{ needs.version.outputs.dry }}" = "true" ]; then
+              echo "### Dry run — nothing pushed, nothing tagged"
+            else
+              echo "### Released ${{ needs.version.outputs.tag }}"
+            fi
+            echo
+            echo "- version: \`${{ needs.version.outputs.version }}\`"
+            echo "- image:   \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}\` (amd64+arm64, cosign-signed)"
+            echo "- release: binaries, checksums, SBOMs and signatures on the GitHub Release"
+          } >> "$GITHUB_STEP_SUMMARY"

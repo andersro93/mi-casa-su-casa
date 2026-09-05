@@ -1,0 +1,143 @@
+# Mi Casa Su Casa, self-hosted, from the published image:
+#
+#   APP_URL=https://casa.example.com \
+#   EMAIL_DOMAIN=casa.example.com \
+#   OWNER_EMAIL=you@example.com \
+#   AUTH_SECRET=$(openssl rand -hex 32) \
+#   SETUP_SECRET=$(openssl rand -hex 16) \
+#   MAILGUN_WEBHOOK_SIGNING_KEY=... \
+#   SMTP_URL=smtps://user:pass@smtp.example.com:465 \
+#   OUTBOUND_EMAIL_FROM=no-reply@casa.example.com \
+#     docker compose -f docker-compose.selfhost.yml up -d
+#
+# In practice you want those in a .env file next to this one rather than on
+# the command line — every variable below reads from the environment, and
+# `docker compose` loads .env automatically.
+#
+# Nothing to clone and nothing to build: this pulls
+# ghcr.io/andersro93/mi-casa-su-casa. Contributors want docker-compose.yml
+# instead, which builds from source; the two files are deliberately separate
+# so a self-hoster never needs the repo.
+#
+# What runs: Postgres for the data, and the app in its default mode — it
+# migrates itself under a Postgres advisory lock at startup, then serves with
+# its in-process scheduler running (the nightly retention pass). A single
+# container has no orchestrator to drive migrations or cron separately, so the
+# default mode does both itself.
+#
+# Two containers, no object store and no app volume: everything the app keeps
+# — households, inbound mail, attachments — lives in Postgres.
+#
+# Pin the tag. `latest` moves on every merge to main; `MI_CASA_TAG=1` follows
+# the major, `1.4` the minor, and `1.4.2` nothing at all. See the README's
+# "Self-hosting" section for the pinning ladder and `cosign verify`.
+#
+# BACK UP THE db-data VOLUME. It is the entire application state — there is
+# no second copy anywhere. A backup written to the same host as the database
+# is not a backup.
+#
+#   docker compose -f docker-compose.selfhost.yml exec -T db \
+#     pg_dump -U micasa micasa | gzip > micasa-$(date +%F).sql.gz
+
+name: mi-casa-su-casa
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: micasa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-micasa}
+      POSTGRES_DB: micasa
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # -d as well as -U: without the database name pg_isready reports ready
+      # while the init scripts are still creating it, and the app's startup
+      # migration then fails on a database that does not exist yet.
+      test: ["CMD-SHELL", "pg_isready -U micasa -d micasa"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    image: ghcr.io/andersro93/mi-casa-su-casa:${MI_CASA_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Bind this to 127.0.0.1 (`127.0.0.1:${PORT:-3000}:3000`) if a reverse
+      # proxy on the same host terminates TLS in front of it — the app speaks
+      # plain HTTP and has no business on a public interface directly.
+      - "${PORT:-3000}:3000"
+    environment:
+      # The database. Only change this if you point at a Postgres of your own
+      # instead of the `db` service above — in which case delete that service
+      # and the volume with it.
+      DATABASE_URL: postgres://micasa:${POSTGRES_PASSWORD:-micasa}@db:5432/micasa
+
+      # The public origin people type. Behind a reverse proxy with TLS this is
+      # your https:// address, not localhost — sessions are signed and links
+      # in outbound mail are built from it, and the config loader REFUSES a
+      # non-https value here unless ENVIRONMENT is development or test. A
+      # wrong value breaks sign-in in ways that look like anything except a
+      # configuration error.
+      APP_URL: "${APP_URL:?the public https:// origin, e.g. https://casa.example.com}"
+
+      # Signs sessions. At least 32 characters; generate one with
+      # `openssl rand -hex 32`. Changing it signs everyone out.
+      AUTH_SECRET: "${AUTH_SECRET:?generate one with: openssl rand -hex 32}"
+
+      # The one-time secret /setup asks for on first run, so a freshly
+      # exposed instance cannot be claimed by whoever finds it first. Any
+      # strong passphrase; it is used once.
+      SETUP_SECRET: "${SETUP_SECRET:?any strong passphrase — /setup asks for it once}"
+
+      # The address of the first account, created by that same /setup run.
+      OWNER_EMAIL: "${OWNER_EMAIL:?the email address of the first owner account}"
+
+      # The domain households receive mail on: each household gets
+      # <slug>@EMAIL_DOMAIN. Point its MX records at Mailgun and add a
+      # Mailgun route matching `match_recipient(".*@EMAIL_DOMAIN")` that
+      # forwards to https://<APP_URL>/api/inbound/mailgun/mime — see the
+      # README's "Self-hosting" section and docs/email-routing.md.
+      EMAIL_DOMAIN: "${EMAIL_DOMAIN:?the domain household inboxes live on, e.g. casa.example.com}"
+
+      # Mailgun's HTTP webhook signing key (Dashboard → Sending → Webhooks →
+      # "HTTP webhook signing key" — NOT the API key). Every inbound POST is
+      # verified against it; without the right key the app answers 401 and
+      # your mail silently goes nowhere.
+      MAILGUN_WEBHOOK_SIGNING_KEY: "${MAILGUN_WEBHOOK_SIGNING_KEY:?Mailgun's HTTP webhook signing key}"
+
+      # The relay outbound mail (invitations, password resets) is sent
+      # through. `smtps://` connects with TLS on 465; `smtp://` upgrades with
+      # STARTTLS, usually on 587. URL-encode the password if it contains
+      # @ : / or #.
+      SMTP_URL: "${SMTP_URL:?e.g. smtps://user:pass@smtp.example.com:465}"
+
+      # The From address on that mail. Must be an address your relay is
+      # allowed to send as, or it will be rejected or spam-filed.
+      OUTBOUND_EMAIL_FROM: "${OUTBOUND_EMAIL_FROM:?e.g. no-reply@casa.example.com}"
+
+      # How many reverse proxies sit in front. 0 means the app trusts the
+      # socket's peer address and IGNORES X-Forwarded-For (by design — it is
+      # caller-supplied), which behind a proxy buckets every client together
+      # for rate limiting. One nginx/Caddy/Traefik in front: 1. Cloudflare in
+      # front of that one: 2. Count wrong and you either rate-limit everyone
+      # as one caller or let a caller spoof their address.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+
+      # Optional. The display name in the UI and in outbound mail.
+      APP_NAME: ${APP_NAME:-Mi Casa Su Casa}
+
+      # Optional. `production` (the default) is what you want; `development`
+      # and `test` relax the https requirement on APP_URL and are for a
+      # laptop, never for a deployment.
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+
+      # Optional. `debug` when you are chasing something, `info` otherwise.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+volumes:
+  db-data:
