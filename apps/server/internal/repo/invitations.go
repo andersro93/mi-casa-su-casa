@@ -217,17 +217,21 @@ func (r *Repo) AcceptInvitation(ctx context.Context, in AcceptInvitationInput) e
 	})
 }
 
-// RefreshExpiredInvitations flips pending invitations past their expiry.
-// householdID nil sweeps every household (the nightly job); a value scopes it
-// to one (the admin screen, before it lists).
-func (r *Repo) RefreshExpiredInvitations(ctx context.Context, now time.Time, householdID *string) error {
-	if err := r.q.RefreshExpiredInvitations(ctx, gen.RefreshExpiredInvitationsParams{
+// RefreshExpiredInvitations flips pending invitations past their expiry and
+// returns how many it flipped. householdID nil sweeps every household (the
+// nightly job); a value scopes it to one (the admin screen, before it lists).
+//
+// The count exists for the job, which reports what a run did; the admin
+// screens ignore it and only care that the sweep ran before they read.
+func (r *Repo) RefreshExpiredInvitations(ctx context.Context, now time.Time, householdID *string) (int, error) {
+	expired, err := r.q.RefreshExpiredInvitations(ctx, gen.RefreshExpiredInvitationsParams{
 		Now:         ts(now.UTC()),
 		HouseholdID: householdID,
-	}); err != nil {
-		return fmt.Errorf("repo: refresh expired invitations: %w", err)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("repo: refresh expired invitations: %w", err)
 	}
-	return nil
+	return int(expired), nil
 }
 
 // IsInvitationExpired reports whether the invitation's expiry has passed.

@@ -13,6 +13,7 @@ require (
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pquerna/otp v1.4.0
 	github.com/pressly/goose/v3 v3.28.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/thecodearcher/limen v0.2.1
 	github.com/thecodearcher/limen/adapters/sql v0.2.0
 	github.com/thecodearcher/limen/plugins/credential-password v0.2.0

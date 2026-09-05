@@ -17,8 +17,9 @@
 //	healthcheck            probe /healthz on this pod, exit 0/1
 //	anything else          complain, exit 2
 //
-// The scheduler itself arrives in P7; until then the `cron` and `worker`
-// modes exist so the deployment contract is fixed, but neither runs a job.
+// The scheduler (internal/cron) runs in the default and `worker` modes only,
+// never in `server`: it fires once per process, so every HTTP replica having
+// one would run the nightly purge once per replica.
 package main
 
 import (
@@ -30,6 +31,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,8 +45,10 @@ import (
 	"github.com/andersro93/mi-casa-su-casa/server/internal/api/respond"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/auth"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/config"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/cron"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/db"
 	dbgen "github.com/andersro93/mi-casa-su-casa/server/internal/db/gen"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/jobs"
 	applog "github.com/andersro93/mi-casa-su-casa/server/internal/log"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/mail"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/ratelimit"
@@ -241,16 +245,55 @@ func migrateMode() int {
 
 // --- cron -------------------------------------------------------------
 
-// cronMode will run exactly one job and exit with a status a scheduler can
-// act on — a failed retention pass should show up as a failed job, not as a
-// line in a log nobody reads. The jobs themselves land in P7; until then
-// every invocation is a usage error, because exiting 0 having done nothing
-// is the one answer a scheduler must never get. The job name is accepted
-// and ignored for now so the signature (and the dispatch table above it)
-// does not change when the jobs land.
-func cronMode(_ string) int {
-	fmt.Fprintln(os.Stderr, "usage: mi-casa cron <retention>")
-	return 2
+// cronMode runs exactly one job and exits with a status a scheduler can act
+// on — a failed retention pass should show up as a failed job, not as a line
+// in a log nobody reads.
+//
+// An unknown (or missing) job name is a usage error and exit 2, checked
+// BEFORE any dependency is built: exiting 0 having done nothing is the one
+// answer a scheduler must never get, and a typo should fail the same way
+// whether or not the database happens to be reachable.
+//
+// No signal handling and no scheduler: this process exists to run one job
+// and leave. The context is Background for the reason migrateMode
+// documents — a SIGTERM mid-purge should not abort a batch halfway.
+func cronMode(job string) int {
+	if !cron.IsJob(job) {
+		fmt.Fprintf(os.Stderr, "usage: mi-casa cron <%s>\n", strings.Join(cron.Jobs, "|"))
+		return 2
+	}
+
+	cfg, err := config.FromOS()
+	if err != nil {
+		log.Printf("configuration error: %v", err)
+		return 1
+	}
+
+	deps, closeDeps, err := buildDeps(context.Background(), cfg)
+	if err != nil {
+		log.Printf("startup failed: %v", err)
+		return 1
+	}
+	defer closeDeps()
+
+	if err := cron.RunJob(context.Background(), job, jobDeps(deps)); err != nil {
+		log.Printf("cron %s failed: %v", job, err)
+		return 1
+	}
+	return 0
+}
+
+// jobDeps narrows the composed api.Deps to what the scheduled work needs.
+// One builder for both (buildDeps) rather than a second construction path,
+// so a job can never behave subtly differently from the same work done
+// in-process.
+func jobDeps(deps api.Deps) jobs.Deps {
+	return jobs.Deps{
+		Repo:      deps.Repo,
+		Q:         deps.Q,
+		RateLimit: deps.RateLimit,
+		Now:       deps.Now,
+	}
 }
 
 // --- serve ------------------------------------------------------------
@@ -301,24 +344,38 @@ func serveMode(migrate, scheduler bool) int {
 
 	log.Printf("mi-casa listening on http://0.0.0.0:%d", cfg.Port)
 	logStartupConfig(cfg)
+
+	// Started AFTER the listener is announced and only when this mode owns
+	// the scheduling: a `server` replica must never schedule (see run's
+	// modeServer branch), and starting it here rather than before the
+	// listener means a boot that fails to bind never leaves a timer behind.
+	stopScheduler := func() {}
 	if scheduler {
-		// P7 replaces this line with the in-process scheduler. It is logged
-		// rather than silently skipped so a single-container deployment
-		// does not look like it is running retention when it is not.
-		log.Print("  scheduler: not yet implemented (arrives in P7)")
+		stopScheduler = cron.StartScheduler(jobDeps(deps))
+		log.Printf("  scheduler: %s (UTC)", schedulerSummary())
 	}
 
-	return serveUntilSignal(sig, srv)
+	return serveUntilSignal(sig, srv, stopScheduler)
+}
+
+// schedulerSummary is the boot line's "what is scheduled" half — every job
+// and its expression, so an operator can tell from the log alone whether
+// this process is the one running the nightly purge.
+func schedulerSummary() string {
+	entries := make([]string, 0, len(cron.Jobs))
+	for _, job := range cron.Jobs {
+		entries = append(entries, fmt.Sprintf("%s at %q", job, cron.Schedules[job]))
+	}
+	return strings.Join(entries, ", ")
 }
 
 // --- worker -----------------------------------------------------------
 
-// workerMode will run ONLY the scheduler, for a deployment that scales the
-// HTTP tier (`server` mode) horizontally but still wants one long-running
-// process owning the cron-shaped work. Exactly one `worker` replica should
-// run at a time. The scheduler arrives in P7; until then this mode boots
-// its dependencies and serves nothing but the probe, which is enough to
-// pin the deployment shape.
+// workerMode runs ONLY the scheduler, for a deployment that scales the HTTP
+// tier (`server` mode) horizontally but still wants one long-running process
+// owning the cron-shaped work. Exactly one `worker` replica should run at a
+// time: the scheduler fires once per process, so two of them would run every
+// night'"'"'s purge twice.
 //
 // The bare /healthz on PORT is not optional: the image's HEALTHCHECK probes
 // /healthz regardless of mode, so without it a `worker` container would
@@ -337,11 +394,11 @@ func workerMode() int {
 	sig, stopSignals := notifyShutdown()
 	defer stopSignals()
 
-	// The dependencies are built and discarded: P7's scheduler is what will
-	// use them. Building them anyway keeps a worker that cannot reach the
-	// database from booting into a healthy-looking process that does
-	// nothing — the same boot-time failure the serving modes get.
-	_, closeDeps, err := buildDeps(context.Background(), cfg)
+	// Built through the same composition root the serving modes use, so the
+	// job cannot behave differently here than it does in-process — and so a
+	// worker that cannot reach the database fails at boot instead of coming
+	// up healthy and doing nothing.
+	deps, closeDeps, err := buildDeps(context.Background(), cfg)
 	if err != nil {
 		log.Printf("startup failed: %v", err)
 		return 1
@@ -355,11 +412,13 @@ func workerMode() int {
 		IdleTimeout:       idleTimeout,
 	}
 
+	stopScheduler := cron.StartScheduler(jobDeps(deps))
+
 	log.Printf("mi-casa worker: healthz on http://0.0.0.0:%d", cfg.Port)
-	log.Print("  scheduler: not yet implemented (arrives in P7)")
+	log.Printf("  scheduler: %s (UTC)", schedulerSummary())
 	logStartupConfig(cfg)
 
-	return serveUntilSignal(sig, srv)
+	return serveUntilSignal(sig, srv, stopScheduler)
 }
 
 // workerHandler is the worker's entire HTTP surface: liveness and nothing
@@ -433,8 +492,14 @@ func signalName(s os.Signal) string {
 }
 
 // serveUntilSignal runs srv until it fails or a shutdown signal arrives on
-// sig, then drains in-flight requests.
-func serveUntilSignal(sig <-chan os.Signal, srv *http.Server) int {
+// sig, then stops the scheduler and drains in-flight requests.
+//
+// stopScheduler runs BEFORE the HTTP drain, and runs on either exit path.
+// Order matters: stopping the scheduler first means no new job starts while
+// the server is draining, and the scheduler'"'"'s own grace period (bounded, see
+// internal/cron) overlaps nothing rather than eating into the drain window.
+// Pass a no-op for a mode that schedules nothing.
+func serveUntilSignal(sig <-chan os.Signal, srv *http.Server, stopScheduler func()) int {
 	errc := make(chan error, 1)
 	go func() {
 		errc <- srv.ListenAndServe()
@@ -442,6 +507,7 @@ func serveUntilSignal(sig <-chan os.Signal, srv *http.Server) int {
 
 	select {
 	case err := <-errc:
+		stopScheduler()
 		// The listener died on its own — a port already in use, most
 		// likely. ErrServerClosed cannot reach here (nothing has called
 		// Shutdown yet), so any error is fatal.
@@ -453,6 +519,7 @@ func serveUntilSignal(sig <-chan os.Signal, srv *http.Server) int {
 
 	case s := <-sig:
 		log.Printf("%s received, shutting down", signalName(s))
+		stopScheduler()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
