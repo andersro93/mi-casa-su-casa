@@ -49,9 +49,11 @@ goreleaser release --snapshot --clean --skip=sign
 """
 
 [tasks.e2e]
-description = "Playwright E2E against the real image (builds it if missing)"
+description = "Playwright E2E against the real image, with Mailpit (builds it if missing)"
 run = """
 trap 'bash scripts/e2e-stack.sh down' EXIT
 bash scripts/e2e-stack.sh up
-cd e2e && bunx playwright test
+# In a subshell: the trap above runs in this shell's working directory, and a
+# bare `cd e2e` would leave it looking for scripts/ one level too deep.
+(cd e2e && bunx playwright test)
 """

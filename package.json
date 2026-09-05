@@ -55,7 +55,7 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
     "ci": "npm run check && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
@@ -84,6 +84,7 @@
     "@cloudflare/vite-plugin": "1.53.1",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "5.20260820.1",
+    "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.5",
@@ -94,6 +95,7 @@
     "concurrently": "10.0.5",
     "drizzle-kit": "^0.31.10",
     "jsdom": "^30.0.1",
+    "otpauth": "9.5.2",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11",
