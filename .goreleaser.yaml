@@ -99,6 +99,17 @@ dockers_v2:
       - linux/arm64
     build_args:
       BINARY_ROOT: "."
+    # OCI annotations, and one of them earns its keep beyond documentation:
+    # image.source is what makes GHCR link the package to this repository
+    # (inheriting its visibility and README) instead of leaving an orphan
+    # package under the account. revision and version pin the pulled image
+    # back to a commit and a tag without a registry round trip — `docker
+    # inspect` answers "what am I running?" on a host with no clone.
+    labels:
+      org.opencontainers.image.source: "https://github.com/andersro93/mi-casa-su-casa"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.licenses: "MIT"
 
 # Keyless cosign signatures on the pushed images/manifests.
 docker_signs:

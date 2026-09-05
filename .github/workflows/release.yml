@@ -226,6 +226,7 @@ jobs:
           git push origin "${{ needs.version.outputs.tag }}"
 
       - name: GoReleaser (publish)
+        id: goreleaser
         if: needs.version.outputs.publish == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -233,8 +234,20 @@ jobs:
           trap 'bash scripts/restore-embed-overlay.sh' EXIT
           goreleaser release --clean
 
+      # The tag exists from the step above the publish; if the publish did
+      # not finish, it must not survive — "never a tag without a release".
+      #
+      # `failure()` alone is not enough: a run cancelled between the tag push
+      # and the end of GoReleaser (a timeout, someone pressing Cancel, a
+      # superseded queue entry) leaves the tag behind, because a cancelled
+      # job is not a failed one. Keying on the publish step's own outcome
+      # covers failure, cancellation and "never started" alike — and
+      # `always()` is what lets this step run at all in a cancelled job.
+      #
+      # Both deletions are idempotent (`|| true`): there is usually no
+      # GitHub Release to delete, and on a re-run there may be no tag either.
       - name: Delete the tag on failure
-        if: failure() && needs.version.outputs.publish == 'true'
+        if: always() && needs.version.outputs.publish == 'true' && steps.goreleaser.outcome != 'success'
         run: |
           gh release delete "${{ needs.version.outputs.tag }}" --yes || true
           git push --delete origin "${{ needs.version.outputs.tag }}" || true
