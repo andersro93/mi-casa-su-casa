@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/oapi-codegen/nethttp-middleware v1.2.0
+	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pquerna/otp v1.4.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/thecodearcher/limen v0.2.1
@@ -16,6 +17,7 @@ require (
 )
 
 require (
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect

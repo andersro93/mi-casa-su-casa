@@ -85,7 +85,209 @@ paths:
                     enum: [false]
                   error:
                     type: string
+  /api/setup/status:
+    get:
+      operationId: getSetupStatus
+      summary: >-
+        First-run state. Public and deliberately says nothing about who the
+        owner is — the installation's contact address is not a secret worth
+        publishing, and a visitor only needs to know whether the setup screen
+        should open at all.
+      tags: [setup]
+      responses:
+        "200":
+          description: The installation's first-run state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatus"
+  /api/setup/complete:
+    post:
+      operationId: completeSetup
+      summary: >-
+        Claim the installation: create the owner account, their first
+        household, and lock setup. Rate limited (5 per 15 minutes) because the
+        body carries SETUP_SECRET.
+      tags: [setup]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "201":
+          description: >-
+            Setup completed. The response also carries the owner's session
+            cookie, so the SPA lands signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Refused. See the envelope's `error` for which check failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The request conflicts with the installation's current state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited. `Retry-After` says when to come back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: The request could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/invitations/lookup:
+    get:
+      operationId: lookupInvitation
+      summary: >-
+        What an invitation link points at, for the invite page. Public and rate
+        limited (20 per 10 minutes): together with accept, this is the one
+        unauthenticated path that reveals whether a token exists.
+      tags: [invitations]
+      parameters:
+        - $ref: "#/components/parameters/InvitationToken"
+      responses:
+        "200":
+          description: The invitation, who sent it, and how the viewer relates to it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationLookup"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such invitation, or it is no longer valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: The invitation has expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited. `Retry-After` says when to come back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/invitations/accept:
+    post:
+      operationId: acceptInvitation
+      summary: >-
+        Accept an invitation, as the signed-in user or by creating the invited
+        account. Rate limited with the lookup above.
+      tags: [invitations]
+      parameters:
+        - $ref: "#/components/parameters/InvitationToken"
+      requestBody:
+        # Not required: a signed-in user accepts with the account they already
+        # have and sends no body at all. An anonymous caller must send both
+        # properties, which is a cross-field rule (it depends on the session)
+        # and so is checked in Go rather than here.
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInvitationRequest"
+      responses:
+        "200":
+          description: Accepted by the signed-in user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResult"
+        "201":
+          description: >-
+            The invited account was created and the invitation accepted. The
+            response also carries the new session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResult"
+        "400":
+          description: The request was rejected. See the envelope's `error` (and `fields`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Refused. See the envelope's `error` for which check failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such invitation, or it is no longer valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The request conflicts with the installation's current state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: The invitation has expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited. `Retry-After` says when to come back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: The request could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
+  parameters:
+    InvitationToken:
+      name: X-Invitation-Token
+      in: header
+      required: false
+      description: >-
+        The invitation token from the link. A header rather than a path or
+        query parameter so the secret never lands in a request log, a browser
+        history entry or a Referer. Declared optional so a missing token is
+        answered by the handler's own message ("Invitation token header is
+        required") rather than by a schema violation; it is mandatory in
+        practice.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
   schemas:
     Error:
       type: object
@@ -105,3 +307,231 @@ components:
             type: string
         code:
           type: string
+    SetupStatus:
+      type: object
+      description: >-
+        REF §A2's setup/status body. `isConfigured` is always true in the Go
+        server — internal/config requires OWNER_EMAIL and SETUP_SECRET at boot,
+        so a running process cannot be missing them — and stays in the payload
+        because the SPA reads it.
+      required: [needsSetup, setupLocked, isConfigured, status, emailDomain]
+      properties:
+        needsSetup:
+          type: boolean
+          description: Configured, and setup has not been completed yet.
+        setupLocked:
+          type: boolean
+          description: Setup is complete and this endpoint is the only thing left to say so.
+        isConfigured:
+          type: boolean
+        status:
+          type: string
+          enum: [pending, in_progress, complete]
+        emailDomain:
+          type: string
+          nullable: true
+          description: EMAIL_DOMAIN, so the client can preview "slug@domain" while naming a household.
+    SetupRequest:
+      type: object
+      description: >-
+        REF §A4's `setup` schema. The shape — which properties exist, which are
+        required, and that each is a string — is enforced here; the LENGTH and
+        FORMAT rules named in each description below are enforced in Go
+        (internal/api/setup.go's validateSetupBody) and deliberately not
+        repeated as `minLength`/`pattern`.
+
+        Two reasons. The values are trimmed and lower-cased before they are
+        checked, so a schema rule would be testing what was sent rather than
+        what is kept; and the messages the SPA renders next to each input are
+        REF §A4's exact wording, which a schema violation cannot produce.
+      required: [email, name, password, householdName, householdSlug, setupSecret]
+      properties:
+        email:
+          type: string
+          description: The owner's address. Trimmed and lower-cased, 3..254 characters, must look like an address.
+        name:
+          type: string
+          description: The owner's display name. Trimmed, 1..80 characters.
+        password:
+          type: string
+          description: 12..128 characters. Never trimmed — a space is a character the person chose.
+        householdName:
+          type: string
+          description: The first household's display name. Trimmed, 1..80 characters.
+        householdSlug:
+          type: string
+          description: The first household's slug. Trimmed, lower-cased, and subject to REF §A3's slug rules.
+        setupSecret:
+          type: string
+          description: SETUP_SECRET, compared in constant time. Non-empty.
+    AcceptInvitationRequest:
+      type: object
+      description: >-
+        REF §A4's `acceptInvitation` schema, with neither property required
+        here: whether they are depends on the session (see the operation's
+        requestBody comment), so the requirement, the lengths and the messages
+        are all enforced in Go — as they are for SetupRequest above, and for
+        the same two reasons.
+      properties:
+        name:
+          type: string
+          description: The invitee's display name. Trimmed, 1..80 characters. Required when nobody is signed in.
+        password:
+          type: string
+          description: 12..128 characters. Required when nobody is signed in.
+    Member:
+      type: object
+      description: The account that was just created or signed in, with its role in the household.
+      required: [id, email, name, role]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+    Household:
+      type: object
+      required: [id, slug, displayName, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        displayName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    MembershipResult:
+      type: object
+      description: >-
+        What both "you are now the owner" (setup) and "you are now a member"
+        (invitation accept) answer with.
+      required: [member, household]
+      properties:
+        member:
+          $ref: "#/components/schemas/Member"
+        household:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Household"
+    InvitationProvider:
+      type: object
+      description: >-
+        One provider an invitation is scoped to. snake_case keys inside a
+        camelCase parent, deliberately: it is what the TypeScript returned and
+        what the SPA reads.
+      required: [id, provider_key, display_name]
+      properties:
+        id:
+          type: string
+        provider_key:
+          type: string
+        display_name:
+          type: string
+    Invitation:
+      type: object
+      description: >-
+        One invitation record. The token itself never appears — only its
+        SHA-256 is stored, and the plaintext lives solely in the link.
+      required:
+        [
+          id,
+          householdId,
+          email,
+          name,
+          role,
+          status,
+          invitedByUserId,
+          acceptedByUserId,
+          expiresAt,
+          acceptedAt,
+          cancelledAt,
+          createdAt,
+          updatedAt,
+          providers,
+        ]
+      properties:
+        id:
+          type: string
+        householdId:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+        status:
+          type: string
+          enum: [pending, accepted, cancelled, expired]
+        invitedByUserId:
+          type: string
+        acceptedByUserId:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvitationProvider"
+    InvitationLookup:
+      type: object
+      description: >-
+        Everything the invite page needs to pick a flow: create an account,
+        sign in first, or accept as whoever is already signed in.
+      required: [invitation, household, invitedBy, accountExists, viewer]
+      properties:
+        invitation:
+          $ref: "#/components/schemas/Invitation"
+        household:
+          type: object
+          nullable: true
+          required: [displayName]
+          properties:
+            displayName:
+              type: string
+        invitedBy:
+          type: object
+          nullable: true
+          required: [name]
+          properties:
+            name:
+              type: string
+        accountExists:
+          type: boolean
+          description: An account already exists for the invited address.
+        viewer:
+          type: object
+          nullable: true
+          description: The signed-in caller, when there is one.
+          required: [email, emailMatches]
+          properties:
+            email:
+              type: string
+            emailMatches:
+              type: boolean

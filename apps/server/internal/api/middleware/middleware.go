@@ -93,6 +93,7 @@ const (
 	householdKey
 	clientKeyKey
 	requestIDKey
+	httpKey
 )
 
 // Session resolves the caller once and puts them in the request context.

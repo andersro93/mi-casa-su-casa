@@ -198,10 +198,10 @@ type Users struct {
 }
 
 type Verifications struct {
-	ID         string
-	Identifier string
-	Value      string
-	ExpiresAt  pgtype.Timestamptz
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+	ID        string
+	Subject   string
+	Value     string
+	ExpiresAt pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }

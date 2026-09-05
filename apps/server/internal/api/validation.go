@@ -13,6 +13,7 @@ import (
 	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
 
 	"github.com/andersro93/mi-casa-su-casa/server/internal/api/respond"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/auth"
 )
 
 // bodyRootField is the `fields` key for a problem with the request body as a
@@ -21,6 +22,14 @@ import (
 // the same key (its zod issues had an empty path), so the SPA already knows
 // to render it as a form-level message rather than next to an input.
 const bodyRootField = "_"
+
+// skipSpecValidation reports whether r bypasses request validation entirely.
+// One prefix today (see the Skipper below); it is a named function so the
+// exclusion set is one readable list rather than a condition inside an
+// options literal.
+func skipSpecValidation(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, auth.BasePath+"/")
+}
 
 // withSpecValidation checks every request against spec before it reaches
 // next, and turns each way that can fail into this project's error envelope:
@@ -40,6 +49,11 @@ const bodyRootField = "_"
 // server's routing table, so a path it does not describe does not exist.
 func withSpecValidation(spec *openapi3.T, next http.Handler) http.Handler {
 	validate := nethttpmiddleware.OapiRequestValidatorWithOptions(spec, &nethttpmiddleware.Options{
+		// Limen's routes are not in the spec and never will be: it owns its
+		// own request shapes, and without this the 404 below — "a path the
+		// spec does not describe does not exist" — would swallow every auth
+		// request before it reached the router mounted for them.
+		Skipper: skipSpecValidation,
 		Options: openapi3filter.Options{
 			// MultiError so a form with three bad inputs comes back with
 			// three messages instead of only the first, which is what makes
