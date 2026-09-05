@@ -406,7 +406,7 @@ func (q *Queries) MarkInvitationAccepted(ctx context.Context, arg MarkInvitation
 	return err
 }
 
-const refreshExpiredInvitations = `-- name: RefreshExpiredInvitations :exec
+const refreshExpiredInvitations = `-- name: RefreshExpiredInvitations :execrows
 UPDATE "household_invitations"
 SET "status" = 'expired',
     "updated_at" = now()
@@ -426,7 +426,14 @@ type RefreshExpiredInvitationsParams struct {
 //
 // household_id is optional: the invitations screen refreshes just its own
 // household before listing, while the nightly job sweeps them all.
-func (q *Queries) RefreshExpiredInvitations(ctx context.Context, arg RefreshExpiredInvitationsParams) error {
-	_, err := q.db.Exec(ctx, refreshExpiredInvitations, arg.Now, arg.HouseholdID)
-	return err
+//
+// :execrows rather than :exec because the retention job reports how many
+// invitations it expired (REF §A3's retention_completed sibling counts); the
+// admin screens ignore the number and only care that the sweep ran.
+func (q *Queries) RefreshExpiredInvitations(ctx context.Context, arg RefreshExpiredInvitationsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, refreshExpiredInvitations, arg.Now, arg.HouseholdID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

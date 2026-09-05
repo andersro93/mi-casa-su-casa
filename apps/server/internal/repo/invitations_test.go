@@ -288,7 +288,7 @@ func TestRefreshExpiredInvitations(t *testing.T) {
 	}
 
 	// Scoped to one household, only that household's invitations flip.
-	if err := r.RefreshExpiredInvitations(c, now, &casa.ID); err != nil {
+	if _, err := r.RefreshExpiredInvitations(c, now, &casa.ID); err != nil {
 		t.Fatalf("RefreshExpiredInvitations: %v", err)
 	}
 	if got := countRows(t, rig, "household_invitations", "status = 'expired'"); got != 1 {
@@ -307,7 +307,7 @@ func TestRefreshExpiredInvitations(t *testing.T) {
 	}
 
 	// Unscoped, every household's stale invitations flip.
-	if err := r.RefreshExpiredInvitations(c, now, nil); err != nil {
+	if _, err := r.RefreshExpiredInvitations(c, now, nil); err != nil {
 		t.Fatalf("RefreshExpiredInvitations (all households): %v", err)
 	}
 	if got := countRows(t, rig, "household_invitations", "status = 'expired'"); got != 2 {

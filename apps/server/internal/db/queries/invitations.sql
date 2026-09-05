@@ -144,13 +144,17 @@ INNER JOIN "household_memberships"
 WHERE "household_invitation_provider_access"."invitation_id" = sqlc.arg(invitation_id)
 ON CONFLICT ("household_membership_id", "provider_id") DO NOTHING;
 
--- name: RefreshExpiredInvitations :exec
+-- name: RefreshExpiredInvitations :execrows
 -- Flips pending invitations whose expiry has passed. The comparison is
 -- against a caller-supplied timestamp, not now(), so the retention job and
 -- the admin screens agree on one clock and a test can pin both sides.
 --
 -- household_id is optional: the invitations screen refreshes just its own
 -- household before listing, while the nightly job sweeps them all.
+--
+-- :execrows rather than :exec because the retention job reports how many
+-- invitations it expired (REF §A3's retention_completed sibling counts); the
+-- admin screens ignore the number and only care that the sweep ran.
 UPDATE "household_invitations"
 SET "status" = 'expired',
     "updated_at" = now()

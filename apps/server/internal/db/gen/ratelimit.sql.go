@@ -47,6 +47,25 @@ func (q *Queries) HitRateLimit(ctx context.Context, arg HitRateLimitParams) (int
 	return count, err
 }
 
+const sweepAuthRateLimits = `-- name: SweepAuthRateLimits :execrows
+DELETE FROM "rate_limits"
+WHERE "expires_at" < $1
+`
+
+// The same housekeeping for Limen's own "rate_limits" table. Limen creates
+// the rows and never prunes them (Cloudflare KV expired them by itself; a
+// Postgres table does not), so the retention job sweeps both tables in one
+// pass rather than leaving the auth limiter's counters to grow without
+// bound. The two tables stay separate — different owners, different keys —
+// but nobody else is going to clean this one up.
+func (q *Queries) SweepAuthRateLimits(ctx context.Context, expiresAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, sweepAuthRateLimits, expiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const sweepRateLimit = `-- name: SweepRateLimit :execrows
 DELETE FROM "rate_limit"
 WHERE "expires_at" < $1

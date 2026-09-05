@@ -35,7 +35,7 @@ func (s server) ListInvitations(ctx context.Context, _ gen.ListInvitationsReques
 		return gen.ListInvitations403JSONResponse(errorBody("Forbidden")), nil
 	}
 
-	if err := s.Repo.RefreshExpiredInvitations(ctx, s.Now(), &household.ID); err != nil {
+	if _, err := s.Repo.RefreshExpiredInvitations(ctx, s.Now(), &household.ID); err != nil {
 		return nil, err
 	}
 	invitations, err := s.Repo.ListInvitations(ctx, household.ID)
@@ -121,7 +121,7 @@ func (s server) ResendInvitation(ctx context.Context, request gen.ResendInvitati
 	// Expiring stale invitations first is what makes "not resendable" true of
 	// an invitation whose deadline has passed: the service only reissues a
 	// pending one.
-	if err := s.Repo.RefreshExpiredInvitations(ctx, s.Now(), &household.ID); err != nil {
+	if _, err := s.Repo.RefreshExpiredInvitations(ctx, s.Now(), &household.ID); err != nil {
 		return nil, err
 	}
 

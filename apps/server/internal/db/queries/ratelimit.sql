@@ -27,3 +27,13 @@ RETURNING "count";
 -- something to prune by. Returns how many rows went.
 DELETE FROM "rate_limit"
 WHERE "expires_at" < $1;
+
+-- name: SweepAuthRateLimits :execrows
+-- The same housekeeping for Limen's own "rate_limits" table. Limen creates
+-- the rows and never prunes them (Cloudflare KV expired them by itself; a
+-- Postgres table does not), so the retention job sweeps both tables in one
+-- pass rather than leaving the auth limiter's counters to grow without
+-- bound. The two tables stay separate — different owners, different keys —
+-- but nobody else is going to clean this one up.
+DELETE FROM "rate_limits"
+WHERE "expires_at" < $1;

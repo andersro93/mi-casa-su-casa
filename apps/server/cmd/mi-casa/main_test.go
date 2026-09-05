@@ -31,9 +31,13 @@ func TestParseArgs(t *testing.T) {
 		{"migrations is an alias for migrate", []string{"migrations"}, dispatch{mode: modeMigrate, raw: "migrations"}},
 		{"healthcheck", []string{"healthcheck"}, dispatch{mode: modeHealthcheck, raw: "healthcheck"}},
 
-		{"cron with a job", []string{"cron", "retention"}, dispatch{mode: modeCron, raw: "cron", job: "retention"}},
+		{"cron retention", []string{"cron", "retention"}, dispatch{mode: modeCron, raw: "cron", job: "retention"}},
 		{"cron with no job at all", []string{"cron"}, dispatch{mode: modeCron, raw: "cron"}},
-		{"cron with an unknown job stays cron", []string{"cron", "hourly"}, dispatch{mode: modeCron, raw: "cron", job: "hourly"}},
+		// An unknown job stays `cron`: parseArgs does not know which jobs
+		// exist (internal/cron does), and cronMode is where the name is
+		// checked — so a bogus name reaches a usage error rather than the
+		// generic unknown-mode one, which would name the wrong thing.
+		{"cron bogus", []string{"cron", "bogus"}, dispatch{mode: modeCron, raw: "cron", job: "bogus"}},
 
 		{"a typo is not the server", []string{"migrationz"}, dispatch{mode: modeUnknown, raw: "migrationz"}},
 		{"case matters", []string{"Server"}, dispatch{mode: modeUnknown, raw: "Server"}},
@@ -49,15 +53,30 @@ func TestParseArgs(t *testing.T) {
 	}
 }
 
-// No job exists until P7, so every `cron` invocation prints usage and exits
-// 2. It must do so before building anything, which is what lets this test
-// run with no database in sight — a cronMode that constructed deps first
-// would fail here on a missing DATABASE_URL instead of returning 2.
-func TestCronModeIsUsageOnlyUntilTheSchedulerLands(t *testing.T) {
-	for _, job := range []string{"", "retention", "Retention", "nonsense"} {
+// A name that is not a job prints usage and exits 2, and does so BEFORE
+// building anything — which is what lets this test run with no database in
+// sight. A cronMode that constructed deps first would fail here on a missing
+// DATABASE_URL and return 1, turning "you typed the job name wrong" into
+// "the database is down".
+func TestCronModeRejectsAnUnknownJobBeforeTouchingAnything(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+
+	for _, job := range []string{"", "Retention", "retention ", "nonsense"} {
 		if got := cronMode(job); got != 2 {
 			t.Errorf("cronMode(%q) = %d, want 2", job, got)
 		}
+	}
+}
+
+// A real job name goes the other way: it is accepted, and the run fails on
+// whatever comes next — here, unloadable configuration, which is exit 1 and
+// not the usage code. That is the whole distinction a scheduler acts on: 2
+// means "your manifest is wrong", 1 means "the run failed".
+func TestCronModeAcceptsAKnownJobAndFailsOnConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+
+	if got := cronMode("retention"); got != 1 {
+		t.Errorf("cronMode(retention) with unloadable config = %d, want 1", got)
 	}
 }
 
