@@ -135,7 +135,8 @@ func (s server) CompleteSetup(ctx context.Context, request gen.CompleteSetupRequ
 		// minutes.
 		s.rollbackSetup(ctx, "", err)
 		if errors.Is(err, auth.ErrPasswordLength) {
-			return gen.CompleteSetup400JSONResponse(errorBody(err.Error())), nil
+			summary, fields := envelopeFor([]problem{{field: "password", message: passwordLengthMessage(body.Password)}})
+			return gen.CompleteSetup400JSONResponse(errorFieldsBody(summary, fields)), nil
 		}
 		return gen.CompleteSetup500JSONResponse(errorBody("Unable to complete setup")), nil
 	}
@@ -300,6 +301,12 @@ func validateSetupBody(email, name, password, householdName, slug, setupSecret s
 
 // appendTextProblems applies the shared "trimmed, 1..max" rule REF §A4 spells
 // once and reuses for every free-text field.
+//
+// Free text is counted in RUNES, unlike the password above: these are display
+// names, where the bound exists so a name fits a column and a screen, and
+// nothing downstream re-checks them against a byte count. The password's cap
+// is a bound on what gets hashed, and has to agree with package auth to the
+// byte.
 func appendTextProblems(problems []problem, field, value string, max int) []problem {
 	switch {
 	case value == "":
@@ -313,26 +320,50 @@ func appendTextProblems(problems []problem, field, value string, max int) []prob
 	return problems
 }
 
-// appendPasswordProblems applies REF §A4's password rule. The value is
-// deliberately NOT trimmed: a leading or trailing space is a character the
-// person chose, and silently dropping it would make the password they typed
-// differ from the one that was stored.
+// appendPasswordProblems applies REF §A4's password rule.
 func appendPasswordProblems(problems []problem, password string) []problem {
-	switch {
-	case password == "":
-		return append(problems, problem{field: "password", message: "password is required"})
-	case utf8.RuneCountInString(password) < auth.PasswordMinLength:
-		return append(problems, problem{
-			field:   "password",
-			message: "password must be at least " + itoa(auth.PasswordMinLength) + " characters",
-		})
-	case utf8.RuneCountInString(password) > auth.PasswordMaxLength:
-		return append(problems, problem{
-			field:   "password",
-			message: "password must be at most " + itoa(auth.PasswordMaxLength) + " characters",
-		})
+	if message := passwordProblem(password); message != "" {
+		return append(problems, problem{field: "password", message: message})
 	}
 	return problems
+}
+
+// passwordProblem is REF §A4's message for a password that breaks the length
+// rule, or "" when it does not.
+//
+// The value is deliberately NOT trimmed: a leading or trailing space is a
+// character the person chose, and silently dropping it would make the password
+// they typed differ from the one that was stored.
+//
+// The bounds are counted in BYTES, not runes, because that is how
+// auth.validatePasswordLength counts them — and the two must agree exactly.
+// Counting runes here would let a 65-character Cyrillic password (130 bytes)
+// past this check and into CreateUser, which would refuse it with an error
+// whose text is written for a log, not for a person. The cap exists to bound
+// the Argon2id input, which is a byte count either way.
+func passwordProblem(password string) string {
+	switch {
+	case password == "":
+		return "password is required"
+	case len(password) < auth.PasswordMinLength:
+		return "password must be at least " + itoa(auth.PasswordMinLength) + " characters"
+	case len(password) > auth.PasswordMaxLength:
+		return "password must be at most " + itoa(auth.PasswordMaxLength) + " characters"
+	}
+	return ""
+}
+
+// passwordLengthMessage is what a client is told when CreateUser refuses a
+// password on length despite the check above having passed — which can only
+// happen if the two bounds drift apart. auth.ErrPasswordLength's own text
+// ("auth: password must be between 12 and 128 characters") is written for a
+// log and must never reach a caller, so it is translated here rather than
+// passed through.
+func passwordLengthMessage(password string) string {
+	if message := passwordProblem(password); message != "" {
+		return message
+	}
+	return "password must be at least " + itoa(auth.PasswordMinLength) + " characters"
 }
 
 // installationComplete is the terminal state of the app_installation state

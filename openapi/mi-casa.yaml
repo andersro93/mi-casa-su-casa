@@ -280,14 +280,18 @@ components:
       description: >-
         The invitation token from the link. A header rather than a path or
         query parameter so the secret never lands in a request log, a browser
-        history entry or a Referer. Declared optional so a missing token is
-        answered by the handler's own message ("Invitation token header is
-        required") rather than by a schema violation; it is mandatory in
-        practice.
+        history entry or a Referer.
+
+        Declared optional, and with no length bounds, so that EVERY way of
+        getting the token wrong is answered by the handler rather than by a
+        schema violation: a missing or empty header with REF §A2's "Invitation
+        token header is required", and a token of any length that does not
+        match a stored hash with the same 404 as a wrong one. A `minLength`
+        here would turn an empty header into a validation message, and a
+        `maxLength` would tell a guesser that their token was at least the
+        right size. It is mandatory in practice.
       schema:
         type: string
-        minLength: 1
-        maxLength: 200
   schemas:
     Error:
       type: object

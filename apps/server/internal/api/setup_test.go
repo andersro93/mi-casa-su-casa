@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,6 +205,13 @@ func TestSetupValidatesTheBody(t *testing.T) {
 		message  string
 	}{
 		{"short password", map[string]any{"password": "short"}, "password", "password must be at least 12 characters"},
+		// 65 Cyrillic characters are 130 BYTES, which is what package auth
+		// counts. A rune count here would wave this past the handler and let
+		// CreateUser refuse it with an error written for a log.
+		{"long non-ASCII password", map[string]any{"password": strings.Repeat("\u0431", 65)}, "password",
+			"password must be at most 128 characters"},
+		{"long ASCII password", map[string]any{"password": strings.Repeat("a", 129)}, "password",
+			"password must be at most 128 characters"},
 		{"reserved slug", map[string]any{"householdSlug": "admin"}, "householdSlug", `"admin" is reserved and cannot be used as a household slug`},
 		{"slug too short", map[string]any{"householdSlug": "a"}, "householdSlug", "slug must be between 2 and 40 characters"},
 		{"slug characters", map[string]any{"householdSlug": "Not Valid"}, "householdSlug",
@@ -229,6 +237,24 @@ func TestSetupValidatesTheBody(t *testing.T) {
 				t.Errorf("installation status = %q, want pending", status)
 			}
 		})
+	}
+}
+
+// TestSetupNeverLeaksAnInternalErrorString pins the one thing the two
+// password bounds existing in two packages could otherwise cause: package
+// auth's sentinel text is written for a log ("auth: password must be between
+// …") and must never be what a caller reads.
+func TestSetupNeverLeaksAnInternalErrorString(t *testing.T) {
+	app := testrig.App(t)
+
+	for _, password := range []string{"short", strings.Repeat("\u0431", 65), strings.Repeat("a", 129)} {
+		rec := app.Do(t, http.MethodPost, "/api/setup/complete", setupBody(map[string]any{"password": password}))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d %s", rec.Code, rec.Body.String())
+		}
+		if body := rec.Body.String(); strings.Contains(body, "auth:") {
+			t.Errorf("response leaked an internal error string: %s", body)
+		}
 	}
 }
 

@@ -192,7 +192,10 @@ func (s server) acceptAsNewAccount(ctx context.Context, invitation repo.Invitati
 			"error":        err.Error(),
 		})
 		if errors.Is(err, auth.ErrPasswordLength) {
-			return gen.AcceptInvitation400JSONResponse(errorBody(err.Error())), nil
+			// Never the sentinel's own text: it is written for a log
+			// ("auth: …"), and this route answers with REF §A4's wording.
+			return gen.AcceptInvitation400JSONResponse(
+				errorBody("password: " + passwordLengthMessage(password))), nil
 		}
 		return gen.AcceptInvitation500JSONResponse(errorBody("Unable to accept invitation")), nil
 	}

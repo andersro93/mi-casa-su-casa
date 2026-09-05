@@ -46,6 +46,9 @@ func TestInvitationLookupNeedsTheHeader(t *testing.T) {
 	}{
 		{"no header at all", "/api/invitations/lookup", nil},
 		{"blank header", "/api/invitations/lookup", []testrig.Opt{testrig.WithHeader(testrig.InvitationTokenHeader, "   ")}},
+		// An EMPTY header must reach the handler too: a minLength in the spec
+		// would answer it with a schema violation instead of REF §A2's message.
+		{"empty header", "/api/invitations/lookup", []testrig.Opt{testrig.WithHeader(testrig.InvitationTokenHeader, "")}},
 		// REF §A2: the token travels in the header, never the URL. A query
 		// parameter is not read, so a link that puts it there is answered as
 		// if it carried no token at all.
@@ -67,13 +70,37 @@ func TestInvitationLookupUnknownToken(t *testing.T) {
 	app := testrig.App(t)
 	seedInvitation(t, app)
 
-	rec := app.Do(t, http.MethodGet, "/api/invitations/lookup", nil,
-		testrig.WithHeader(testrig.InvitationTokenHeader, "nope"))
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d %s", rec.Code, rec.Body.String())
+	// A short wrong token and an absurdly long one get the SAME answer: the
+	// header carries no length bound in the spec, so nothing about the shape
+	// of a guess is reflected back at whoever made it.
+	for _, token := range []string{"nope", strings.Repeat("z", 4096)} {
+		rec := app.Do(t, http.MethodGet, "/api/invitations/lookup", nil,
+			testrig.WithHeader(testrig.InvitationTokenHeader, token))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("token of %d chars: status = %d %s", len(token), rec.Code, rec.Body.String())
+		}
+		if got := app.JSON(t, rec)["error"]; got != "Invitation not found or no longer valid" {
+			t.Errorf("token of %d chars: error = %q", len(token), got)
+		}
 	}
-	if got := app.JSON(t, rec)["error"]; got != "Invitation not found or no longer valid" {
-		t.Errorf("error = %q", got)
+}
+
+// TestInvitationAcceptNeverLeaksAnInternalErrorString is the accept-route half
+// of setup_test.go's case of the same name.
+func TestInvitationAcceptNeverLeaksAnInternalErrorString(t *testing.T) {
+	app := testrig.App(t)
+	token, _ := seedInvitation(t, app)
+
+	for _, password := range []string{"short", strings.Repeat("\u0431", 65), strings.Repeat("a", 129)} {
+		rec := app.Do(t, http.MethodPost, "/api/invitations/accept",
+			map[string]any{"name": "Kid", "password": password},
+			testrig.WithHeader(testrig.InvitationTokenHeader, token))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d %s", rec.Code, rec.Body.String())
+		}
+		if body := rec.Body.String(); strings.Contains(body, "auth:") {
+			t.Errorf("response leaked an internal error string: %s", body)
+		}
 	}
 }
 
@@ -313,6 +340,12 @@ func TestInvitationAcceptValidatesAnonymousCredentials(t *testing.T) {
 		{"no body at all", nil, "name: name is required"},
 		{"blank name", map[string]any{"name": "  ", "password": testrig.Password}, "name: name is required"},
 		{"short password", map[string]any{"name": "Kid", "password": "short"}, "password: password must be at least 12 characters"},
+		// 65 Cyrillic characters are 130 bytes — the count package auth
+		// applies, and therefore the one this route must apply too.
+		{"long non-ASCII password", map[string]any{"name": "Kid", "password": strings.Repeat("\u0431", 65)},
+			"password: password must be at most 128 characters"},
+		{"long ASCII password", map[string]any{"name": "Kid", "password": strings.Repeat("a", 129)},
+			"password: password must be at most 128 characters"},
 		{"no password", map[string]any{"name": "Kid"}, "password: password is required"},
 	}
 
