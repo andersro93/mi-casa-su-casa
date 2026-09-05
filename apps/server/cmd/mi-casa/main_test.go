@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -59,10 +61,10 @@ func TestCronModeIsUsageOnlyUntilTheSchedulerLands(t *testing.T) {
 	}
 }
 
-// healthcheckMode is what the image's HEALTHCHECK runs (the distroless
-// image has no shell). Its whole job is turning one HTTP response into an
-// exit code, so that mapping is what is tested.
-func TestHealthcheckMode(t *testing.T) {
+// probeHealthz is the body of what the image's HEALTHCHECK runs (the
+// distroless image has no shell). Its whole job is turning one HTTP
+// response into an exit code, so that mapping is what is tested.
+func TestProbeHealthz(t *testing.T) {
 	tests := []struct {
 		name   string
 		status int
@@ -84,8 +86,8 @@ func TestHealthcheckMode(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			if got := healthcheckMode(portOf(t, srv.URL)); got != tc.want {
-				t.Errorf("healthcheckMode = %d, want %d", got, tc.want)
+			if got := probeHealthz(portOf(t, srv.URL)); got != tc.want {
+				t.Errorf("probeHealthz = %d, want %d", got, tc.want)
 			}
 		})
 	}
@@ -93,13 +95,50 @@ func TestHealthcheckMode(t *testing.T) {
 
 // A refused connection is the ordinary "the process is still booting" case,
 // and must read as unhealthy rather than as an error the probe swallows.
-func TestHealthcheckModeUnreachablePortIsUnhealthy(t *testing.T) {
+func TestProbeHealthzUnreachablePortIsUnhealthy(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	port := portOf(t, srv.URL)
 	srv.Close() // nothing is listening on `port` any more
 
-	if got := healthcheckMode(port); got != 1 {
-		t.Errorf("healthcheckMode on a closed port = %d, want 1", got)
+	if got := probeHealthz(port); got != 1 {
+		t.Errorf("probeHealthz on a closed port = %d, want 1", got)
+	}
+}
+
+// The probe reads PORT through internal/config like everything else, so a
+// container whose configuration does not load reports unhealthy instead of
+// probing a guessed default. An empty DATABASE_URL is enough to make
+// config.FromOS fail regardless of what the developer has exported.
+func TestHealthcheckModeIsUnhealthyWhenConfigurationIsBroken(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+
+	if got := healthcheckMode(); got != 1 {
+		t.Errorf("healthcheckMode with unloadable config = %d, want 1", got)
+	}
+}
+
+// A worker is not an HTTP replica: it answers liveness so an orchestrator
+// leaves it alone, and nothing else. Serving the API here would put a pod
+// that is in no load balancer's rotation one misrouted proxy away from
+// real traffic.
+func TestWorkerHandlerServesOnlyHealthz(t *testing.T) {
+	handler := workerHandler()
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /healthz status = %d, want 200", rec.Code)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"ok":true}` {
+		t.Errorf("body = %q, want {\"ok\":true}", got)
+	}
+
+	for _, path := range []string{"/readyz", "/api/setup/status", "/"} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s status = %d, want 404 — the worker serves only /healthz", path, rec.Code)
+		}
 	}
 }
 
@@ -118,22 +157,15 @@ func TestSignalName(t *testing.T) {
 	}
 }
 
-func TestPortFromEnv(t *testing.T) {
-	t.Setenv("PORT", "")
-	if got := portFromEnv(); got != "3000" {
-		t.Errorf("portFromEnv with PORT unset = %q, want \"3000\"", got)
-	}
-	t.Setenv("PORT", "8080")
-	if got := portFromEnv(); got != "8080" {
-		t.Errorf("portFromEnv = %q, want \"8080\"", got)
-	}
-}
-
-func portOf(t *testing.T, rawURL string) string {
+func portOf(t *testing.T, rawURL string) int {
 	t.Helper()
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		t.Fatalf("parse %q: %v", rawURL, err)
 	}
-	return u.Port()
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatalf("port of %q: %v", rawURL, err)
+	}
+	return port
 }

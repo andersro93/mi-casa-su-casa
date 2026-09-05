@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/andersro93/mi-casa-su-casa/server/internal/api/gen"
@@ -33,11 +34,16 @@ func (s server) Healthz(context.Context, gen.HealthzRequestObject) (gen.HealthzR
 // database is reachable, and the row carries the retention job's last
 // success — so one query answers both halves of REF §A2's payload.
 //
-// A failed query is a 503 with the reason in the body, never a 500: a
-// database outage is a normal, expected state for a booting or draining
-// instance, and the orchestrator's response to it (route elsewhere) is the
-// same either way. It is returned as a response rather than as an error for
-// the same reason — nothing here is unexpected.
+// A failed query is a 503, never a 500: a database outage is a normal,
+// expected state for a booting or draining instance, and the orchestrator's
+// response to it (route elsewhere) is the same either way. It is returned
+// as a response rather than as an error for the same reason — nothing here
+// is unexpected.
+//
+// The body says only "database unavailable". /readyz is unauthenticated and
+// reachable by anyone who can open a socket, and a pgx error names the
+// host, port, database and user it failed to reach; the driver's own words
+// go to the log, where the operator reading them has already earned them.
 //
 // setupConfigured is unconditionally true. Its TypeScript predecessor
 // reported whether OWNER_EMAIL and SETUP_SECRET were set; internal/config
@@ -46,7 +52,8 @@ func (s server) Healthz(context.Context, gen.HealthzRequestObject) (gen.HealthzR
 func (s server) Readyz(ctx context.Context, _ gen.ReadyzRequestObject) (gen.ReadyzResponseObject, error) {
 	installation, err := s.Q.GetInstallation(ctx)
 	if err != nil {
-		return gen.Readyz503JSONResponse{Ok: gen.False, Error: err.Error()}, nil
+		log.Printf("readyz: installation read failed: %v", err)
+		return gen.Readyz503JSONResponse{Ok: gen.False, Error: "database unavailable"}, nil
 	}
 
 	body := gen.Readyz200JSONResponse{

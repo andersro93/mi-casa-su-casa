@@ -39,6 +39,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/andersro93/mi-casa-su-casa/server/internal/api"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/api/respond"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/config"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/db"
 	dbgen "github.com/andersro93/mi-casa-su-casa/server/internal/db/gen"
@@ -76,11 +77,10 @@ func run(args []string) int {
 
 	switch d.mode {
 	case modeHealthcheck:
-		// Deliberately constructs NOTHING: no config, no pool. A liveness
-		// probe must not fail because DATABASE_URL is wrong — that is
-		// /readyz's job — and the distroless image has no shell for a
-		// curl-style one-liner.
-		return healthcheckMode(portFromEnv())
+		// Deliberately opens no pool and builds no handler: it is a probe
+		// of the process already running in this container, and the
+		// distroless image has no shell for a curl-style one-liner.
+		return healthcheckMode()
 
 	case modeUnknown:
 		// An unrecognised subcommand must NOT fall through to the server: a
@@ -174,27 +174,34 @@ func parseArgs(args []string) dispatch {
 
 // --- healthcheck ------------------------------------------------------
 
-// portFromEnv reads PORT directly rather than through config.Load, on
-// purpose: see modeHealthcheck's comment in run. config's own default is
-// mirrored here.
-func portFromEnv() string {
-	if p := os.Getenv("PORT"); p != "" {
-		return p
-	}
-	return "3000"
-}
-
 // healthcheckMode probes this container's own /healthz and returns the exit
 // code Docker's HEALTHCHECK (and any exec-style liveness probe) should see:
-// 0 for a 2xx, 1 for anything else, including a refused connection.
+// 0 for a 2xx, 1 for anything else.
+//
+// The port comes from config.FromOS like every other setting — internal/
+// config is the only package in this binary that reads the environment, and
+// a second PORT default here is a second thing to get wrong. A container
+// whose configuration does not load cannot be serving anything either, so
+// reporting it unhealthy is the honest answer rather than a false negative.
+func healthcheckMode() int {
+	cfg, err := config.FromOS()
+	if err != nil {
+		log.Printf("configuration error: %v", err)
+		return 1
+	}
+	return probeHealthz(cfg.Port)
+}
+
+// probeHealthz turns one HTTP response into an exit code: 0 for a 2xx, 1
+// for anything else, including a refused connection.
 //
 // The timeout is short and explicit: a probe with no deadline can hang for
 // as long as the kernel's connect timeout allows, and a HEALTHCHECK that
 // never returns reads as "still checking" rather than "unhealthy" — the
 // wrong answer for a wedged process.
-func healthcheckMode(port string) int {
+func probeHealthz(port int) int {
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/healthz", port))
 	if err != nil {
 		return 1
 	}
@@ -310,8 +317,10 @@ func serveMode(migrate, scheduler bool) int {
 // The bare /healthz on PORT is not optional: the image's HEALTHCHECK probes
 // /healthz regardless of mode, so without it a `worker` container would
 // report unhealthy and get restart-looped by an orchestrator despite doing
-// its job perfectly. It is api.NewHandler rather than a hand-rolled probe
-// so the two modes cannot drift.
+// its job perfectly. It is deliberately the ONLY route: a worker is not an
+// HTTP replica, and mounting the API here would let a misrouted proxy send
+// real traffic to a pod that is not in the load balancer's rotation and
+// answers no readiness question about it.
 func workerMode() int {
 	cfg, err := config.FromOS()
 	if err != nil {
@@ -322,7 +331,11 @@ func workerMode() int {
 	sig, stopSignals := notifyShutdown()
 	defer stopSignals()
 
-	deps, closeDeps, err := buildDeps(context.Background(), cfg)
+	// The dependencies are built and discarded: P7's scheduler is what will
+	// use them. Building them anyway keeps a worker that cannot reach the
+	// database from booting into a healthy-looking process that does
+	// nothing — the same boot-time failure the serving modes get.
+	_, closeDeps, err := buildDeps(context.Background(), cfg)
 	if err != nil {
 		log.Printf("startup failed: %v", err)
 		return 1
@@ -331,7 +344,7 @@ func workerMode() int {
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           api.NewHandler(deps),
+		Handler:           workerHandler(),
 		ReadHeaderTimeout: readHeaderTimeout,
 		IdleTimeout:       idleTimeout,
 	}
@@ -341,6 +354,18 @@ func workerMode() int {
 	logStartupConfig(cfg)
 
 	return serveUntilSignal(sig, srv)
+}
+
+// workerHandler is the worker's entire HTTP surface: liveness and nothing
+// else. It answers the same body package api's own probe does, by hand
+// rather than through api.NewHandler, because the point is that no other
+// route exists here.
+func workerHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		respond.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
+	return mux
 }
 
 // --- shared plumbing --------------------------------------------------

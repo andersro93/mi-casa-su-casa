@@ -137,8 +137,10 @@ func TestReadyzRetentionStaleness(t *testing.T) {
 	}
 }
 
-// An unreachable database is a 503 with a reason, not a 500 and not a
-// panic: readiness exists precisely to say "do not route traffic here yet".
+// An unreachable database is a 503, not a 500 and not a panic: readiness
+// exists precisely to say "do not route traffic here yet". The body carries
+// a generic message — /readyz is unauthenticated, and a pgx error names the
+// host, port, database and user it could not reach.
 func TestReadyzIsUnavailableWhenTheDatabaseIsUnreachable(t *testing.T) {
 	// A pool this test owns outright, so closing it to simulate the outage
 	// cannot interfere with the rig's own cleanup.
@@ -158,8 +160,8 @@ func TestReadyzIsUnavailableWhenTheDatabaseIsUnreachable(t *testing.T) {
 	if body["ok"] != false {
 		t.Errorf("ok = %v, want false", body["ok"])
 	}
-	if msg, _ := body["error"].(string); msg == "" {
-		t.Errorf("body = %v, want a non-empty error", body)
+	if body["error"] != "database unavailable" {
+		t.Errorf("error = %v, want \"database unavailable\" and no driver detail", body["error"])
 	}
 }
 
