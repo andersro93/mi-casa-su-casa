@@ -19,7 +19,7 @@
     "typecheck": "bun run --filter @mi-casa/frontend typecheck && tsc --noEmit -p e2e"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.9",
+    "@biomejs/biome": "2.5.11",
     "@playwright/test": "1.63.0",
     "@types/node": "^26.2.0",
     "otpauth": "9.5.2",
