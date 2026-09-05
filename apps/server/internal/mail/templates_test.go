@@ -189,12 +189,6 @@ func TestRecordingSenderFail(t *testing.T) {
 	}
 }
 
-func TestLogSenderReportsSuccess(t *testing.T) {
-	if err := (mail.LogSender{}).Send(context.Background(), mail.Message{To: "a@example.com"}); err != nil {
-		t.Fatalf("LogSender.Send: %v", err)
-	}
-}
-
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return line

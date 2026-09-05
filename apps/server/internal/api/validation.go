@@ -24,11 +24,12 @@ import (
 const bodyRootField = "_"
 
 // skipSpecValidation reports whether r bypasses request validation entirely.
-// One prefix today (see the Skipper below); it is a named function so the
+// Two prefixes (see the Skipper below); it is a named function so the
 // exclusion set is one readable list rather than a condition inside an
 // options literal.
 func skipSpecValidation(r *http.Request) bool {
-	return strings.HasPrefix(r.URL.Path, auth.BasePath+"/")
+	return strings.HasPrefix(r.URL.Path, auth.BasePath+"/") ||
+		strings.HasPrefix(r.URL.Path, InboundBasePath)
 }
 
 // withSpecValidation checks every request against spec before it reaches
@@ -49,10 +50,12 @@ func skipSpecValidation(r *http.Request) bool {
 // server's routing table, so a path it does not describe does not exist.
 func withSpecValidation(spec *openapi3.T, next http.Handler) http.Handler {
 	validate := nethttpmiddleware.OapiRequestValidatorWithOptions(spec, &nethttpmiddleware.Options{
-		// Limen's routes are not in the spec and never will be: it owns its
-		// own request shapes, and without this the 404 below — "a path the
-		// spec does not describe does not exist" — would swallow every auth
-		// request before it reached the router mounted for them.
+		// Limen's routes and the inbound webhook are not in the spec and never
+		// will be: each owns its own request shape (Limen's JSON bodies, and
+		// Mailgun's signed multipart form), and without this the 404 below —
+		// "a path the spec does not describe does not exist" — would swallow
+		// every one of their requests before it reached the handler mounted
+		// for them.
 		Skipper: skipSpecValidation,
 		Options: openapi3filter.Options{
 			// MultiError so a form with three bad inputs comes back with
