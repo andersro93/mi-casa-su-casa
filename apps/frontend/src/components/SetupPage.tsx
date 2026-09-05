@@ -8,8 +8,9 @@ import {
   Typography,
 } from "@mui/material";
 import { type FormEvent, useState } from "react";
+import { client, unwrap } from "../lib/api";
 import type { SetupFormState } from "../types";
-import { fetchJson, suggestHouseholdSlug } from "../utils";
+import { suggestHouseholdSlug } from "../utils";
 import {
   describeSlugProblem,
   HouseholdAddressField,
@@ -74,15 +75,16 @@ export function SetupPage({
     setIsCompletingSetup(true);
 
     try {
-      await fetchJson<{ member: { email: string } }>("/api/setup/complete", {
-        method: "POST",
-        body: JSON.stringify({
-          ...form,
-          email: form.email.trim(),
-          name: form.name.trim(),
-          householdName: form.householdName.trim(),
+      await unwrap<{ member: { email: string } }>(
+        client.POST("/api/setup/complete", {
+          body: {
+            ...form,
+            email: form.email.trim(),
+            name: form.name.trim(),
+            householdName: form.householdName.trim(),
+          },
         }),
-      });
+      );
       setForm(EMPTY_FORM);
       onSetupComplete();
     } catch (error) {

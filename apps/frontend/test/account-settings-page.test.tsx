@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readRequest } from "./fetch-mock";
 
 const auth = vi.hoisted(() => ({
-  passkey: {
-    listUserPasskeys: vi.fn(),
-    addPasskey: vi.fn(),
-    deletePasskey: vi.fn(),
+  twoFactor: {
+    initiateSetup: vi.fn(),
+    finalizeSetup: vi.fn(),
+    getBackupCodes: vi.fn(),
+    regenerateBackupCodes: vi.fn(),
+    disable: vi.fn(),
   },
-  twoFactor: { enable: vi.fn(), verifyTotp: vi.fn(), disable: vi.fn() },
-  changePassword: vi.fn(),
-  requestPasswordReset: vi.fn(),
+  password: {
+    change: vi.fn(),
+    requestReset: vi.fn(),
+    reset: vi.fn(),
+  },
 }));
-vi.mock("@server/auth/client", () => ({ authClient: auth }));
+vi.mock("@/lib/auth-client", () => auth);
 vi.mock("qrcode", () => ({
   default: {
     toDataURL: vi.fn().mockResolvedValue("data:image/png;base64,AAA"),
@@ -80,16 +85,16 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function mockApi() {
+function mockApi({ twoFactorEnabled = false } = {}) {
+  const profile = { ...settings.profile, twoFactorEnabled };
   const calls: Array<{ url: string; method: string; body?: string }> = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      calls.push({ url, method, body: init?.body as string | undefined });
+      const { url, method, body } = await readRequest(input, init);
+      calls.push({ url, method, body });
       if (url.endsWith("/api/settings") && method === "GET")
-        return json(settings);
+        return json({ ...settings, profile });
       return json({ ok: true });
     }),
   );
@@ -121,26 +126,20 @@ describe("describeUserAgent", () => {
 describe("AccountSettingsPage", () => {
   beforeEach(() => {
     for (const fn of [
-      auth.passkey.listUserPasskeys,
-      auth.passkey.addPasskey,
-      auth.passkey.deletePasskey,
-      auth.twoFactor.enable,
-      auth.twoFactor.verifyTotp,
+      auth.twoFactor.initiateSetup,
+      auth.twoFactor.finalizeSetup,
+      auth.twoFactor.getBackupCodes,
+      auth.twoFactor.regenerateBackupCodes,
       auth.twoFactor.disable,
-      auth.changePassword,
-      auth.requestPasswordReset,
+      auth.password.change,
+      auth.password.requestReset,
+      auth.password.reset,
     ])
       fn.mockReset();
-    auth.passkey.listUserPasskeys.mockResolvedValue({
-      data: [
-        { id: "pk1", name: "My iPhone", createdAt: "2026-08-10T00:00:00.000Z" },
-      ],
-      error: null,
-    });
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("groups settings into sections, lists passkeys and readable devices", async () => {
+  it("groups settings into sections and shows readable devices, with no passkeys", async () => {
     mockApi();
     renderPage();
     expect(
@@ -148,7 +147,6 @@ describe("AccountSettingsPage", () => {
     ).toBeInTheDocument();
     for (const name of [
       "Profile",
-      "Passkeys",
       "Password",
       "Two-step verification",
       "Signed-in devices",
@@ -159,51 +157,28 @@ describe("AccountSettingsPage", () => {
         await screen.findByRole("heading", { level: 2, name }),
       ).toBeInTheDocument();
     }
-    const passkeys = await screen.findByRole("list", { name: "Passkeys" });
-    expect(within(passkeys).getByText("My iPhone")).toBeInTheDocument();
-    expect(
-      within(passkeys).getByRole("button", {
-        name: "Remove passkey My iPhone",
-      }),
-    ).toBeInTheDocument();
+    // Passkeys are gone with Better Auth.
+    expect(screen.queryByText(/passkey/i)).toBeNull();
     const devices = screen.getByRole("list", { name: "Signed-in devices" });
     expect(within(devices).getByText("Safari on iPhone")).toBeInTheDocument();
     expect(within(devices).getByText("This device")).toBeInTheDocument();
     expect(within(devices).getByText("Chrome on Windows")).toBeInTheDocument();
     expect(screen.queryByText(/Mozilla\/5\.0/)).toBeNull();
+    // `ipAddress` is a keyed digest, not an address: showing it would put an
+    // opaque hash where a reader expects something recognisable.
+    expect(screen.queryByText(/10\.0\.0\./)).toBeNull();
     expect(screen.queryByText(/Revoke/)).toBeNull();
-  });
-
-  it("adds a passkey with a sensible default name", async () => {
-    mockApi();
-    auth.passkey.addPasskey.mockResolvedValue({ data: {}, error: null });
-    renderPage();
-    const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Add a passkey for this device",
-      }),
-    );
-    const dialog = await screen.findByRole("dialog", { name: "Add a passkey" });
-    await user.click(within(dialog).getByRole("button", { name: "Continue" }));
-    await waitFor(() =>
-      expect(auth.passkey.addPasskey).toHaveBeenCalledTimes(1),
-    );
-    expect(auth.passkey.addPasskey.mock.calls[0][0]).toMatchObject({
-      name: expect.any(String),
-    });
   });
 
   it("walks through two-step enrolment and requires saving the backup codes", async () => {
     mockApi();
-    auth.twoFactor.enable.mockResolvedValue({
-      data: {
-        totpURI: "otpauth://totp/x?secret=ABC123",
-        backupCodes: ["1111-2222", "3333-4444"],
-      },
-      error: null,
+    // Limen hands over the otpauth URI first and the backup codes only once
+    // enrolment has been finished, so the two are separate calls.
+    auth.twoFactor.initiateSetup.mockResolvedValue({
+      uri: "otpauth://totp/x?secret=ABC123",
     });
-    auth.twoFactor.verifyTotp.mockResolvedValue({ data: {}, error: null });
+    auth.twoFactor.finalizeSetup.mockResolvedValue(undefined);
+    auth.twoFactor.getBackupCodes.mockResolvedValue(["1111-2222", "3333-4444"]);
     renderPage();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Turn on" }));
@@ -220,6 +195,9 @@ describe("AccountSettingsPage", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Verify code" }),
     );
+    await waitFor(() =>
+      expect(auth.twoFactor.finalizeSetup).toHaveBeenCalledWith("123456"),
+    );
     expect(
       await within(dialog).findByRole("list", { name: "Backup codes" }),
     ).toHaveTextContent("1111-2222");
@@ -234,9 +212,30 @@ describe("AccountSettingsPage", () => {
     expect(done).toBeEnabled();
   });
 
+  it("mints a new set of backup codes and warns the old ones are dead", async () => {
+    mockApi({ twoFactorEnabled: true });
+    auth.twoFactor.regenerateBackupCodes.mockResolvedValue([
+      "5555-6666",
+      "7777-8888",
+    ]);
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", { name: "New backup codes" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Your new backup codes",
+    });
+    expect(
+      within(dialog).getByRole("list", { name: "Backup codes" }),
+    ).toHaveTextContent("5555-6666");
+    expect(within(dialog).getByText(/no longer work/i)).toBeInTheDocument();
+  });
+
   it("changes the password with inline rules and autocomplete hints", async () => {
     mockApi();
-    auth.changePassword.mockResolvedValue({ data: {}, error: null });
+    auth.password.change.mockResolvedValue(undefined);
     renderPage();
     const user = userEvent.setup();
     const current = await screen.findByLabelText(/Current password/);
@@ -245,7 +244,7 @@ describe("AccountSettingsPage", () => {
     expect(
       screen.getByText("Enter your current password."),
     ).toBeInTheDocument();
-    expect(auth.changePassword).not.toHaveBeenCalled();
+    expect(auth.password.change).not.toHaveBeenCalled();
     await user.type(current, "old-password-123");
     await user.type(
       screen.getByLabelText(/New password/),
@@ -253,11 +252,9 @@ describe("AccountSettingsPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "Change password" }));
     await waitFor(() =>
-      expect(auth.changePassword).toHaveBeenCalledWith(
-        expect.objectContaining({
-          currentPassword: "old-password-123",
-          newPassword: "a-much-longer-new-password",
-        }),
+      expect(auth.password.change).toHaveBeenCalledWith(
+        "old-password-123",
+        "a-much-longer-new-password",
       ),
     );
   });

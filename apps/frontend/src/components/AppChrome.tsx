@@ -10,10 +10,10 @@
  * disagree with what the sidebar shows.
  */
 import { Box, CircularProgress } from "@mui/material";
-import { authClient } from "@server/auth/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { Suspense, useEffect } from "react";
+import { signOut } from "../lib/auth-client";
 import { useAppMessages } from "../lib/messages";
 import {
   invalidateAuthQueries,
@@ -90,7 +90,7 @@ export function AppChrome() {
   };
 
   const handleLogout = async () => {
-    await authClient.signOut({});
+    await signOut();
     await invalidateAuthQueries(queryClient);
     await navigate({ to: "/login", replace: true });
   };

@@ -1,7 +1,7 @@
 import { Alert, Box, Button, Link as MuiLink, TextField } from "@mui/material";
-import { authClient } from "@server/auth/client";
 import { Link as RouterLink } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
+import { password } from "../lib/auth-client";
 import { PublicEntryShell } from "./PublicEntryShell";
 
 export function ForgotPasswordPage() {
@@ -15,19 +15,20 @@ export function ForgotPasswordPage() {
     setError(null);
     setIsSubmitting(true);
 
-    const { error: requestError } = await authClient.requestPasswordReset({
-      email: email.trim(),
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-
-    setIsSubmitting(false);
-
-    if (requestError) {
-      setError(requestError.message ?? "Unable to request a password reset.");
-      return;
+    try {
+      // The reset link itself is built server-side from APP_URL, so there is
+      // no redirect target to hand over any more.
+      await password.requestReset(email.trim());
+      setSubmitted(true);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error && requestError.message
+          ? requestError.message
+          : "Unable to request a password reset.",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setSubmitted(true);
   };
 
   return (

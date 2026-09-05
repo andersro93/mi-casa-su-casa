@@ -22,7 +22,7 @@
         "description": "Random secret for signing sessions and tokens. Generate one with: openssl rand -hex 32"
       },
       "SETUP_SECRET": {
-        "description": "One-time secret required to complete the `/setup` first-run flow. Pick any strong passphrase — it is only used once."
+        "description": "One-time secret required to complete the `/setup` first-run flow. Pick any strong passphrase \u2014 it is only used once."
       },
       "EMAIL_DOMAIN": {
         "description": "Domain of the household inbox addresses (households receive mail at <slug>@EMAIL_DOMAIN). Used to display the address in household settings."
@@ -49,6 +49,8 @@
     "deploy:preview": "wrangler deploy --env preview",
     "deploy:production": "wrangler deploy --env production",
     "format": "biome format --write .",
+    "// gen:client": "openapi-typescript pins typescript@^5.x as a direct dependency, but this workspace pins typescript@7 for the app itself, so installing it as a devDependency makes `npm install` fail on the peer conflict and a local-bin invocation would resolve to TS 7 and crash (ts.factory is undefined under the new API). `bunx --package` resolves its own dependencies outside the workspace tree, so it gets a real TS 5 and runs clean. The generated file is committed; apps/frontend/test/api-schema.test.ts fails if the spec moves without it.",
+    "gen:client": "bunx --package openapi-typescript@7.13.0 openapi-typescript openapi/mi-casa.yaml -o apps/frontend/src/lib/api-schema.d.ts",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",

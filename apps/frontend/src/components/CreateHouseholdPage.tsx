@@ -1,7 +1,8 @@
 import { Alert, Box, Button, TextField } from "@mui/material";
 import { type FormEvent, useState } from "react";
+import { client, unwrap } from "../lib/api";
 import type { CreateHouseholdFormState, HouseholdSummary } from "../types";
-import { fetchJson, suggestHouseholdSlug } from "../utils";
+import { suggestHouseholdSlug } from "../utils";
 import {
   describeSlugProblem,
   HouseholdAddressField,
@@ -40,15 +41,13 @@ export function CreateHouseholdPage({
 
     setIsCreating(true);
     try {
-      const response = await fetchJson<{ household: HouseholdSummary }>(
-        "/api/households",
-        {
-          method: "POST",
-          body: JSON.stringify({
+      const response = await unwrap<{ household: HouseholdSummary }>(
+        client.POST("/api/households", {
+          body: {
             displayName: formState.displayName.trim(),
             slug: formState.slug,
-          }),
-        },
+          },
+        }),
       );
       onCreated(response.household);
     } catch (submitError) {

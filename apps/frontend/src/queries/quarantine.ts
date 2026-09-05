@@ -4,8 +4,8 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { client, unwrap } from "../lib/api";
 import type { QuarantineMessage, QuarantineMessagesResponse } from "../types";
-import { buildHouseholdApiPath, fetchJson } from "../utils";
 import { adminKeys } from "./admin";
 import { inboxKeys } from "./inbox";
 
@@ -18,13 +18,15 @@ export const REVIEW_PAGE_SIZE = 50;
 export function reviewQueueOptions(slug: string) {
   return infiniteQueryOptions({
     queryKey: reviewKeys.all(slug),
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ limit: String(REVIEW_PAGE_SIZE) });
-      if (pageParam) params.set("before", pageParam);
-      return fetchJson<QuarantineMessagesResponse>(
-        buildHouseholdApiPath(slug, `/inbox/quarantine?${params}`),
-      );
-    },
+    queryFn: ({ pageParam }) =>
+      unwrap<QuarantineMessagesResponse>(
+        client.GET("/api/inbox/{slug}/quarantine", {
+          params: {
+            path: { slug },
+            query: { limit: REVIEW_PAGE_SIZE, before: pageParam ?? undefined },
+          },
+        }),
+      ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.page.nextBefore,
   });
@@ -55,31 +57,25 @@ export function useReviewMessage(slug: string) {
       learnSender?: { providerId: string; domain: string } | null;
     }) => {
       if (input.learnSender) {
-        await fetchJson<{ rule: unknown }>(
-          buildHouseholdApiPath(slug, "/admin/provider-rules"),
-          {
-            method: "POST",
-            body: JSON.stringify({
+        await unwrap(
+          client.POST("/api/admin/{slug}/provider-rules", {
+            params: { path: { slug } },
+            body: {
               providerId: input.learnSender.providerId,
               matchType: "domain",
               matchValue: input.learnSender.domain,
-            }),
-          },
+            },
+          }),
         );
       }
-      return fetchJson<{ ok?: boolean }>(
-        buildHouseholdApiPath(
-          slug,
-          `/inbox/quarantine/${input.messageId}/review`,
-        ),
-        {
-          method: "POST",
-          body: JSON.stringify(
+      return unwrap<{ ok?: boolean }>(
+        client.POST("/api/inbox/{slug}/quarantine/{messageId}/review", {
+          params: { path: { slug, messageId: input.messageId } },
+          body:
             input.action === "release"
               ? { action: "release", providerKey: input.providerKey }
               : { action: "dismiss" },
-          ),
-        },
+        }),
       );
     },
     onSuccess: async (_result, input) => {

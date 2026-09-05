@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { NeedsReviewPage } from "../src/components/review/NeedsReviewPage";
 import {
   describeReviewReason,
@@ -15,6 +14,7 @@ import {
   waitFor,
   within,
 } from "./client-test-utils";
+import { readRequest } from "./fetch-mock";
 
 const providers: ProviderSummary[] = [
   {
@@ -89,9 +89,8 @@ function mockApi({
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      calls.push({ url, method, body: init?.body as string | undefined });
+      const { url, method, body } = await readRequest(input, init);
+      calls.push({ url, method, body });
       if (url.includes("/api/inbox/olsen/quarantine?")) {
         if (fail) return json({ error: "Down" }, 500);
         return json({

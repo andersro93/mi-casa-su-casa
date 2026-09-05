@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { HouseholdSettingsPage } from "../src/components/household/HouseholdSettingsPage";
 import { renderClient, screen, userEvent, waitFor } from "./client-test-utils";
+import { readRequest } from "./fetch-mock";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -17,9 +17,8 @@ function mockApi(emailAddress: string | null) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      calls.push({ url, method, body: init?.body as string | undefined });
+      const { url, method, body } = await readRequest(input, init);
+      calls.push({ url, method, body });
       if (url.endsWith("/api/admin/olsen/settings")) {
         return json({
           household: {

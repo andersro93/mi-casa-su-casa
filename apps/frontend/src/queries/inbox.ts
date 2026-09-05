@@ -6,8 +6,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { client, unwrap } from "../lib/api";
 import type { InboxMessage, ProviderSummary } from "../types";
-import { buildHouseholdApiPath, fetchJson } from "../utils";
 
 /**
  * Inbox data. Codes arrive while the user is waiting, so summaries and the
@@ -34,8 +34,10 @@ export function providerSummariesOptions(slug: string) {
   return queryOptions({
     queryKey: inboxKeys.providers(slug),
     queryFn: async () => {
-      const response = await fetchJson<{ providers: ProviderSummary[] }>(
-        buildHouseholdApiPath(slug, "/inbox/providers"),
+      const response = await unwrap<{ providers: ProviderSummary[] }>(
+        client.GET("/api/inbox/{slug}/providers", {
+          params: { path: { slug } },
+        }),
       );
       return response.providers;
     },
@@ -46,16 +48,21 @@ export function providerSummariesOptions(slug: string) {
 export function providerMessagesOptions(slug: string, providerKey: string) {
   return infiniteQueryOptions({
     queryKey: inboxKeys.messages(slug, providerKey),
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ limit: String(INBOX_PAGE_SIZE) });
-      if (pageParam) params.set("before", pageParam);
-      return fetchJson<ProviderMessagesPage>(
-        buildHouseholdApiPath(
-          slug,
-          `/inbox/providers/${encodeURIComponent(providerKey)}?${params}`,
-        ),
-      );
-    },
+    queryFn: ({ pageParam }) =>
+      unwrap<ProviderMessagesPage>(
+        client.GET("/api/inbox/{slug}/providers/{providerKey}", {
+          params: {
+            path: { slug, providerKey },
+            // `before` is omitted entirely on the first page; openapi-fetch
+            // drops undefined query values, so the server sees no cursor and
+            // answers with the newest page.
+            query: {
+              limit: INBOX_PAGE_SIZE,
+              before: pageParam ?? undefined,
+            },
+          },
+        }),
+      ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.page.nextBefore,
     refetchInterval: INBOX_REFETCH_INTERVAL_MS,
@@ -94,12 +101,11 @@ export function useUpdateMessageStatus(slug: string) {
       providerKey: string;
       status: InboxMessage["status"];
     }) => {
-      const response = await fetchJson<{ message: InboxMessage }>(
-        buildHouseholdApiPath(
-          slug,
-          `/inbox/messages/${input.messageId}/status`,
-        ),
-        { method: "PATCH", body: JSON.stringify({ status: input.status }) },
+      const response = await unwrap<{ message: InboxMessage }>(
+        client.PATCH("/api/inbox/{slug}/messages/{messageId}/status", {
+          params: { path: { slug, messageId: input.messageId } },
+          body: { status: input.status },
+        }),
       );
       return response.message;
     },

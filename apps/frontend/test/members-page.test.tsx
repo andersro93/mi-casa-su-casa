@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { MembersPage } from "../src/components/members/MembersPage";
 import type {
   InvitationSummary,
@@ -15,6 +14,7 @@ import {
   waitFor,
   within,
 } from "./client-test-utils";
+import { readRequest } from "./fetch-mock";
 
 const providers: ProviderOption[] = [
   { id: "p-netflix", provider_key: "netflix", display_name: "Netflix" },
@@ -70,21 +70,20 @@ function mockApi({ emailSent = true }: { emailSent?: boolean } = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      calls.push({ url, method, body: init?.body as string | undefined });
+      const { url, method, body } = await readRequest(input, init);
+      calls.push({ url, method, body });
       if (url.endsWith("/api/admin/olsen/members") && method === "GET")
         return json({ members, providers });
       if (url.endsWith("/api/admin/olsen/invitations") && method === "GET")
         return json({ invitations });
       if (url.endsWith("/api/admin/olsen/invitations") && method === "POST") {
-        const body = JSON.parse(init?.body as string);
+        const sent = JSON.parse(body as string);
         return json(
           {
             invitation: {
               ...invitations[0],
-              email: body.email,
-              name: body.name,
+              email: sent.email,
+              name: sent.name,
             },
             inviteUrl: "https://mcsc.example/invite/tok",
             emailSent,

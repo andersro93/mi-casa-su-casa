@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readRequest } from "./fetch-mock";
 
 const signOut = vi.fn();
-vi.mock("@server/auth/client", () => ({
-  authClient: { signOut: (...args: unknown[]) => signOut(...args) },
+vi.mock("@/lib/auth-client", () => ({
+  signOut: (...args: unknown[]) => signOut(...args),
 }));
 
 import { InvitePage } from "../src/components/InvitePage";
@@ -48,12 +49,8 @@ function mockLookup(
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      calls.push({
-        url,
-        method: init?.method ?? "GET",
-        body: init?.body as string | undefined,
-      });
+      const { url, method, body } = await readRequest(input, init);
+      calls.push({ url, method, body });
       if (url.endsWith("/api/invitations/lookup")) {
         return "error" in response
           ? json(response, status)
@@ -132,7 +129,7 @@ describe("InvitePage", () => {
 
   it("offers a real sign-out when signed in as the wrong account", async () => {
     mockLookup({ viewer: { email: "jonas@example.com", emailMatches: false } });
-    signOut.mockResolvedValue({});
+    signOut.mockResolvedValue(undefined);
     renderClient(<InvitePage token="t" onAcceptSuccess={vi.fn()} />, {
       initialEntries: ["/invite/t"],
     });

@@ -53,7 +53,7 @@ export function PasswordSection({ email, onSaved }: PasswordSectionProps) {
     <SettingsSection
       id="password"
       title="Password"
-      description="Used when you sign in without a passkey."
+      description="How you sign in. Changing it here keeps your other devices signed in."
     >
       <Box component="form" onSubmit={handleSubmit} noValidate>
         <Stack spacing={2}>

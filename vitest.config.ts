@@ -9,6 +9,9 @@ const serverPath = new URL("./src/server", import.meta.url).pathname;
 const testPath = new URL("./test", import.meta.url).pathname;
 
 const alias = {
+  // A bare "@" is safe next to the scoped npm packages: the alias plugin
+  // only matches "@" itself or "@/…", never "@mui/…".
+  "@": clientPath,
   "@client": clientPath,
   "@server": serverPath,
   "@test": testPath,

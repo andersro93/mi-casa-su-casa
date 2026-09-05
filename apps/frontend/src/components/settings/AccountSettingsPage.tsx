@@ -15,7 +15,6 @@ import { ErrorState, LoadingState, PageHeader } from "../ui";
 import { DevicesSection } from "./DevicesSection";
 import { HouseholdsSection } from "./HouseholdsSection";
 import { InstallSection } from "./InstallSection";
-import { PasskeysSection } from "./PasskeysSection";
 import { PasswordSection } from "./PasswordSection";
 import { ProfileSection } from "./ProfileSection";
 import { TwoStepSection } from "./TwoStepSection";
@@ -27,7 +26,6 @@ interface AccountSettingsPageProps {
 
 const NAV = [
   { id: "profile", label: "Profile" },
-  { id: "passkeys", label: "Passkeys" },
   { id: "password", label: "Password" },
   { id: "two-step", label: "Two-step verification" },
   { id: "devices", label: "Signed-in devices" },
@@ -35,7 +33,7 @@ const NAV = [
   { id: "households", label: "Households" },
 ];
 
-/** Account settings: grouped, with passkeys (the easy sign-in) first among security options. */
+/** Account settings: grouped, profile first and the security options together. */
 export function AccountSettingsPage({
   install,
   onHouseholdLeft,
@@ -62,7 +60,6 @@ export function AccountSettingsPage({
     body = (
       <Stack spacing={5}>
         <ProfileSection profile={profile} onSaved={setToast} />
-        <PasskeysSection onSaved={setToast} />
         <PasswordSection email={profile.email} onSaved={setToast} />
         <TwoStepSection enabled={profile.twoFactorEnabled} onSaved={setToast} />
         <DevicesSection sessions={sessions} onSaved={setToast} />

@@ -8,14 +8,14 @@
  * (reactively, via `useQuery`) read exactly the same cache entries — that is
  * what keeps the shell, its children and the guards from disagreeing.
  */
-import { authClient } from "@server/auth/client";
 import {
   type QueryClient,
   queryOptions,
   useQuery,
 } from "@tanstack/react-query";
 import type { HouseholdSummary, SessionData, SetupStatus } from "../types";
-import { fetchJson } from "../utils";
+import { ApiError, client, unwrap } from "./api";
+import { getSession } from "./auth-client";
 
 /** Set by the invite page before it sends a signed-out visitor to sign in. */
 export const PENDING_INVITE_KEY = "pendingInviteToken";
@@ -44,7 +44,7 @@ export const setupStatusQueryOptions = queryOptions({
   queryFn: async (): Promise<SetupStatusResult> => {
     try {
       return {
-        status: await fetchJson<SetupStatus>("/api/setup/status"),
+        status: await unwrap<SetupStatus>(client.GET("/api/setup/status")),
         error: null,
       };
     } catch (error) {
@@ -61,11 +61,13 @@ export const sessionQueryOptions = queryOptions({
   queryKey: ["session"] as const,
   queryFn: async (): Promise<SessionData | null> => {
     try {
-      const { data } = await authClient.getSession();
-      return (data as SessionData | null) ?? null;
+      return await getSession();
     } catch {
       // A failed session lookup means "not signed in" here, the same as it
-      // did when the app read `authClient.useSession()`.
+      // did when the app read Better Auth's session hook. Limen answers 401
+      // with `null` rather than throwing, so this only catches a network or
+      // 5xx failure — in which case the guards send the visitor to /login,
+      // which is the safe direction.
       return null;
     }
   },
@@ -77,11 +79,18 @@ export const householdsQueryOptions = queryOptions({
   staleTime: 30_000,
   queryFn: async (): Promise<HouseholdsResult> => {
     try {
-      const response = await fetchJson<{ households: HouseholdSummary[] }>(
-        "/api/settings/households",
+      const response = await unwrap<{ households: HouseholdSummary[] }>(
+        client.GET("/api/settings/households"),
       );
       return { households: response.households, error: null };
     } catch (error) {
+      // A 401 here is not something to tell the user about: it means the
+      // session ended (a sign-out, an expiry), and the guards are already
+      // sending them to /login. Reporting it would flash "Unauthorized" over
+      // the sign-in screen on the way out.
+      if (error instanceof ApiError && error.status === 401) {
+        return { households: [], error: null };
+      }
       return {
         households: [],
         error: messageOf(error, "Unable to load households"),

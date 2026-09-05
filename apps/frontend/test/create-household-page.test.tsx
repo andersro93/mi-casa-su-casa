@@ -7,6 +7,7 @@ import { describeSlugProblem } from "../src/components/HouseholdAddressField";
 import { SetupPage } from "../src/components/SetupPage";
 import { suggestHouseholdSlug } from "../src/utils";
 import { renderClient, screen, userEvent, waitFor } from "./client-test-utils";
+import { readRequest } from "./fetch-mock";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -38,10 +39,8 @@ describe("CreateHouseholdPage", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        calls.push({
-          url: String(input),
-          body: init?.body as string | undefined,
-        });
+        const { url, body } = await readRequest(input, init);
+        calls.push({ url, body });
         return new Response(
           JSON.stringify({
             household: {

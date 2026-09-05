@@ -6,14 +6,14 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { authClient } from "@server/auth/client";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { client, unwrap } from "../lib/api";
+import { signOut } from "../lib/auth-client";
 import type {
   InvitationAcceptanceState,
   InvitationLookupResponse,
 } from "../types";
-import { fetchJson } from "../utils";
 import { PublicEntryShell } from "./PublicEntryShell";
 import { LoadingState, PasswordField } from "./ui";
 
@@ -52,9 +52,13 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetchJson<InvitationLookupResponse>(
-        "/api/invitations/lookup",
-        { headers: { "X-Invitation-Token": token } },
+      const response = await unwrap<InvitationLookupResponse>(
+        client.GET("/api/invitations/lookup", {
+          // The token travels in a header, not the URL: an invitation link
+          // pasted into a chat should not leave the token in a referrer or a
+          // proxy's access log.
+          params: { header: { "X-Invitation-Token": token } },
+        }),
       );
       setLookup(response);
       setAccountExists(response.accountExists);
@@ -71,18 +75,16 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
     void loadInvitation();
   }, [loadInvitation]);
 
-  async function submitAcceptance(body: Record<string, string>) {
+  async function submitAcceptance(body: { name?: string; password?: string }) {
     setError(null);
     setIsAccepting(true);
 
     try {
-      const response = await fetchJson<{ household?: { slug: string } | null }>(
-        "/api/invitations/accept",
-        {
-          method: "POST",
-          headers: { "X-Invitation-Token": token },
-          body: JSON.stringify(body),
-        },
+      const response = await unwrap<{ household?: { slug: string } | null }>(
+        client.POST("/api/invitations/accept", {
+          params: { header: { "X-Invitation-Token": token } },
+          body,
+        }),
       );
 
       if (!response.household?.slug) {
@@ -125,7 +127,7 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
   async function handleSignOut() {
     setIsSigningOut(true);
     try {
-      await authClient.signOut();
+      await signOut();
     } finally {
       setIsSigningOut(false);
     }
@@ -354,7 +356,7 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
           component="p"
           sx={{ mt: 2, textAlign: "center" }}
         >
-          You can add a passkey (Face ID / fingerprint) in Settings afterwards.
+          You can turn on two-step verification in Settings afterwards.
         </Typography>
       </Box>
     </PublicEntryShell>

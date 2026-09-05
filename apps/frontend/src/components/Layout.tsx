@@ -43,7 +43,7 @@ const DRAWER_WIDTH = 264;
 const APP_BAR_HEIGHT = 64;
 
 /**
- * Account settings (profile, password, 2FA, passkeys, sessions) are a global
+ * Account settings (profile, password, 2FA, sessions) are a global
  * route — not scoped to a household. Household settings live at
  * /:slug/settings and are linked from the sidebar instead.
  */

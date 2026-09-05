@@ -6,9 +6,9 @@ import { defineConfig } from "vite";
 // what `bun run --filter @mi-casa/frontend build` and `vite dev` use, and it
 // is where the SPA lands once the Worker is retired.
 const srcPath = new URL("./src", import.meta.url).pathname;
-// Better Auth's browser client still lives with the Worker sources; the alias
-// keeps `@server/auth/client` resolvable from here until the Go backend and
-// its own auth client replace it.
+// One shared module still lives with the Worker sources — the household-slug
+// rules in `@server/domain/household-slug`, which the server validates
+// against too. The alias keeps it resolvable from here until P12 moves it.
 const serverPath = new URL("../../src/server", import.meta.url).pathname;
 
 export default defineConfig({

@@ -9,17 +9,16 @@ import { createMemoryHistory } from "@tanstack/react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HouseholdSummary, SessionData } from "../src/types";
+import { readRequest } from "./fetch-mock";
 
 const authState = vi.hoisted(() => ({
   session: null as SessionData | null,
 }));
 
-vi.mock("@server/auth/client", () => ({
-  authClient: {
-    getSession: async () => ({ data: authState.session, error: null }),
-    signOut: async () => ({ data: null, error: null }),
-    signIn: { email: async () => ({}), passkey: async () => ({}) },
-  },
+vi.mock("@/lib/auth-client", () => ({
+  getSession: async () => authState.session,
+  signIn: async () => ({ twoFactorRequired: false }),
+  signOut: async () => {},
 }));
 
 const { createAppRouter } = await import("../src/router");
@@ -33,7 +32,7 @@ const owner: HouseholdSummary = {
 const member: HouseholdSummary = { ...owner, role: "member" };
 
 const signedIn: SessionData = {
-  user: { id: "u1", email: "alex@example.com", name: "Alex" },
+  user: { email: "alex@example.com", name: "Alex" },
 };
 
 function json(body: unknown) {
@@ -50,7 +49,7 @@ function mockApi({
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : String(input);
+      const { url } = await readRequest(input);
 
       if (url.includes("/api/setup/status")) {
         return json({

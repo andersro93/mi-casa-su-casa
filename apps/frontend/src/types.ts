@@ -1,13 +1,20 @@
+/**
+ * What Limen's `GET /api/auth/me` (and every session-bearing response) tells
+ * the SPA about the signed-in account — the SDK camelises the server's
+ * snake_case keys, so `two_factor_enabled` arrives as `twoFactorEnabled`.
+ *
+ * There is deliberately no `id`: the value this app keys members and provider
+ * access on is its own user id, which screens read from `profile.id` on
+ * `GET /api/settings` (`useCurrentUserId()`), not off the session. Everything
+ * here is optional because the only question the guards ask of it is "is
+ * there an email, i.e. is anybody signed in?".
+ */
 export type SessionData = {
   user?: {
-    id?: string;
     email?: string | null;
     name?: string | null;
     image?: string | null;
-    role?: string | null;
-  };
-  session?: {
-    id?: string;
+    twoFactorEnabled?: boolean;
   };
 };
 
@@ -162,18 +169,6 @@ export type AccountSettingsResponse = {
   sessions: AccountSession[];
 };
 
-export type AccountSettingsFormState = {
-  name: string;
-  image: string;
-  currentPassword: string;
-  newPassword: string;
-  forgotPasswordEmail: string;
-  twoFactorPassword: string;
-  twoFactorCode: string;
-  twoFactorBackupCode: string;
-  passkeyName: string;
-};
-
 export type HouseholdSettings = {
   slug: string;
   /** <slug>@EMAIL_DOMAIN, or null until the operator configures EMAIL_DOMAIN. */
@@ -256,8 +251,14 @@ export type InvitationLookupResponse = {
   invitedBy: { name: string } | null;
 };
 
+/**
+ * A two-step enrolment in progress. `uri` is the otpauth:// URI Limen's
+ * `initiate-setup` returns; the QR image and the typed-by-hand secret are
+ * both derived from it in the browser. `backupCodes` stays empty until the
+ * code has been verified — Limen only serves them after enrolment finishes.
+ */
 export type TwoFactorSetup = {
-  totpURI: string;
+  uri: string;
   qrDataUrl: string | null;
   secret: string | null;
   backupCodes: string[];

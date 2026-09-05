@@ -12,6 +12,7 @@ import {
   waitFor,
   within,
 } from "./client-test-utils";
+import { readRequest } from "./fetch-mock";
 
 const providers: ProviderSummary[] = [
   {
@@ -80,9 +81,8 @@ function mockApi({
   const calls: Array<{ url: string; method: string; body?: string }> = [];
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      calls.push({ url, method, body: init?.body as string | undefined });
+      const { url, method, body } = await readRequest(input, init);
+      calls.push({ url, method, body });
       if (url.endsWith("/api/inbox/olsen/providers")) {
         if (failProviders) return jsonResponse({ error: "Boom" }, 500);
         return jsonResponse({ providers: summaries });
@@ -102,7 +102,7 @@ function mockApi({
         });
       }
       if (url.includes("/status") && method === "PATCH") {
-        const { status } = JSON.parse(init?.body as string) as {
+        const { status } = JSON.parse(body as string) as {
           status: string;
         };
         return jsonResponse({ message: { ...netflixMessages[0], status } });

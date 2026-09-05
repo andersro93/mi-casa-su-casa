@@ -9,6 +9,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      // A bare "@" is safe next to the scoped npm packages: the alias plugin
+      // only matches "@" itself or "@/…", never "@mui/…".
+      "@": clientPath,
       "@client": clientPath,
       "@server": serverPath,
       "@test": testPath,

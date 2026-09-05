@@ -4,12 +4,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { client, unwrap } from "../lib/api";
 import type {
   ProviderConfiguration,
   ProviderConfigurationResponse,
   SenderRule,
 } from "../types";
-import { buildHouseholdApiPath, fetchJson } from "../utils";
 import { inboxKeys } from "./inbox";
 
 /** Owner-side configuration: services (providers) and their senders (rules). */
@@ -22,8 +22,10 @@ export function servicesOptions(slug: string) {
   return queryOptions({
     queryKey: adminKeys.services(slug),
     queryFn: () =>
-      fetchJson<ProviderConfigurationResponse>(
-        buildHouseholdApiPath(slug, "/admin/providers"),
+      unwrap<ProviderConfigurationResponse>(
+        client.GET("/api/admin/{slug}/providers", {
+          params: { path: { slug } },
+        }),
       ),
   });
 }
@@ -47,9 +49,11 @@ export function useCreateService(slug: string) {
   const invalidate = useInvalidateServices(slug);
   return useMutation({
     mutationFn: (input: { providerKey: string; displayName: string }) =>
-      fetchJson<{ provider: ProviderConfiguration }>(
-        buildHouseholdApiPath(slug, "/admin/providers"),
-        { method: "POST", body: JSON.stringify(input) },
+      unwrap<{ provider: ProviderConfiguration }>(
+        client.POST("/api/admin/{slug}/providers", {
+          params: { path: { slug } },
+          body: input,
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -63,15 +67,14 @@ export function useUpdateService(slug: string) {
       providerKey: string;
       displayName: string;
     }) =>
-      fetchJson<{ provider: ProviderConfiguration }>(
-        buildHouseholdApiPath(slug, `/admin/providers/${input.id}`),
-        {
-          method: "PATCH",
-          body: JSON.stringify({
+      unwrap<{ provider: ProviderConfiguration }>(
+        client.PATCH("/api/admin/{slug}/providers/{providerId}", {
+          params: { path: { slug, providerId: input.id } },
+          body: {
             providerKey: input.providerKey,
             displayName: input.displayName,
-          }),
-        },
+          },
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -81,9 +84,10 @@ export function useDeleteService(slug: string) {
   const invalidate = useInvalidateServices(slug);
   return useMutation({
     mutationFn: (id: string) =>
-      fetchJson<{ ok: boolean }>(
-        buildHouseholdApiPath(slug, `/admin/providers/${id}`),
-        { method: "DELETE" },
+      unwrap<{ ok: boolean }>(
+        client.DELETE("/api/admin/{slug}/providers/{providerId}", {
+          params: { path: { slug, providerId: id } },
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -97,9 +101,11 @@ export function useCreateSender(slug: string) {
       matchType: SenderRule["match_type"];
       matchValue: string;
     }) =>
-      fetchJson<{ rule: SenderRule }>(
-        buildHouseholdApiPath(slug, "/admin/provider-rules"),
-        { method: "POST", body: JSON.stringify(input) },
+      unwrap<{ rule: SenderRule }>(
+        client.POST("/api/admin/{slug}/provider-rules", {
+          params: { path: { slug } },
+          body: input,
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -114,16 +120,15 @@ export function useUpdateSender(slug: string) {
       matchType: SenderRule["match_type"];
       matchValue: string;
     }) =>
-      fetchJson<{ rule: SenderRule }>(
-        buildHouseholdApiPath(slug, `/admin/provider-rules/${input.id}`),
-        {
-          method: "PATCH",
-          body: JSON.stringify({
+      unwrap<{ rule: SenderRule }>(
+        client.PATCH("/api/admin/{slug}/provider-rules/{ruleId}", {
+          params: { path: { slug, ruleId: input.id } },
+          body: {
             providerId: input.providerId,
             matchType: input.matchType,
             matchValue: input.matchValue,
-          }),
-        },
+          },
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -133,9 +138,10 @@ export function useDeleteSender(slug: string) {
   const invalidate = useInvalidateServices(slug);
   return useMutation({
     mutationFn: (id: string) =>
-      fetchJson<{ ok: boolean }>(
-        buildHouseholdApiPath(slug, `/admin/provider-rules/${id}`),
-        { method: "DELETE" },
+      unwrap<{ ok: boolean }>(
+        client.DELETE("/api/admin/{slug}/provider-rules/{ruleId}", {
+          params: { path: { slug, ruleId: id } },
+        }),
       ),
     onSuccess: invalidate,
   });

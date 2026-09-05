@@ -22,8 +22,10 @@ import { type FormEvent, useId, useState } from "react";
 import {
   useDisableTwoStep,
   useEnableTwoStep,
+  useRegenerateBackupCodes,
   useVerifyTwoStep,
 } from "../../queries/settings";
+import type { TwoFactorSetup } from "../../types";
 import { CopyButton, PasswordField, StatusChip } from "../ui";
 import { SettingsSection } from "./SettingsSection";
 
@@ -32,21 +34,67 @@ interface TwoStepSectionProps {
   onSaved: (message: string) => void;
 }
 
-type Enrolment = {
-  totpURI: string;
-  qrDataUrl: string | null;
-  secret: string | null;
-  backupCodes: string[];
-};
+/** The one-shot codes, with the two ways of keeping them: copy, or download. */
+function BackupCodeList({ codes }: { codes: string[] }) {
+  const text = codes.join("\n");
+  const href = `data:text/plain;charset=utf-8,${encodeURIComponent(`Mi Casa Su Casa backup codes\n\n${text}\n`)}`;
+
+  return (
+    <>
+      <Paper variant="outlined" sx={{ p: 2, bgcolor: "background.default" }}>
+        <Box
+          component="ul"
+          aria-label="Backup codes"
+          sx={{
+            m: 0,
+            pl: 0,
+            listStyle: "none",
+            columns: { xs: 1, sm: 2 },
+            fontFamily: "monospace",
+            fontSize: "1rem",
+            lineHeight: 1.9,
+          }}
+        >
+          {codes.map((code) => (
+            <li key={code}>{code}</li>
+          ))}
+        </Box>
+      </Paper>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+        <CopyButton
+          value={text}
+          label="Copy all codes"
+          variant="button"
+          size="small"
+        />
+        <Button
+          size="small"
+          variant="outlined"
+          color="inherit"
+          component="a"
+          href={href}
+          download="mi-casa-su-casa-backup-codes.txt"
+        >
+          Download as a file
+        </Button>
+      </Stack>
+    </>
+  );
+}
 
 export function TwoStepSection({ enabled, onSaved }: TwoStepSectionProps) {
   const enable = useEnableTwoStep();
   const verify = useVerifyTwoStep();
   const disable = useDisableTwoStep();
-  const [dialog, setDialog] = useState<"enable" | "disable" | null>(null);
+  const regenerate = useRegenerateBackupCodes();
+  const [dialog, setDialog] = useState<"enable" | "disable" | "codes" | null>(
+    null,
+  );
+  /** A freshly minted set, shown once: the old ones stop working. */
+  const [freshCodes, setFreshCodes] = useState<string[] | null>(null);
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const [enrolment, setEnrolment] = useState<Enrolment | null>(null);
+  const [enrolment, setEnrolment] = useState<TwoFactorSetup | null>(null);
   const [step, setStep] = useState(0); // 0 password, 1 scan+verify, 2 backup codes
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +108,7 @@ export function TwoStepSection({ enabled, onSaved }: TwoStepSectionProps) {
     setStep(0);
     setSaved(false);
     setError(null);
+    setFreshCodes(null);
   };
 
   const startEnrolment = async (event: FormEvent<HTMLFormElement>) => {
@@ -70,25 +119,22 @@ export function TwoStepSection({ enabled, onSaved }: TwoStepSectionProps) {
       return;
     }
     try {
-      const data = await enable.mutateAsync(password);
+      const { uri } = await enable.mutateAsync(password);
       let qrDataUrl: string | null = null;
       try {
-        qrDataUrl = await QRCode.toDataURL(data.totpURI, { margin: 1 });
+        qrDataUrl = await QRCode.toDataURL(uri, { margin: 1 });
       } catch {
         qrDataUrl = null;
       }
       let secret: string | null = null;
       try {
-        secret = new URL(data.totpURI).searchParams.get("secret");
+        secret = new URL(uri).searchParams.get("secret");
       } catch {
         secret = null;
       }
-      setEnrolment({
-        totpURI: data.totpURI,
-        qrDataUrl,
-        secret,
-        backupCodes: data.backupCodes,
-      });
+      // No backup codes yet: the server only issues them once enrolment has
+      // been finished with a working code, so step 2 fills them in.
+      setEnrolment({ uri, qrDataUrl, secret, backupCodes: [] });
       setPassword("");
       setStep(1);
     } catch (err) {
@@ -109,7 +155,10 @@ export function TwoStepSection({ enabled, onSaved }: TwoStepSectionProps) {
       return;
     }
     try {
-      await verify.mutateAsync(trimmed);
+      const backupCodes = await verify.mutateAsync(trimmed);
+      setEnrolment((current) =>
+        current ? { ...current, backupCodes } : current,
+      );
       setStep(2);
     } catch (err) {
       setError(
@@ -145,14 +194,11 @@ export function TwoStepSection({ enabled, onSaved }: TwoStepSectionProps) {
     }
   };
 
-  const backupText = enrolment?.backupCodes.join("\n") ?? "";
-  const backupHref = `data:text/plain;charset=utf-8,${encodeURIComponent(`Mi Casa Su Casa backup codes\n\n${backupText}\n`)}`;
-
   return (
     <SettingsSection
       id="two-step"
       title="Two-step verification"
-      description="An extra check when you sign in with a password: a code from an authenticator app on your phone. Passkeys already include this kind of check."
+      description="An extra check when you sign in: a code from an authenticator app on your phone, plus backup codes for when you don't have it."
     >
       <Stack
         direction={{ xs: "column", sm: "row" }}
@@ -171,13 +217,38 @@ export function TwoStepSection({ enabled, onSaved }: TwoStepSectionProps) {
               : "Not set up yet."}
           </Typography>
         </Stack>
-        <Button
-          variant={enabled ? "outlined" : "contained"}
-          color={enabled ? "inherit" : "primary"}
-          onClick={() => setDialog(enabled ? "disable" : "enable")}
-        >
-          {enabled ? "Turn off" : "Turn on"}
-        </Button>
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+          {enabled ? (
+            <Button
+              variant="outlined"
+              color="inherit"
+              disabled={regenerate.isPending}
+              onClick={async () => {
+                setError(null);
+                try {
+                  const codes = await regenerate.mutateAsync();
+                  setFreshCodes(codes);
+                  setDialog("codes");
+                } catch (err) {
+                  onSaved(
+                    err instanceof Error && err.message
+                      ? err.message
+                      : "Couldn't make new backup codes.",
+                  );
+                }
+              }}
+            >
+              {regenerate.isPending ? "Making codes…" : "New backup codes"}
+            </Button>
+          ) : null}
+          <Button
+            variant={enabled ? "outlined" : "contained"}
+            color={enabled ? "inherit" : "primary"}
+            onClick={() => setDialog(enabled ? "disable" : "enable")}
+          >
+            {enabled ? "Turn off" : "Turn on"}
+          </Button>
+        </Stack>
       </Stack>
 
       <Dialog
@@ -294,51 +365,7 @@ export function TwoStepSection({ enabled, onSaved }: TwoStepSectionProps) {
                 Each works once. Save them somewhere safe now — they won't be
                 shown again.
               </Typography>
-              <Paper
-                variant="outlined"
-                sx={{ p: 2, bgcolor: "background.default" }}
-              >
-                <Box
-                  component="ul"
-                  aria-label="Backup codes"
-                  sx={{
-                    m: 0,
-                    pl: 0,
-                    listStyle: "none",
-                    columns: { xs: 1, sm: 2 },
-                    fontFamily: "monospace",
-                    fontSize: "1rem",
-                    lineHeight: 1.9,
-                  }}
-                >
-                  {enrolment.backupCodes.map((backupCode) => (
-                    <li key={backupCode}>{backupCode}</li>
-                  ))}
-                </Box>
-              </Paper>
-              <Stack
-                direction="row"
-                spacing={1}
-                useFlexGap
-                sx={{ flexWrap: "wrap" }}
-              >
-                <CopyButton
-                  value={backupText}
-                  label="Copy all codes"
-                  variant="button"
-                  size="small"
-                />
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="inherit"
-                  component="a"
-                  href={backupHref}
-                  download="mi-casa-su-casa-backup-codes.txt"
-                >
-                  Download as a file
-                </Button>
-              </Stack>
+              <BackupCodeList codes={enrolment.backupCodes} />
               <FormControlLabel
                 control={
                   <Checkbox
@@ -387,6 +414,39 @@ export function TwoStepSection({ enabled, onSaved }: TwoStepSectionProps) {
               Done
             </Button>
           ) : null}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={dialog === "codes"}
+        onClose={reset}
+        fullWidth
+        maxWidth="sm"
+        aria-labelledby={`${titleId}-codes`}
+      >
+        <DialogTitle id={`${titleId}-codes`}>Your new backup codes</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 0.5 }}>
+            <Alert severity="warning">
+              The codes you had before no longer work.
+            </Alert>
+            <Typography variant="body2" color="text.secondary">
+              Each of these works once, if you can't reach your authenticator
+              app. Save them somewhere safe now — they won't be shown again.
+            </Typography>
+            {freshCodes ? <BackupCodeList codes={freshCodes} /> : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            variant="contained"
+            onClick={() => {
+              reset();
+              onSaved("New backup codes are ready.");
+            }}
+          >
+            Done
+          </Button>
         </DialogActions>
       </Dialog>
 

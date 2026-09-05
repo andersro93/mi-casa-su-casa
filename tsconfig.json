@@ -20,6 +20,11 @@
       "vitest/globals"
     ],
     "paths": {
+      // `@/*` is the SPA workspace's own alias (apps/frontend/tsconfig.json
+      // and both of its Vite configs). It is repeated here because the root
+      // `tsc --noEmit` and the root Vitest run both still compile
+      // apps/frontend's sources and tests.
+      "@/*": ["./apps/frontend/src/*"],
       "@client/*": ["./apps/frontend/src/*"],
       "@server/*": ["./src/server/*"],
       "@test/*": ["./test/*"]

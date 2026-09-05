@@ -4,13 +4,13 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { client, unwrap } from "../lib/api";
 import type {
   InvitationDeliveryResponse,
   InvitationSummary,
   MemberSummary,
   ProviderOption,
 } from "../types";
-import { buildHouseholdApiPath, fetchJson } from "../utils";
 
 export const memberKeys = {
   all: (slug: string) => ["members", slug] as const,
@@ -27,7 +27,9 @@ export function membersOptions(slug: string) {
   return queryOptions({
     queryKey: memberKeys.members(slug),
     queryFn: () =>
-      fetchJson<MembersResponse>(buildHouseholdApiPath(slug, "/admin/members")),
+      unwrap<MembersResponse>(
+        client.GET("/api/admin/{slug}/members", { params: { path: { slug } } }),
+      ),
   });
 }
 
@@ -35,8 +37,10 @@ export function invitationsOptions(slug: string) {
   return queryOptions({
     queryKey: memberKeys.invitations(slug),
     queryFn: async () => {
-      const response = await fetchJson<{ invitations: InvitationSummary[] }>(
-        buildHouseholdApiPath(slug, "/admin/invitations"),
+      const response = await unwrap<{ invitations: InvitationSummary[] }>(
+        client.GET("/api/admin/{slug}/invitations", {
+          params: { path: { slug } },
+        }),
       );
       return response.invitations;
     },
@@ -69,9 +73,11 @@ export function useCreateInvitation(slug: string) {
       role: "member" | "owner";
       providerIds: string[];
     }) =>
-      fetchJson<InvitationDeliveryResponse>(
-        buildHouseholdApiPath(slug, "/admin/invitations"),
-        { method: "POST", body: JSON.stringify(input) },
+      unwrap<InvitationDeliveryResponse>(
+        client.POST("/api/admin/{slug}/invitations", {
+          params: { path: { slug } },
+          body: input,
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -81,12 +87,10 @@ export function useResendInvitation(slug: string) {
   const invalidate = useInvalidateMembers(slug);
   return useMutation({
     mutationFn: (invitationId: string) =>
-      fetchJson<InvitationDeliveryResponse>(
-        buildHouseholdApiPath(
-          slug,
-          `/admin/invitations/${invitationId}/resend`,
-        ),
-        { method: "POST" },
+      unwrap<InvitationDeliveryResponse>(
+        client.POST("/api/admin/{slug}/invitations/{invitationId}/resend", {
+          params: { path: { slug, invitationId } },
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -96,9 +100,10 @@ export function useCancelInvitation(slug: string) {
   const invalidate = useInvalidateMembers(slug);
   return useMutation({
     mutationFn: (invitationId: string) =>
-      fetchJson<{ ok: boolean }>(
-        buildHouseholdApiPath(slug, `/admin/invitations/${invitationId}`),
-        { method: "DELETE" },
+      unwrap<{ ok: boolean }>(
+        client.DELETE("/api/admin/{slug}/invitations/{invitationId}", {
+          params: { path: { slug, invitationId } },
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -108,9 +113,10 @@ export function useRemoveMember(slug: string) {
   const invalidate = useInvalidateMembers(slug);
   return useMutation({
     mutationFn: (userId: string) =>
-      fetchJson<{ ok: boolean }>(
-        buildHouseholdApiPath(slug, `/admin/members/${userId}`),
-        { method: "DELETE" },
+      unwrap<{ ok: boolean }>(
+        client.DELETE("/api/admin/{slug}/members/{userId}", {
+          params: { path: { slug, userId } },
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -120,9 +126,11 @@ export function useChangeMemberRole(slug: string) {
   const invalidate = useInvalidateMembers(slug);
   return useMutation({
     mutationFn: (input: { userId: string; role: "member" | "owner" }) =>
-      fetchJson<{ ok: boolean }>(
-        buildHouseholdApiPath(slug, `/admin/members/${input.userId}/role`),
-        { method: "PATCH", body: JSON.stringify({ role: input.role }) },
+      unwrap<{ ok: boolean }>(
+        client.PATCH("/api/admin/{slug}/members/{userId}/role", {
+          params: { path: { slug, userId: input.userId } },
+          body: { role: input.role },
+        }),
       ),
     onSuccess: invalidate,
   });
@@ -138,21 +146,21 @@ export function useSetMemberAccess(slug: string) {
       revoke: string[];
     }) => {
       for (const providerKey of input.grant) {
-        await fetchJson<{ ok: boolean }>(
-          buildHouseholdApiPath(
-            slug,
-            `/admin/members/${input.userId}/provider-access`,
-          ),
-          { method: "POST", body: JSON.stringify({ providerKey }) },
+        await unwrap<{ ok: boolean }>(
+          client.POST("/api/admin/{slug}/members/{userId}/provider-access", {
+            params: { path: { slug, userId: input.userId } },
+            body: { providerKey },
+          }),
         );
       }
       for (const providerKey of input.revoke) {
-        await fetchJson<{ ok: boolean }>(
-          buildHouseholdApiPath(
-            slug,
-            `/admin/members/${input.userId}/provider-access/${encodeURIComponent(providerKey)}`,
+        await unwrap<{ ok: boolean }>(
+          client.DELETE(
+            "/api/admin/{slug}/members/{userId}/provider-access/{providerKey}",
+            {
+              params: { path: { slug, userId: input.userId, providerKey } },
+            },
           ),
-          { method: "DELETE" },
         );
       }
     },

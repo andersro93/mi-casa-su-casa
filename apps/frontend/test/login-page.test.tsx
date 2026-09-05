@@ -2,16 +2,17 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const signInEmail = vi.fn();
-const signInPasskey = vi.fn();
-vi.mock("@server/auth/client", () => ({
-  authClient: {
-    signIn: {
-      email: (...args: unknown[]) => signInEmail(...args),
-      passkey: (...args: unknown[]) => signInPasskey(...args),
-    },
-  },
+const signIn = vi.fn();
+const navigate = vi.fn();
+vi.mock("@/lib/auth-client", () => ({
+  signIn: (...args: unknown[]) => signIn(...args),
 }));
+vi.mock("@tanstack/react-router", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
+    "@tanstack/react-router",
+  );
+  return { ...actual, useNavigate: () => navigate };
+});
 
 import { LoginPage } from "../src/components/LoginPage";
 import { renderClient, screen, userEvent, waitFor } from "./client-test-utils";
@@ -30,43 +31,19 @@ function renderLogin(onLoginSuccess = vi.fn()) {
 
 describe("LoginPage", () => {
   beforeEach(() => {
-    signInEmail.mockReset();
-    signInPasskey.mockReset();
-    // jsdom has no WebAuthn; conditional autofill must stay silent.
-    signInPasskey.mockResolvedValue({
-      data: null,
-      error: { message: "unsupported" },
-    });
+    signIn.mockReset();
+    navigate.mockReset();
+    signIn.mockResolvedValue({ twoFactorRequired: false });
   });
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("offers passkey sign-in and finishes when the device confirms", async () => {
-    const { onLoginSuccess } = renderLogin();
-    signInPasskey.mockResolvedValueOnce({ data: { session: {} }, error: null });
-
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "Sign in with a passkey" }));
-
-    await waitFor(() => expect(onLoginSuccess).toHaveBeenCalledTimes(1));
-    expect(signInEmail).not.toHaveBeenCalled();
-  });
-
-  it("explains a cancelled passkey prompt and lets the user fall back to a password", async () => {
+  it("offers email and password only — passkeys are gone", () => {
     renderLogin();
-    signInPasskey.mockResolvedValueOnce({
-      data: null,
-      error: { message: "The operation either timed out or was not allowed." },
-    });
-
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "Sign in with a passkey" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(/cancelled/i);
+    expect(screen.getByLabelText(/Email address/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^Password/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /passkey/i })).toBeNull();
   });
 
   it("validates inline before calling the API", async () => {
@@ -77,7 +54,7 @@ describe("LoginPage", () => {
 
     expect(screen.getByText("Enter your email address.")).toBeInTheDocument();
     expect(screen.getByText("Enter your password.")).toBeInTheDocument();
-    expect(signInEmail).not.toHaveBeenCalled();
+    expect(signIn).not.toHaveBeenCalled();
 
     await user.type(screen.getByLabelText(/Email address/), "kari@example.com");
     expect(screen.queryByText("Enter your email address.")).toBeNull();
@@ -85,7 +62,6 @@ describe("LoginPage", () => {
 
   it("signs in with email + password and supports show/hide", async () => {
     const { onLoginSuccess } = renderLogin();
-    signInEmail.mockResolvedValue({ data: { user: {} }, error: null });
     const user = userEvent.setup();
 
     await user.type(screen.getByLabelText(/Email address/), "kari@example.com");
@@ -98,19 +74,35 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     await waitFor(() => expect(onLoginSuccess).toHaveBeenCalledTimes(1));
-    expect(signInEmail).toHaveBeenCalledWith({
-      email: "kari@example.com",
-      password: "correct-horse-battery",
-      rememberMe: true,
-    });
+    expect(signIn).toHaveBeenCalledWith(
+      "kari@example.com",
+      "correct-horse-battery",
+    );
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("sends an account with two-step verification on to the challenge page", async () => {
+    const { onLoginSuccess } = renderLogin();
+    signIn.mockResolvedValue({ twoFactorRequired: true });
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText(/Email address/), "kari@example.com");
+    await user.type(
+      screen.getByLabelText(/^Password/),
+      "correct-horse-battery",
+    );
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({ to: "/two-factor" }),
+    );
+    // Not signed in yet: the server revoked the session it had just minted.
+    expect(onLoginSuccess).not.toHaveBeenCalled();
   });
 
   it("shows the server's error for a wrong password", async () => {
     renderLogin();
-    signInEmail.mockResolvedValue({
-      data: null,
-      error: { message: "Invalid email or password" },
-    });
+    signIn.mockRejectedValue(new Error("Invalid email or password"));
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/Email address/), "kari@example.com");
     await user.type(screen.getByLabelText(/^Password/), "nope");

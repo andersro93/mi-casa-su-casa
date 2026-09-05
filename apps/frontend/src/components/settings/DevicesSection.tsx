@@ -39,7 +39,7 @@ export function DevicesSection({ sessions, onSaved }: DevicesSectionProps) {
     <SettingsSection
       id="devices"
       title="Signed-in devices"
-      description="Everywhere you're currently signed in. If you don't recognise one, sign it out."
+      description="Everywhere you're currently signed in. If you don't recognise one, sign it out. Network addresses are stored only as a one-way digest, so they aren't shown."
     >
       <List disablePadding aria-label="Signed-in devices">
         {sorted.map((session, index) => (
@@ -77,14 +77,15 @@ export function DevicesSection({ sessions, onSaved }: DevicesSectionProps) {
                   ) : null}
                 </Stack>
               }
-              secondary={[
+              // `session.ipAddress` is deliberately not rendered: the server
+              // stores a keyed digest of the address, not the address, so
+              // showing it would put an opaque hash where a reader expects
+              // something they can recognise.
+              secondary={
                 session.updatedAt
                   ? `Last active ${formatRelativeTime(session.updatedAt)}`
-                  : null,
-                session.ipAddress ? `from ${session.ipAddress}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+                  : null
+              }
             />
           </ListItem>
         ))}

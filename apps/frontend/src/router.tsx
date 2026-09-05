@@ -56,10 +56,10 @@ import {
   invalidateHouseholds,
   PENDING_INVITE_KEY,
   useHousehold,
-  useSessionData,
   useSetupStatus,
 } from "./lib/session";
 import { createQueryClient } from "./queries/client";
+import { useCurrentUserId } from "./queries/settings";
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
@@ -386,14 +386,17 @@ const membersRoute = createRoute({
 
 function MembersRoute() {
   const { slug, household } = useHouseholdView();
-  const session = useSessionData();
+  // Not from the session: Limen's payload describes the account as its own
+  // tables see it, and the id `member.id` is compared against is this app's.
+  // GET /api/settings is where the server states it.
+  const currentUserId = useCurrentUserId();
   if (!household) return null;
 
   return (
     <MembersPage
       slug={slug}
       householdName={household.displayName}
-      currentUserId={session?.user?.id ?? null}
+      currentUserId={currentUserId}
     />
   );
 }

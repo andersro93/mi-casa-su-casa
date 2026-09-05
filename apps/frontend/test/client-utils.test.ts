@@ -1,29 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildHouseholdApiPath,
-  getProviderAccessToggleRequest,
-} from "../src/utils";
-
-describe("buildHouseholdApiPath", () => {
-  it("builds inbox household routes under /api/inbox/:slug", () => {
-    expect(buildHouseholdApiPath("home", "/inbox/providers")).toBe(
-      "/api/inbox/home/providers",
-    );
-  });
-
-  it("builds admin household routes under /api/admin/:slug", () => {
-    expect(buildHouseholdApiPath("home", "/admin/members")).toBe(
-      "/api/admin/home/members",
-    );
-  });
-
-  it("keeps non-household APIs under /api/:slug for other scoped paths", () => {
-    expect(buildHouseholdApiPath("home", "/settings")).toBe(
-      "/api/home/settings",
-    );
-  });
-});
+import { getProviderAccessToggleRequest } from "../src/utils";
 
 describe("getProviderAccessToggleRequest", () => {
   it("uses POST and a granted message when access should be enabled", () => {

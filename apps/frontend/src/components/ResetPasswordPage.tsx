@@ -1,7 +1,7 @@
 import { Alert, Box, Button, Link as MuiLink, TextField } from "@mui/material";
-import { authClient } from "@server/auth/client";
 import { Link as RouterLink, useRouterState } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
+import { password as passwordApi } from "../lib/auth-client";
 import { PublicEntryShell } from "./PublicEntryShell";
 
 const MIN_PASSWORD_LENGTH = 12;
@@ -43,21 +43,18 @@ export function ResetPasswordPage() {
     }
 
     setIsSubmitting(true);
-    const { error: resetError } = await authClient.resetPassword({
-      newPassword: password,
-      token,
-    });
-    setIsSubmitting(false);
-
-    if (resetError) {
+    try {
+      await passwordApi.reset(token, password);
+      setDone(true);
+    } catch (resetError) {
       setError(
-        resetError.message ??
-          "Unable to reset the password. The link may have expired.",
+        resetError instanceof Error && resetError.message
+          ? resetError.message
+          : "Unable to reset the password. The link may have expired.",
       );
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setDone(true);
   };
 
   const invalidLink = !token || linkError === "INVALID_TOKEN";

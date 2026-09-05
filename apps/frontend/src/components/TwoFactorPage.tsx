@@ -1,15 +1,7 @@
-import {
-  Alert,
-  Box,
-  Button,
-  FormControlLabel,
-  Link as MuiLink,
-  Switch,
-  TextField,
-} from "@mui/material";
-import { authClient } from "@server/auth/client";
+import { Alert, Box, Button, Link as MuiLink, TextField } from "@mui/material";
 import { Link as RouterLink } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
+import { verifyTwoFactor } from "../lib/auth-client";
 import { PublicEntryShell } from "./PublicEntryShell";
 
 interface TwoFactorPageProps {
@@ -19,7 +11,6 @@ interface TwoFactorPageProps {
 export function TwoFactorPage({ onVerified }: TwoFactorPageProps) {
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [code, setCode] = useState("");
-  const [trustDevice, setTrustDevice] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,27 +19,22 @@ export function TwoFactorPage({ onVerified }: TwoFactorPageProps) {
     setError(null);
     setIsSubmitting(true);
 
-    const trimmed = code.trim();
-    const result = useBackupCode
-      ? await authClient.twoFactor.verifyBackupCode({
-          code: trimmed,
-          trustDevice,
-        })
-      : await authClient.twoFactor.verifyTotp({ code: trimmed, trustDevice });
-
-    setIsSubmitting(false);
-
-    if (result.error) {
+    try {
+      // One route for both kinds of code: the server recognises a backup
+      // code by its shape, so the toggle above only changes the wording.
+      await verifyTwoFactor(code.trim());
+      onVerified();
+    } catch (verifyError) {
+      const message = verifyError instanceof Error ? verifyError.message : "";
       setError(
-        result.error.message ??
+        message ||
           (useBackupCode
             ? "That backup code was not accepted."
             : "That code was not accepted. Codes change every 30 seconds."),
       );
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onVerified();
   };
 
   return (
@@ -73,20 +59,11 @@ export function TwoFactorPage({ onVerified }: TwoFactorPageProps) {
           autoFocus
           value={code}
           onChange={(event) => setCode(event.target.value)}
-        />
-        <FormControlLabel
-          control={
-            <Switch
-              checked={trustDevice}
-              onChange={(event) => setTrustDevice(event.target.checked)}
-            />
-          }
-          label="Trust this device for 30 days"
           sx={{ mb: 2 }}
         />
 
         {error && (
-          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} role="alert">
             {error}
           </Alert>
         )}

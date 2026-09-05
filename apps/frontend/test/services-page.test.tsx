@@ -15,6 +15,7 @@ import {
   waitFor,
   within,
 } from "./client-test-utils";
+import { readRequest } from "./fetch-mock";
 
 const providers: ProviderConfiguration[] = [
   {
@@ -61,19 +62,18 @@ function mockApi({ fail = false }: { fail?: boolean } = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      calls.push({ url, method, body: init?.body as string | undefined });
+      const { url, method, body } = await readRequest(input, init);
+      calls.push({ url, method, body });
       if (url.endsWith("/api/admin/olsen/providers") && method === "GET") {
         return fail ? json({ error: "Nope" }, 500) : json({ providers, rules });
       }
       if (url.endsWith("/api/admin/olsen/providers") && method === "POST") {
-        const body = JSON.parse(init?.body as string);
+        const sent = JSON.parse(body as string);
         return json({
           provider: {
             id: "p-new",
-            provider_key: body.providerKey,
-            display_name: body.displayName,
+            provider_key: sent.providerKey,
+            display_name: sent.displayName,
             created_at: "",
             rule_count: 0,
           },
@@ -84,7 +84,7 @@ function mockApi({ fail = false }: { fail?: boolean } = {}) {
         method === "POST"
       ) {
         return json({
-          rule: { id: "r-new", ...JSON.parse(init?.body as string) },
+          rule: { id: "r-new", ...JSON.parse(body as string) },
         });
       }
       if (method === "DELETE" || method === "PATCH") return json({ ok: true });
