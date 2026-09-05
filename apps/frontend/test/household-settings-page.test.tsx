@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HouseholdSettingsPage } from "../src/client/components/household/HouseholdSettingsPage";
+import { HouseholdSettingsPage } from "../src/components/household/HouseholdSettingsPage";
 import { renderClient, screen, userEvent, waitFor } from "./client-test-utils";
 
 function json(body: unknown, status = 200) {

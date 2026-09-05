@@ -8,9 +8,9 @@ import {
   isSettingsPath,
   Layout,
   UserAccountMenuContent,
-} from "../src/client/components/Layout";
-import { ColorModeContext, getTheme } from "../src/client/theme";
-import { getUserInitials } from "../src/client/utils";
+} from "../src/components/Layout";
+import { ColorModeContext, getTheme } from "../src/theme";
+import { getUserInitials } from "../src/utils";
 
 describe("Layout", () => {
   it("shows owner household settings in the sidebar and keeps account settings in the menu", () => {

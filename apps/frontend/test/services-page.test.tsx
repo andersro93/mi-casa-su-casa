@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ServicesPage } from "../src/client/components/services/ServicesPage";
+import { ServicesPage } from "../src/components/services/ServicesPage";
 import {
   describeSender,
   describeSenderProblem,
   suggestDomainFromName,
-} from "../src/client/components/services/senderRules";
-import type { ProviderConfiguration, SenderRule } from "../src/client/types";
+} from "../src/components/services/senderRules";
+import type { ProviderConfiguration, SenderRule } from "../src/types";
 import {
   renderClient,
   screen,

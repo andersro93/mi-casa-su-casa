@@ -19,9 +19,9 @@ vi.mock("qrcode", () => ({
   },
 }));
 
-import { AccountSettingsPage } from "../src/client/components/settings/AccountSettingsPage";
-import type { AccountSettingsResponse } from "../src/client/types";
-import { describeUserAgent } from "../src/client/utils";
+import { AccountSettingsPage } from "../src/components/settings/AccountSettingsPage";
+import type { AccountSettingsResponse } from "../src/types";
+import { describeUserAgent } from "../src/utils";
 import {
   renderClient,
   screen,

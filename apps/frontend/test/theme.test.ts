@@ -8,7 +8,7 @@ import {
   persistColorMode,
   readStoredColorMode,
   resolveColorMode,
-} from "../src/client/theme";
+} from "../src/theme";
 
 function luminance(hex: string) {
   const channels = [1, 3, 5]

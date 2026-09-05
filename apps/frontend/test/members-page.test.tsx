@@ -2,12 +2,12 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MembersPage } from "../src/client/components/members/MembersPage";
+import { MembersPage } from "../src/components/members/MembersPage";
 import type {
   InvitationSummary,
   MemberSummary,
   ProviderOption,
-} from "../src/client/types";
+} from "../src/types";
 import {
   renderClient,
   screen,

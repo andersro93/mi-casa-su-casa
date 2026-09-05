@@ -4,8 +4,8 @@ import "@testing-library/jest-dom/vitest";
 import { Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { InboxPage } from "../src/client/components/inbox/InboxPage";
-import type { InboxMessage, ProviderSummary } from "../src/client/types";
+import { InboxPage } from "../src/components/inbox/InboxPage";
+import type { InboxMessage, ProviderSummary } from "../src/types";
 import {
   renderClient,
   screen,

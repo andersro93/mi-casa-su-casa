@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const publicDir = new URL("../src/client/public/", import.meta.url);
+const publicDir = new URL("../public/", import.meta.url);
 
 interface Manifest {
   name: string;
@@ -48,7 +48,7 @@ describe("web app manifest", () => {
       expect(icon.type).toBe("image/png");
       expect(
         existsSync(new URL(`.${icon.src}`, publicDir)),
-        `${icon.src} is missing from src/client/public`,
+        `${icon.src} is missing from apps/frontend/public`,
       ).toBe(true);
     }
 
@@ -66,10 +66,7 @@ describe("web app manifest", () => {
 });
 
 describe("index.html PWA wiring", () => {
-  const html = readFileSync(
-    new URL("../src/client/index.html", import.meta.url),
-    "utf8",
-  );
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
   it("links the manifest and declares theme colour", () => {
     expect(html).toContain('rel="manifest" href="/manifest.webmanifest"');

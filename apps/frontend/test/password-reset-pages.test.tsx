@@ -2,9 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import { ForgotPasswordPage } from "../src/client/components/ForgotPasswordPage";
-import { LoginPage } from "../src/client/components/LoginPage";
-import { ResetPasswordPage } from "../src/client/components/ResetPasswordPage";
+import { ForgotPasswordPage } from "../src/components/ForgotPasswordPage";
+import { LoginPage } from "../src/components/LoginPage";
+import { ResetPasswordPage } from "../src/components/ResetPasswordPage";
 
 describe("password reset pages", () => {
   it("login page links to the forgot-password flow", () => {

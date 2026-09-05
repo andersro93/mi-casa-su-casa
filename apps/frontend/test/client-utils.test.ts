@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildHouseholdApiPath,
   getProviderAccessToggleRequest,
-} from "../src/client/utils";
+} from "../src/utils";
 
 describe("buildHouseholdApiPath", () => {
   it("builds inbox household routes under /api/inbox/:slug", () => {

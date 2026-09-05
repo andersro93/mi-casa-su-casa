@@ -1,5 +1,5 @@
 /**
- * Registers the app-shell service worker (src/client/public/sw.js) and asks
+ * Registers the app-shell service worker (apps/frontend/public/sw.js) and asks
  * it to check for a new version whenever the app comes back to the foreground,
  * so an installed home-screen app picks up deploys without a manual reload.
  */

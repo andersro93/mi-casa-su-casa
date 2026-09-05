@@ -2,10 +2,10 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CreateHouseholdPage } from "../src/client/components/CreateHouseholdPage";
-import { describeSlugProblem } from "../src/client/components/HouseholdAddressField";
-import { SetupPage } from "../src/client/components/SetupPage";
-import { suggestHouseholdSlug } from "../src/client/utils";
+import { CreateHouseholdPage } from "../src/components/CreateHouseholdPage";
+import { describeSlugProblem } from "../src/components/HouseholdAddressField";
+import { SetupPage } from "../src/components/SetupPage";
+import { suggestHouseholdSlug } from "../src/utils";
 import { renderClient, screen, userEvent, waitFor } from "./client-test-utils";
 
 afterEach(() => {

@@ -15,7 +15,7 @@ import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach } from "vitest";
 
-import { ColorModeContext, getTheme } from "../src/client/theme";
+import { ColorModeContext, getTheme } from "../src/theme";
 
 // Vitest has no global afterEach here, so Testing Library cannot auto-clean;
 // unmount between tests ourselves or renders pile up in the same document.

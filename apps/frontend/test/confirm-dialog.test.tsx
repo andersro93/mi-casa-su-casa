@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, expect, it, vi } from "vitest";
 
-import { ConfirmDialog } from "../src/client/components/ConfirmDialog";
+import { ConfirmDialog } from "../src/components/ConfirmDialog";
 import { renderClient, screen, userEvent } from "./client-test-utils";
 
 describe("ConfirmDialog", () => {

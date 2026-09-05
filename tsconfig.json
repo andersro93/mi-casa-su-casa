@@ -20,7 +20,7 @@
       "vitest/globals"
     ],
     "paths": {
-      "@client/*": ["./src/client/*"],
+      "@client/*": ["./apps/frontend/src/*"],
       "@server/*": ["./src/server/*"],
       "@test/*": ["./test/*"]
     }
@@ -31,6 +31,13 @@
     "src/**/*.d.ts",
     "test/**/*.ts",
     "test/**/*.tsx",
+    "apps/frontend/src/**/*.ts",
+    "apps/frontend/src/**/*.tsx",
+    "apps/frontend/src/**/*.d.ts",
+    "apps/frontend/test/**/*.ts",
+    "apps/frontend/test/**/*.tsx",
+    "apps/frontend/vite.config.ts",
+    "apps/frontend/vitest.config.ts",
     "vite.config.ts",
     "vitest.config.ts"
   ]

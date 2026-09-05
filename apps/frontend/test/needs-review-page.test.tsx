@@ -2,12 +2,12 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NeedsReviewPage } from "../src/client/components/review/NeedsReviewPage";
+import { NeedsReviewPage } from "../src/components/review/NeedsReviewPage";
 import {
   describeReviewReason,
   suggestService,
-} from "../src/client/components/review/reviewReasons";
-import type { ProviderSummary, QuarantineMessage } from "../src/client/types";
+} from "../src/components/review/reviewReasons";
+import type { ProviderSummary, QuarantineMessage } from "../src/types";
 import {
   renderClient,
   screen,

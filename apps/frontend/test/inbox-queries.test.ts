@@ -6,8 +6,8 @@ import {
   inboxKeys,
   providerMessagesOptions,
   providerSummariesOptions,
-} from "../src/client/queries/inbox";
-import { parseSender } from "../src/client/utils";
+} from "../src/queries/inbox";
+import { parseSender } from "../src/utils";
 
 describe("inbox query options", () => {
   it("poll every 10 s so a code that just arrived shows up without a reload", () => {

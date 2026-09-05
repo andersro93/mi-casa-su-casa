@@ -13,7 +13,7 @@ vi.mock("@server/auth/client", () => ({
   },
 }));
 
-import { LoginPage } from "../src/client/components/LoginPage";
+import { LoginPage } from "../src/components/LoginPage";
 import { renderClient, screen, userEvent, waitFor } from "./client-test-utils";
 
 function renderLogin(onLoginSuccess = vi.fn()) {

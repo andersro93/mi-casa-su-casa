@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@server/*": ["../../src/server/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ]
+}

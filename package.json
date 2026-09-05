@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/frontend"
+  ],
   "description": "Cloudflare-native shared verification inbox for families.",
   "cloudflare": {
     "bindings": {

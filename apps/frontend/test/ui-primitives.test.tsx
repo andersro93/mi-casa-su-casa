@@ -4,7 +4,7 @@ import { InboxOutlined } from "@mui/icons-material";
 import { Button } from "@mui/material";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ConfirmDialog } from "../src/client/components/ConfirmDialog";
+import { ConfirmDialog } from "../src/components/ConfirmDialog";
 import {
   CopyButton,
   EmptyState,
@@ -14,8 +14,8 @@ import {
   PageHeader,
   PasswordField,
   RelativeTime,
-} from "../src/client/components/ui";
-import { formatRelativeTime } from "../src/client/utils";
+} from "../src/components/ui";
+import { formatRelativeTime } from "../src/utils";
 import { renderClient, screen, userEvent, within } from "./client-test-utils";
 
 afterEach(() => {

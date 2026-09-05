@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
-import { TwoFactorPage } from "../src/client/components/TwoFactorPage";
+import { TwoFactorPage } from "../src/components/TwoFactorPage";
 
 describe("TwoFactorPage", () => {
   it("asks for the authenticator code, offers backup codes and a way back", () => {

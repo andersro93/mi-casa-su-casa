@@ -7,8 +7,8 @@ vi.mock("@server/auth/client", () => ({
   authClient: { signOut: (...args: unknown[]) => signOut(...args) },
 }));
 
-import { InvitePage } from "../src/client/components/InvitePage";
-import type { InvitationLookupResponse } from "../src/client/types";
+import { InvitePage } from "../src/components/InvitePage";
+import type { InvitationLookupResponse } from "../src/types";
 import { renderClient, screen, userEvent, waitFor } from "./client-test-utils";
 
 const base: InvitationLookupResponse = {

@@ -4,7 +4,7 @@ import {
 } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
 
-const clientPath = new URL("./src/client", import.meta.url).pathname;
+const clientPath = new URL("./apps/frontend/src", import.meta.url).pathname;
 const serverPath = new URL("./src/server", import.meta.url).pathname;
 const testPath = new URL("./test", import.meta.url).pathname;
 
@@ -29,7 +29,16 @@ export default defineConfig(async () => {
           test: {
             name: "unit",
             environment: "node",
-            include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
+            include: [
+              "test/**/*.test.ts",
+              "test/**/*.test.tsx",
+              // The SPA lives in the apps/frontend workspace and has its own
+              // vitest.config.ts, but the root run keeps executing its tests
+              // so `npm run ci` (which is npm-only, no bun) still covers the
+              // whole repo on the existing CI workflow.
+              "apps/frontend/test/**/*.test.ts",
+              "apps/frontend/test/**/*.test.tsx",
+            ],
             exclude: ["test/integration/**"],
           },
         },
