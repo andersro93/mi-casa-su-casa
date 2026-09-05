@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andersro93/mi-casa-su-casa/server/internal/mail"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/repo"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/testrig"
 )
@@ -41,9 +42,9 @@ func householdID(t *testing.T, app *testrig.AppRig, slug string) string {
 
 // parsedEmail is the minimum a stored message needs: the fields the inbox rows
 // actually show, plus the envelope the quarantine rows show as well.
-func parsedEmail(messageID, subject, from string) repo.ParsedEmail {
+func parsedEmail(messageID, subject, from string) mail.Parsed {
 	fromHeader := "Netflix <" + from + ">"
-	return repo.ParsedEmail{
+	return mail.Parsed{
 		EnvelopeFrom: from,
 		EnvelopeTo:   "casa@" + testrig.EmailDomain,
 		FromHeader:   &fromHeader,

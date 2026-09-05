@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andersro93/mi-casa-su-casa/server/internal/mail"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/repo"
 )
 
@@ -12,16 +13,15 @@ import (
 // provider-summaries.test.ts, pagination.test.ts and the purge half of
 // retention.test.ts.
 
-func parsedEmail(messageID string) repo.ParsedEmail {
-	dateHeader := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
-	return repo.ParsedEmail{
+func parsedEmail(messageID string) mail.Parsed {
+	return mail.Parsed{
 		EnvelopeFrom:  "login@service.example",
 		EnvelopeTo:    "casa@example.com",
 		HouseholdSlug: strptr("casa"),
 		FromHeader:    strptr("Service <login@service.example>"),
 		Subject:       strptr("Your verification code"),
 		MessageID:     messageID,
-		DateHeader:    &dateHeader,
+		DateHeader:    strptr("Sun, 10 May 2026 12:00:00 +0000"),
 		TextBody:      "Your verification code is 123456",
 		RawSize:       256,
 	}
@@ -143,15 +143,14 @@ func TestReceivedAtIsServerTimeNotTheDateHeader(t *testing.T) {
 
 	t0 := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
 	forged := parsedEmail("<forged@test>")
-	farFuture := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
-	forged.DateHeader = &farFuture
+	forged.DateHeader = strptr("Fri, 01 Jan 2099 00:00:00 +0000")
 	if _, err := r.InsertMessage(c, forged, household.ID, provider.ID, strptr("123456"), "matched", t0); err != nil {
 		t.Fatalf("InsertMessage: %v", err)
 	}
 
 	genuine := parsedEmail("<genuine@test>")
 	later := t0.Add(5 * time.Minute)
-	genuine.DateHeader = &later
+	genuine.DateHeader = strptr(later.Format(time.RFC1123Z))
 	if _, err := r.InsertMessage(c, genuine, household.ID, provider.ID, strptr("123456"), "matched", later); err != nil {
 		t.Fatalf("InsertMessage: %v", err)
 	}
@@ -576,4 +575,37 @@ func TestPurgeExpiredDeletesInBoundedBatches(t *testing.T) {
 // the paging and purge tests depend on.
 func mID(prefix string, i int) string {
 	return fmt.Sprintf("<%s-%d@t>", prefix, i)
+}
+
+// Ports the normalizeDateHeader half of src/server/db/repositories/messages.ts
+// (REF §A3, "Message storage"): the Date header is a sender-controlled string,
+// so it is stored when it parses and left null when it does not — never as a
+// reason to reject the message.
+func TestDateHeaderIsStoredWhenItParsesAndNullWhenItDoesNot(t *testing.T) {
+	r, rig := setup(t)
+	c := ctx(t)
+	_, household := ownedHousehold(t, r, rig, "owner@example.com", "casa")
+	provider, err := r.CreateProvider(c, household.ID, "netflix", "Netflix")
+	if err != nil {
+		t.Fatalf("CreateProvider: %v", err)
+	}
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+
+	good := parsedEmail("<good-date@test>")
+	if _, err := r.InsertMessage(c, good, household.ID, provider.ID, nil, "matched", now); err != nil {
+		t.Fatalf("InsertMessage: %v", err)
+	}
+
+	bad := parsedEmail("<bad-date@test>")
+	bad.DateHeader = strptr("whenever, really")
+	if _, err := r.InsertMessage(c, bad, household.ID, provider.ID, nil, "matched", now); err != nil {
+		t.Fatalf("InsertMessage with an unparseable Date: %v", err)
+	}
+
+	if got := countRows(t, rig, "messages", "date_header = $1", time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)); got != 1 {
+		t.Errorf("rows with the parsed date_header = %d, want 1", got)
+	}
+	if got := countRows(t, rig, "messages", "date_header IS NULL"); got != 1 {
+		t.Errorf("rows with a null date_header = %d, want 1", got)
+	}
 }

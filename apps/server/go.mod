@@ -3,6 +3,7 @@ module github.com/andersro93/mi-casa-su-casa/server
 go 1.27
 
 require (
+	github.com/emersion/go-message v0.18.2
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0

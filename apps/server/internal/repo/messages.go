@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	netmail "net/mail"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/andersro93/mi-casa-su-casa/server/internal/db/gen"
-	"github.com/andersro93/mi-casa-su-casa/server/internal/domain"
+	"github.com/andersro93/mi-casa-su-casa/server/internal/mail"
 )
 
 // Ports src/server/db/repositories/messages.ts (REF, "Message storage" and
@@ -35,39 +36,6 @@ const (
 	ReviewDismiss = "dismiss"
 	ReviewRelease = "release"
 )
-
-// ParsedEmail is an inbound email after parsing, as far as storage is
-// concerned. It mirrors the TypeScript ParsedIncomingEmail (REF, "Email
-// parsing"); the parser that produces it arrives with the inbound route, and
-// may well move this type into its own package then.
-//
-// DateHeader is kept for display only. It never becomes received_at: a
-// sender that puts the year 2099 in its Date header would otherwise sit at
-// the top of the inbox forever and outlive retention.
-type ParsedEmail struct {
-	EnvelopeFrom string
-	EnvelopeTo   string
-	// HouseholdSlug is nil when the recipient address carried none, which is
-	// one of the reasons a message ends up quarantined.
-	HouseholdSlug *string
-	FromHeader    *string
-	// FromAddress is the lower-cased address parsed out of the From header,
-	// used as the first match candidate during classification.
-	FromAddress *string
-	// Authentication is what the receiving MTA asserted (nil when the message
-	// carried no Authentication-Results header).
-	Authentication *domain.Authentication
-	Subject        *string
-	// MessageID is the RFC 5322 Message-ID. When it is empty the row's own id
-	// is stored instead, so the (household, message_id) uniqueness that makes
-	// ingest idempotent still has something to work with.
-	MessageID  string
-	DateHeader *time.Time
-	TextBody   string
-	// TextBodyTruncated records that TextBody was cut at the parser's limit.
-	TextBodyTruncated bool
-	RawSize           int
-}
 
 // InboxMessage is one row of a provider's inbox. snake_case tags: these keys
 // are what the SPA has read since the Workers deployment.
@@ -143,7 +111,7 @@ type PurgeResult struct {
 // only for logging, never to read the row back.
 func (r *Repo) InsertMessage(
 	ctx context.Context,
-	parsed ParsedEmail,
+	parsed mail.Parsed,
 	householdID, providerID string,
 	code *string,
 	reason string,
@@ -167,7 +135,7 @@ func (r *Repo) InsertMessage(
 		ExtractedCode:        code,
 		ClassificationReason: reason,
 		RawSize:              int32(parsed.RawSize),
-		DateHeader:           tsPtr(parsed.DateHeader),
+		DateHeader:           tsPtr(normalizeDateHeader(parsed.DateHeader)),
 		ReceivedAt:           ts(receivedAt),
 		DeleteAfter:          ts(deleteAfter(receivedAt)),
 	}); err != nil {
@@ -181,7 +149,7 @@ func (r *Repo) InsertMessage(
 // InsertMessage's are.
 func (r *Repo) InsertQuarantine(
 	ctx context.Context,
-	parsed ParsedEmail,
+	parsed mail.Parsed,
 	householdID string,
 	code *string,
 	reason string,
@@ -204,7 +172,7 @@ func (r *Repo) InsertQuarantine(
 		ExtractedCode:    code,
 		QuarantineReason: reason,
 		RawSize:          int32(parsed.RawSize),
-		DateHeader:       tsPtr(parsed.DateHeader),
+		DateHeader:       tsPtr(normalizeDateHeader(parsed.DateHeader)),
 		ReceivedAt:       ts(receivedAt),
 		DeleteAfter:      ts(deleteAfter(receivedAt)),
 	}); err != nil {
@@ -514,6 +482,22 @@ func purgeInBatches(
 // deleteAfter is the retention deadline for mail received at receivedAt.
 func deleteAfter(receivedAt time.Time) time.Time {
 	return receivedAt.AddDate(0, 0, RetentionDays)
+}
+
+// normalizeDateHeader turns the raw Date header into a timestamp, or nil when
+// there is none, or when it does not parse. It ports the TypeScript's
+// normalizeDateHeader: the header is a sender-controlled string, so a
+// nonsensical one becomes a null column rather than an ingest failure.
+func normalizeDateHeader(dateHeader *string) *time.Time {
+	if dateHeader == nil {
+		return nil
+	}
+	parsed, err := netmail.ParseDate(*dateHeader)
+	if err != nil {
+		return nil
+	}
+	utc := parsed.UTC()
+	return &utc
 }
 
 // messageIDOr falls back to the row's own id when the email carried no
