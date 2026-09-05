@@ -1,14 +1,6 @@
 import { ArrowBack } from "@mui/icons-material";
-import {
-  Box,
-  Button,
-  Paper,
-  Stack,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
+import { Box, Paper, Stack, useMediaQuery, useTheme } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link as RouterLink, useParams } from "react-router-dom";
 import {
   flattenMessages,
   inboxKeys,
@@ -17,8 +9,13 @@ import {
   useUpdateMessageStatus,
 } from "../../queries/inbox";
 import type { InboxMessage } from "../../types";
-import { buildHouseholdPath } from "../../utils";
-import { EmptyState, ErrorState, LoadingState, PageHeader } from "../ui";
+import {
+  ButtonLink,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+} from "../ui";
 import { FreshnessIndicator } from "./FreshnessIndicator";
 import { ServiceDetail } from "./ServiceDetail";
 import { ServiceList } from "./ServiceList";
@@ -27,6 +24,8 @@ interface InboxPageProps {
   slug: string;
   householdName: string;
   isOwner: boolean;
+  /** From /$slug/inbox/$providerKey; absent on the list route. */
+  providerKey?: string;
 }
 
 /**
@@ -35,8 +34,12 @@ interface InboxPageProps {
  * messages. Desktop: the same list on the left, the selected service on the
  * right. Data polls while the tab is visible.
  */
-export function InboxPage({ slug, householdName, isOwner }: InboxPageProps) {
-  const { providerKey } = useParams<{ providerKey?: string }>();
+export function InboxPage({
+  slug,
+  householdName,
+  isOwner,
+  providerKey,
+}: InboxPageProps) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const queryClient = useQueryClient();
@@ -141,15 +144,15 @@ export function InboxPage({ slug, householdName, isOwner }: InboxPageProps) {
       return (
         <Stack spacing={2}>
           <Box>
-            <Button
-              component={RouterLink}
-              to={buildHouseholdPath(slug, "/inbox")}
+            <ButtonLink
+              to="/$slug/inbox"
+              params={{ slug }}
               startIcon={<ArrowBack />}
               color="inherit"
               sx={{ ml: -1 }}
             >
               All services
-            </Button>
+            </ButtonLink>
           </Box>
           {detail ??
             (!providersQuery.isLoading ? (

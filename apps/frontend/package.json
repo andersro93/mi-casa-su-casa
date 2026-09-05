@@ -19,10 +19,10 @@
     "@mui/icons-material": "^9.3.1",
     "@mui/material": "^9.3.1",
     "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-router": "^1.170.32",
     "qrcode": "1.5.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "react-router-dom": "^7.18.2"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

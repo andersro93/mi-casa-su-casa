@@ -7,8 +7,8 @@ import {
   Typography,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
+import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import type {
   InvitationAcceptanceState,
   InvitationLookupResponse,
@@ -119,7 +119,7 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
 
   function goToSignIn() {
     sessionStorage.setItem("pendingInviteToken", token);
-    navigate("/login");
+    void navigate({ to: "/login" });
   }
 
   async function handleSignOut() {
@@ -154,7 +154,7 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
           variant="outlined"
           fullWidth
           size="large"
-          onClick={() => navigate("/login", { replace: true })}
+          onClick={() => void navigate({ to: "/login", replace: true })}
         >
           Go to sign in
         </Button>
@@ -225,7 +225,11 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
           >
             {isSigningOut ? "Signing out…" : "Sign out and continue"}
           </Button>
-          <Button variant="text" fullWidth onClick={() => navigate("/")}>
+          <Button
+            variant="text"
+            fullWidth
+            onClick={() => void navigate({ to: "/" })}
+          >
             Stay signed in as {viewer.email}
           </Button>
         </Stack>

@@ -1,15 +1,23 @@
 import { Alert, Box, Button, Link as MuiLink, TextField } from "@mui/material";
 import { authClient } from "@server/auth/client";
+import { Link as RouterLink, useRouterState } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
-import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import { PublicEntryShell } from "./PublicEntryShell";
 
 const MIN_PASSWORD_LENGTH = 12;
 
 export function ResetPasswordPage() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token");
-  const linkError = searchParams.get("error");
+  // Read off the location rather than the matched route's validated search:
+  // the page then renders anywhere the router is in context, and both query
+  // parameters are optional either way.
+  const search = useRouterState({
+    select: (state) => state.location.search,
+  }) as {
+    token?: string;
+    error?: string;
+  };
+  const token = search.token ?? null;
+  const linkError = search.error ?? null;
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

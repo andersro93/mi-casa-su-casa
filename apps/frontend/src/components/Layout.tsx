@@ -22,7 +22,6 @@ import {
   IconButton,
   List,
   ListItem,
-  ListItemButton,
   ListItemIcon,
   ListItemText,
   Menu,
@@ -32,13 +31,13 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import { useLocation } from "@tanstack/react-router";
 import type React from "react";
 import { type ReactNode, useContext, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
 import { ColorModeContext } from "../theme";
 import type { HouseholdSummary, SessionData } from "../types";
-import { buildHouseholdPath, getDisplayName, getUserInitials } from "../utils";
-import { BrandLockup } from "./ui";
+import { getDisplayName, getUserInitials } from "../utils";
+import { BrandLockup, ListItemButtonLink, MenuItemLink } from "./ui";
 
 const DRAWER_WIDTH = 264;
 const APP_BAR_HEIGHT = 64;
@@ -65,7 +64,7 @@ interface LayoutProps {
 
 type ActiveView = "inbox" | "members" | "quarantine" | "providers" | "settings";
 
-function getActiveView(pathname: string): ActiveView {
+export function getActiveView(pathname: string): ActiveView {
   // Match on path segments (/:slug/:view), not substrings, so a household slug
   // that happens to contain a view name does not change the active view.
   const segments = pathname.split("/").filter(Boolean);
@@ -124,8 +123,7 @@ export function UserAccountMenuContent({
         </Typography>
       </Box>
       <Divider />
-      <MenuItem
-        component={Link}
+      <MenuItemLink
         to={ACCOUNT_SETTINGS_PATH}
         onClick={onSettingsClick}
         sx={{ py: 1.25 }}
@@ -136,7 +134,7 @@ export function UserAccountMenuContent({
         <ListItemText
           primary={<Typography sx={{ fontWeight: 600 }}>Settings</Typography>}
         />
-      </MenuItem>
+      </MenuItemLink>
       <MenuItem onClick={onToggleColorMode} sx={{ py: 1.25 }}>
         <ListItemIcon>
           {mode === "dark" ? (
@@ -203,21 +201,30 @@ function UserAccountMenu({
   );
 }
 
+/** The household views the sidebar links to, as route paths + params. */
+type HouseholdNavTarget =
+  | "/$slug/inbox"
+  | "/$slug/members"
+  | "/$slug/quarantine"
+  | "/$slug/providers"
+  | "/$slug/settings";
+
 interface NavItemProps {
-  to: string;
+  to: HouseholdNavTarget;
+  params: { slug: string };
   icon: ReactNode;
   label: string;
   selected: boolean;
   onClick: () => void;
 }
 
-function NavItem({ to, icon, label, selected, onClick }: NavItemProps) {
+function NavItem({ to, params, icon, label, selected, onClick }: NavItemProps) {
   return (
     <ListItem disablePadding sx={{ mb: 0.5 }}>
-      <ListItemButton
+      <ListItemButtonLink
         selected={selected}
-        component={Link}
         to={to}
+        params={params}
         onClick={onClick}
         aria-current={selected ? "page" : undefined}
         sx={{ minHeight: 44 }}
@@ -234,7 +241,7 @@ function NavItem({ to, icon, label, selected, onClick }: NavItemProps) {
             </Typography>
           }
         />
-      </ListItemButton>
+      </ListItemButtonLink>
     </ListItem>
   );
 }
@@ -438,7 +445,8 @@ export function Layout({
 
       <List component="nav" aria-label="Main" sx={{ px: 2, pt: 1 }}>
         <NavItem
-          to={buildHouseholdPath(householdSlug, "/inbox")}
+          to="/$slug/inbox"
+          params={{ slug: householdSlug }}
           icon={<InboxIcon />}
           label="Inbox"
           selected={activeView === "inbox"}
@@ -457,28 +465,32 @@ export function Layout({
               </Typography>
             </ListItem>
             <NavItem
-              to={buildHouseholdPath(householdSlug, "/members")}
+              to="/$slug/members"
+              params={{ slug: householdSlug }}
               icon={<PeopleIcon />}
               label="Members"
               selected={activeView === "members"}
               onClick={handleNavClick}
             />
             <NavItem
-              to={buildHouseholdPath(householdSlug, "/quarantine")}
+              to="/$slug/quarantine"
+              params={{ slug: householdSlug }}
               icon={<SecurityIcon />}
               label="Needs review"
               selected={activeView === "quarantine"}
               onClick={handleNavClick}
             />
             <NavItem
-              to={buildHouseholdPath(householdSlug, "/providers")}
+              to="/$slug/providers"
+              params={{ slug: householdSlug }}
               icon={<HubOutlined />}
               label="Services"
               selected={activeView === "providers"}
               onClick={handleNavClick}
             />
             <NavItem
-              to={buildHouseholdPath(householdSlug, "/settings")}
+              to="/$slug/settings"
+              params={{ slug: householdSlug }}
               icon={<ManageAccountsIcon />}
               label="Household settings"
               selected={

@@ -1,19 +1,14 @@
 import { ChevronRight, InboxOutlined } from "@mui/icons-material";
-import {
-  Box,
-  Button,
-  Card,
-  CardActionArea,
-  List,
-  ListItem,
-  ListItemButton,
-  Stack,
-  Typography,
-} from "@mui/material";
-import { Link as RouterLink } from "react-router-dom";
+import { Box, Card, List, ListItem, Stack, Typography } from "@mui/material";
 import type { ProviderSummary } from "../../types";
-import { buildHouseholdPath } from "../../utils";
-import { CopyButton, EmptyState, RelativeTime } from "../ui";
+import {
+  ButtonLink,
+  CardActionAreaLink,
+  CopyButton,
+  EmptyState,
+  ListItemButtonLink,
+  RelativeTime,
+} from "../ui";
 import { CodeDisplay } from "./CodeDisplay";
 import { ServiceAvatar } from "./ServiceAvatar";
 
@@ -47,13 +42,13 @@ export function ServiceList({
         }
         action={
           isOwner ? (
-            <Button
+            <ButtonLink
               variant="contained"
-              component={RouterLink}
-              to={buildHouseholdPath(slug, "/providers")}
+              to="/$slug/providers"
+              params={{ slug }}
             >
               Set up services
-            </Button>
+            </ButtonLink>
           ) : undefined
         }
       />
@@ -71,9 +66,9 @@ export function ServiceList({
           const selected = provider.provider_key === selectedKey;
           return (
             <ListItem key={provider.provider_key} disablePadding>
-              <ListItemButton
-                component={RouterLink}
-                to={buildHouseholdPath(slug, `/inbox/${provider.provider_key}`)}
+              <ListItemButtonLink
+                to="/$slug/inbox/$providerKey"
+                params={{ slug, providerKey: provider.provider_key }}
                 selected={selected}
                 sx={{ py: 1.25, gap: 1.5, alignItems: "center" }}
               >
@@ -116,7 +111,7 @@ export function ServiceList({
                   </Typography>
                 </Box>
                 <ChevronRight color="action" />
-              </ListItemButton>
+              </ListItemButtonLink>
             </ListItem>
           );
         })}
@@ -132,7 +127,6 @@ export function ServiceList({
       aria-label="Services"
     >
       {providers.map((provider) => {
-        const to = buildHouseholdPath(slug, `/inbox/${provider.provider_key}`);
         const hasCode = Boolean(provider.latest_code);
         return (
           <Card
@@ -140,9 +134,9 @@ export function ServiceList({
             component="li"
             sx={{ overflow: "visible" }}
           >
-            <CardActionArea
-              component={RouterLink}
-              to={to}
+            <CardActionAreaLink
+              to="/$slug/inbox/$providerKey"
+              params={{ slug, providerKey: provider.provider_key }}
               sx={{ p: 2, pb: hasCode ? 1 : 2 }}
             >
               <Stack
@@ -176,7 +170,7 @@ export function ServiceList({
                 </Box>
                 <ChevronRight color="action" />
               </Stack>
-            </CardActionArea>
+            </CardActionAreaLink>
             {hasCode && provider.latest_code ? (
               <Stack
                 direction="row"

@@ -22,8 +22,8 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import { Link as RouterLink } from "@tanstack/react-router";
 import { useId, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
 import { useServices } from "../../queries/admin";
 import { useProviderSummaries } from "../../queries/inbox";
 import {
@@ -32,7 +32,7 @@ import {
   useReviewQueue,
 } from "../../queries/quarantine";
 import type { ProviderSummary, QuarantineMessage } from "../../types";
-import { buildHouseholdPath, parseSender } from "../../utils";
+import { parseSender } from "../../utils";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { CodeDisplay } from "../inbox/CodeDisplay";
 import {
@@ -421,7 +421,7 @@ function FileDialog({
           {providers.length === 0 ? (
             <Alert severity="info">
               You haven't added any services yet.{" "}
-              <RouterLink to={buildHouseholdPath(slug, "/providers")}>
+              <RouterLink to="/$slug/providers" params={{ slug }}>
                 Add one under Services
               </RouterLink>{" "}
               first.

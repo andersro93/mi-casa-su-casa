@@ -10,8 +10,8 @@ import {
   Typography,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
+import { Link as RouterLink, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { Link as RouterLink, useNavigate } from "react-router-dom";
 import type { LoginState, SetupStatus } from "../types";
 import { PublicEntryShell } from "./PublicEntryShell";
 import { PasswordField } from "./ui";
@@ -68,7 +68,7 @@ export function LoginPage({
       "twoFactorRedirect" in data &&
       (data as { twoFactorRedirect?: boolean }).twoFactorRedirect
     ) {
-      navigate("/two-factor");
+      void navigate({ to: "/two-factor" });
       return;
     }
     onLoginSuccess();

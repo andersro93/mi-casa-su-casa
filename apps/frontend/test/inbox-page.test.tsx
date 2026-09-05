@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 
-import { Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InboxPage } from "../src/components/inbox/InboxPage";
@@ -133,15 +132,16 @@ function setViewport(matches: boolean) {
 }
 
 function renderInbox(path = "/olsen/inbox") {
-  // Same route shape as App.tsx so useParams() sees :providerKey.
-  const page = (
-    <InboxPage slug="olsen" householdName="Familien Olsen" isOwner />
-  );
+  // The route component reads $providerKey and passes it down; here the path
+  // carries the same information.
+  const providerKey = path.split("/inbox/")[1];
   return renderClient(
-    <Routes>
-      <Route path="/:slug/inbox" element={page} />
-      <Route path="/:slug/inbox/:providerKey" element={page} />
-    </Routes>,
+    <InboxPage
+      slug="olsen"
+      householdName="Familien Olsen"
+      isOwner
+      providerKey={providerKey}
+    />,
     { initialEntries: [path] },
   );
 }

@@ -8,8 +8,8 @@ import {
   TextField,
 } from "@mui/material";
 import { authClient } from "@server/auth/client";
+import { Link as RouterLink } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
 import { PublicEntryShell } from "./PublicEntryShell";
 
 interface TwoFactorPageProps {
