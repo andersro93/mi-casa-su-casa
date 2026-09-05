@@ -106,14 +106,25 @@ async function body(response: APIResponse): Promise<unknown> {
 }
 
 /**
+ * How many times a 429 is retried before it is allowed to fail.
+ *
+ * Every caller in the suite has its own client address (see clientAddress), so
+ * the per-client limits should never be reached at all and these retries
+ * should never fire. The cap is deliberately small: if a caller loses its
+ * address — the mistake this whole mechanism exists to prevent — the run
+ * should fail quickly, with "429" in the message, rather than sit through
+ * minutes of backoff and then time out saying something else.
+ */
+const RATE_LIMIT_ATTEMPTS = 3;
+const RATE_LIMIT_BACKOFF_MS = 6_000;
+
+/**
  * POSTs with a bounded retry on 429.
  *
  * The auth routes are rate limited per client address — sign-in 5/minute,
  * reset requests 3 per 5 minutes, two-factor verification 5/minute (see
- * apps/server/internal/auth/auth.go) — and every request in the suite comes
- * from one address. Real users never hit those; a suite that signs a handful
- * of accounts in seconds does. The limits stay as they are and the harness
- * backs off, rather than the app being weakened for the tests.
+ * apps/server/internal/auth/auth.go). The limits stay exactly as they are; the
+ * harness gives itself a distinct address per caller and keeps this as a belt.
  */
 async function postWithBackoff(
   request: APIRequestContext,
@@ -121,8 +132,12 @@ async function postWithBackoff(
   options: Parameters<APIRequestContext["post"]>[1],
 ): Promise<APIResponse> {
   let response = await request.post(url, options);
-  for (let attempt = 0; response.status() === 429 && attempt < 12; attempt++) {
-    await sleep(6_000);
+  for (
+    let attempt = 1;
+    response.status() === 429 && attempt < RATE_LIMIT_ATTEMPTS;
+    attempt++
+  ) {
+    await sleep(RATE_LIMIT_BACKOFF_MS);
     response = await request.post(url, options);
   }
   return response;
@@ -148,48 +163,6 @@ export async function setupStatus(
   const response = await request.get(`${BASE_URL}/api/setup/status`);
   expect(response.ok(), `setup status: ${response.status()}`).toBeTruthy();
   return (await response.json()) as SetupStatus;
-}
-
-/**
- * Completes first-run setup, once per stack.
- *
- * `/setup` can only ever succeed once against a given database, so this is
- * idempotent by design: a stack that is already configured answers 409 and the
- * owner is signed in with their password instead. That is what lets
- * global-setup.ts run against a fresh stack and against one left up from an
- * earlier `bunx playwright test` alike.
- */
-export async function completeSetup(request: APIRequestContext): Promise<void> {
-  const status = await setupStatus(request);
-
-  if (status.needsSetup) {
-    const response = await postWithBackoff(
-      request,
-      `${BASE_URL}/api/setup/complete`,
-      {
-        headers: originHeader,
-        data: {
-          email: OWNER_EMAIL,
-          name: OWNER_NAME,
-          password: PASSWORD,
-          householdName: OWNER_HOUSEHOLD,
-          householdSlug: OWNER_SLUG,
-          setupSecret: SETUP_SECRET,
-        },
-      },
-    );
-    // 409 means somebody (a previous run) got there first — fall through to
-    // the sign-in below rather than failing a perfectly usable stack.
-    if (response.status() !== 409) {
-      expect(
-        response.status(),
-        `setup: ${response.status()} ${JSON.stringify(await body(response))}`,
-      ).toBe(201);
-      return;
-    }
-  }
-
-  await apiSignIn(request, OWNER_EMAIL, PASSWORD);
 }
 
 // ------------------------------------------------------------------- auth
@@ -253,8 +226,8 @@ export async function signIn(
       ),
       page.getByRole("button", { name: "Sign in", exact: true }).click(),
     ]);
-    if (response.status() !== 429 || attempt >= 12) return;
-    await sleep(6_000);
+    if (response.status() !== 429 || attempt >= RATE_LIMIT_ATTEMPTS - 1) return;
+    await sleep(RATE_LIMIT_BACKOFF_MS);
   }
 }
 
@@ -282,8 +255,8 @@ export async function submitChallengeCode(
       ),
       page.getByRole("button", { name: "Verify" }).click(),
     ]);
-    if (response.status() !== 429 || attempt >= 12) return;
-    await sleep(6_000);
+    if (response.status() !== 429 || attempt >= RATE_LIMIT_ATTEMPTS - 1) return;
+    await sleep(RATE_LIMIT_BACKOFF_MS);
   }
 }
 
@@ -339,13 +312,6 @@ const appLinkPattern = new RegExp(
 );
 
 export const mailpit = {
-  /** Everything Mailpit is holding, deleted. Specs that read "the latest mail
-   * to X" call this first when the same address is written to twice. */
-  async deleteAll(request: APIRequestContext): Promise<void> {
-    const response = await request.delete(`${MAILPIT_URL}/api/v1/messages`);
-    expect(response.ok(), `mailpit delete: ${response.status()}`).toBeTruthy();
-  },
-
   /**
    * The newest message delivered to `email`, with the app link from its plain
    * text body already extracted.

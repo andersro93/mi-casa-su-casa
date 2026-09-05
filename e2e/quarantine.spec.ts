@@ -92,6 +92,12 @@ test("an owner files an unknown sender under a service and the rule sticks", asy
   await page.goto(`/${OWNER_SLUG}/inbox/${key}`);
   await expect(page.getByText(second).first()).toBeVisible();
   await page.goto(`/${OWNER_SLUG}/quarantine`);
+  // Anchor the absence on the screen having actually rendered: without a
+  // positive locator first, "not in the review queue" is also what a blank
+  // page, a redirect to /login or a failed load look like.
+  await expect(
+    page.getByRole("heading", { name: "Needs review" }),
+  ).toBeVisible();
   await expect(page.getByText(second)).toHaveCount(0);
 });
 
@@ -132,6 +138,11 @@ test("an owner hides an email and it leaves the queue for good", async ({
   await expect(item).toHaveCount(0);
 
   // Still gone after a reload: the decision is in the database, not in a cache.
+  // The heading is the anchor — the queue is not empty (other specs leave
+  // their own entries in it), so its absence is the only thing being asserted.
   await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Needs review" }),
+  ).toBeVisible();
   await expect(page.getByText(subject)).toHaveCount(0);
 });

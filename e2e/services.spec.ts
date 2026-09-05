@@ -81,6 +81,9 @@ test("an owner adds a service with senders, renames it and deletes it", async ({
     .getByRole("button", { name: "Delete service" })
     .click();
 
+  // The toast is the anchor: the list has re-rendered after the delete, so the
+  // absence below is a real absence and not an unrendered page.
+  await expect(page.getByText(`${renamed} deleted.`)).toBeVisible();
   await expect(page.getByRole("heading", { name: renamed })).toHaveCount(0);
 });
 
@@ -104,7 +107,9 @@ test("a sender has to look like a sender", async ({ page }) => {
       "That doesn't look like a domain. Try something like netflix.com.",
     ),
   ).toBeVisible();
-  // Nothing was created behind the rejection.
+  // Nothing was created behind the rejection. The page heading is the anchor:
+  // the dialog is closed and the list is on screen, so the absence is real.
   await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("heading", { name: "Services" })).toBeVisible();
   await expect(page.getByRole("heading", { name })).toHaveCount(0);
 });
