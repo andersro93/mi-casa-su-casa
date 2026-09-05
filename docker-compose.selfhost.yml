@@ -101,7 +101,7 @@ services:
       # <slug>@EMAIL_DOMAIN. Point its MX records at Mailgun and add a
       # Mailgun route matching `match_recipient(".*@EMAIL_DOMAIN")` that
       # forwards to https://<APP_URL>/api/inbound/mailgun/mime — see the
-      # README's "Self-hosting" section and docs/email-routing.md.
+      # README's "Self-hosting" section and docs/inbound-mail.md.
       EMAIL_DOMAIN: "${EMAIL_DOMAIN:?the domain household inboxes live on, e.g. casa.example.com}"
 
       # Mailgun's HTTP webhook signing key (Dashboard → Sending → Webhooks →

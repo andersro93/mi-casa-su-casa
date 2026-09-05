@@ -1,8 +1,48 @@
+# Dependabot keeps four ecosystems fresh: the Go module, the bun workspaces,
+# the workflow actions, and the container base image.
+#
+# Minor/patch bumps are grouped into one pull request per ecosystem to keep
+# the noise down; majors arrive individually so their changelogs get read, and
+# security updates get their own PR so a fix is never stuck behind a routine
+# bump.
+#
+# Every entry commits with the `chore` prefix, which is deliberate: merging to
+# main releases, and a dependency bump is not by itself a reason to cut a
+# version. A bump reaches users with the next releasable commit — or sooner
+# via a manual `workflow_dispatch` of the Release workflow.
+#
+# One entry per package-ecosystem + directory pair: Dependabot rejects
+# duplicates.
 version: 2
 updates:
-  # One npm entry per directory: Dependabot rejects duplicate
-  # package-ecosystem + directory pairs. Version updates and security updates
-  # are grouped separately so security fixes arrive in their own PR.
+  # The Go module. Not at the repository root — apps/server owns go.mod.
+  - package-ecosystem: "gomod"
+    directory: "/apps/server"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+      timezone: "Europe/Oslo"
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      go-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      go-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+
+  # The bun workspaces (bun.lock) go through the npm ecosystem.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -21,11 +61,16 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-      all-npm-updates:
+      js-minor-patch:
         applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
         patterns:
           - "*"
 
+  # Workflow actions are pinned by commit hash with a trailing version
+  # comment; Dependabot updates both together.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -36,7 +81,29 @@ updates:
     labels:
       - "dependencies"
       - "github_actions"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
     groups:
       all-action-updates:
+        patterns:
+          - "*"
+
+  # The distroless base image, pinned by digest in the Dockerfile.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "13:00"
+      timezone: "Europe/Oslo"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      docker-updates:
         patterns:
           - "*"
