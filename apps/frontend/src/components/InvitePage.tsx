@@ -8,7 +8,7 @@ import {
 } from "@mui/material";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { client, unwrap } from "../lib/api";
+import { ApiError, client, unwrap } from "../lib/api";
 import { signOut } from "../lib/auth-client";
 import type {
   InvitationAcceptanceState,
@@ -95,7 +95,12 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unable to accept invitation";
-      if (/already exists/i.test(message)) {
+      // The stable `code`, never the message text: the server sends
+      // ACCOUNT_EXISTS for exactly this case, while the generic unique-
+      // violation body ("A record with the same <column> already exists") is
+      // also a 409 whose wording a text test would match — and an unrelated
+      // conflict must not render the "sign in instead" screen.
+      if (err instanceof ApiError && err.code === "ACCOUNT_EXISTS") {
         setAccountExists(true);
       }
       setError(message);

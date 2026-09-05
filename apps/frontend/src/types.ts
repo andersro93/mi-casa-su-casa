@@ -103,30 +103,6 @@ export type ProviderConfigurationResponse = {
   rules: SenderRule[];
 };
 
-export type ProviderFormState = {
-  providerKey: string;
-  displayName: string;
-};
-
-export type SenderRuleFormState = {
-  providerId: string;
-  matchType: "exact" | "domain";
-  matchValue: string;
-};
-
-export type MemberFormState = {
-  email: string;
-  name: string;
-  role: "member" | "owner";
-};
-
-export type InvitationFormState = {
-  email: string;
-  name: string;
-  role: "member" | "owner";
-  providerIds: string[];
-};
-
 export type InvitationSummary = {
   id: string;
   email: string;
@@ -180,10 +156,6 @@ export type HouseholdSettingsResponse = {
   household: HouseholdSettings;
 };
 
-export type HouseholdSettingsFormState = {
-  displayName: string;
-};
-
 export type InvitationAcceptanceState = {
   name: string;
   password: string;
@@ -193,15 +165,6 @@ export type PageInfo = {
   limit: number;
   /** Cursor for older items, null when everything has been loaded. */
   nextBefore: string | null;
-};
-
-export type ProviderMessagesResponse = {
-  provider: {
-    providerKey: string;
-    displayName: string;
-  };
-  messages: InboxMessage[];
-  page: PageInfo;
 };
 
 /**

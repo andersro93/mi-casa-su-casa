@@ -330,6 +330,13 @@ per process, so two `worker` replicas — or a `worker` alongside a CronJob —
 run every night's purge twice. The purge is idempotent, so that is wasteful
 rather than wrong, but it is still worth designing against.
 
+One caveat on scaling out: the sign-in rate limiter is in-process, so every
+replica carries its own budget and the effective limit multiplies by the
+replica count. A deployment that cares should put a rate limit in front of
+`/api/auth/` at the proxy — see
+[Rate limiting](docs/operations.md#rate-limiting) in `docs/operations.md` for
+which limits live where, and why the inbound webhook has none.
+
 The contributor stack has one-off services for both, behind the `tools`
 profile so `docker compose up` does not start them:
 

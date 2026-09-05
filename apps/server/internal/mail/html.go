@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/andersro93/mi-casa-su-casa/server/internal/domain"
 )
 
 // Ports the stripHtml and decodeHtmlEntities halves of
@@ -19,8 +21,9 @@ import (
 // jsWhitespace is JavaScript's `\s` written out for RE2, which only knows the
 // ASCII five. It matters here because an HTML mail's `&#160;` decodes to a
 // non-breaking space, and the original collapsed that away along with the
-// rest. Keep in sync with the copy in internal/domain/extract.go.
-const jsWhitespace = `[\t\n\v\f\r \x{00a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}]`
+// rest. It is domain's constant rather than a second copy: the two must not
+// diverge, and this package already depends on domain.
+const jsWhitespace = domain.JSWhitespace
 
 var (
 	commentPattern = regexp.MustCompile(`(?s)<!--.*?-->`)

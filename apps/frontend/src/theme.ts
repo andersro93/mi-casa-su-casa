@@ -72,8 +72,6 @@ export const FONT_FAMILY_BODY =
   '"Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 export const FONT_FAMILY_HEADING =
   '"Nunito Variable", "Nunito", "Inter Variable", "Inter", system-ui, sans-serif';
-export const FONT_FAMILY_MONO =
-  'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 
 const heading = {
   fontFamily: FONT_FAMILY_HEADING,

@@ -44,6 +44,12 @@ function json(body: unknown, status = 200) {
 function mockLookup(
   response: Partial<InvitationLookupResponse> | { error: string },
   status = 200,
+  // What POST /api/invitations/accept answers. Defaults to the happy path;
+  // the failure cases pass an error envelope and its status.
+  accept: { body: unknown; status: number } = {
+    body: { household: { slug: "olsen" } },
+    status: 200,
+  },
 ) {
   const calls: Array<{ url: string; method: string; body?: string }> = [];
   vi.stubGlobal(
@@ -57,12 +63,25 @@ function mockLookup(
           : json({ ...base, ...response });
       }
       if (url.endsWith("/api/invitations/accept")) {
-        return json({ household: { slug: "olsen" } });
+        return json(accept.body, accept.status);
       }
       return json({ error: "unhandled" }, 404);
     }),
   );
   return calls;
+}
+
+/** Fills the sign-up form and submits it, for the accept-failure cases. */
+async function submitSignUp() {
+  const user = userEvent.setup();
+  await user.type(await screen.findByLabelText(/Your name/), "Kari Olsen");
+  await user.type(
+    screen.getByLabelText(/Choose a password/),
+    "correct-horse-battery",
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Create account and join" }),
+  );
 }
 
 describe("InvitePage", () => {
@@ -196,6 +215,56 @@ describe("InvitePage", () => {
       .setup()
       .click(screen.getByRole("button", { name: "Accept invitation" }));
     await waitFor(() => expect(onAcceptSuccess).toHaveBeenCalledWith("olsen"));
+  });
+
+  it("sends someone who already has an account to sign in, on the code", async () => {
+    mockLookup({}, 200, {
+      body: {
+        error:
+          "An account with the invited email already exists. Sign in with it, then open the invitation link again.",
+        code: "ACCOUNT_EXISTS",
+      },
+      status: 409,
+    });
+    renderClient(<InvitePage token="t" onAcceptSuccess={vi.fn()} />, {
+      initialEntries: ["/invite/t"],
+    });
+
+    await submitSignUp();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /Welcome back/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sign in to accept" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps an unrelated 409 on the form, however it is worded", async () => {
+    // The generic unique-violation body is a 409 whose text says "already
+    // exists" but carries no ACCOUNT_EXISTS code. Branching on the message
+    // would wrongly offer "sign in instead" here.
+    mockLookup({}, 200, {
+      body: { error: "A record with the same token hash already exists" },
+      status: 409,
+    });
+    renderClient(<InvitePage token="t" onAcceptSuccess={vi.fn()} />, {
+      initialEntries: ["/invite/t"],
+    });
+
+    await submitSignUp();
+
+    expect(
+      await screen.findByText(
+        "A record with the same token hash already exists",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Sign in to accept" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Create account and join" }),
+    ).toBeInTheDocument();
   });
 
   it("explains an expired or used link", async () => {

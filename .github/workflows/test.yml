@@ -43,7 +43,8 @@ jobs:
       # `mise install`. install_args also pulls in oapi-codegen and sqlc:
       # apps/server/internal/api/spec_sync_test.go runs oapi-codegen from
       # PATH to guard against generated-code drift and never skips, and
-      # sqlc is installed so a future sqlc drift test can do the same.
+      # apps/server/internal/db/sqlc_sync_test.go does the same with sqlc
+      # against the committed query bindings.
       # goreleaser is here for the config lint below — the release
       # pipeline's own config, checked on every PR rather than at release
       # time. cache: true lets mise-action cache these Go-built tools
