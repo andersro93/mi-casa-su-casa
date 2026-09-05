@@ -17,8 +17,13 @@
  * below are what both this file and the server expect. Every call *throws* a
  * `LimenError` on a non-2xx rather than resolving to `{data, error}` the way
  * Better Auth did — hence the try/catch shape at each call site.
+ *
+ * The one route this file does *not* dispatch through the SDK is `GET /me`:
+ * `getSession` below explains why, and it is the difference between a
+ * rate-limited session check and a sign-out.
  */
 
+import { defaultSessionParse } from "limen-auth";
 import { credentialPasswordPlugin, twoFactorPlugin } from "limen-auth/plugins";
 import { createAuthClient } from "limen-auth/react";
 import type { SessionData } from "../types";
@@ -46,14 +51,112 @@ export const authClient = createAuthClient({
 });
 
 /**
+ * The session check could not be *made*, so nothing is known about whether
+ * anyone is signed in. That is a different fact from "nobody is", and the
+ * guards must not confuse the two (`lib/session.ts`, `lib/guards.ts`).
+ *
+ * `status` is the HTTP status, or `0` when the request never reached a server
+ * at all; `retryAfterMs` is the server's own `Retry-After`, when it sent one.
+ */
+export class SessionUnavailableError extends Error {
+  readonly name = "SessionUnavailableError";
+  readonly status: number;
+  readonly retryAfterMs: number | null;
+
+  constructor(
+    message: string,
+    status: number,
+    retryAfterMs: number | null,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+/** `Retry-After`, in either of the two forms RFC 9110 allows. */
+function retryAfterMs(headers: Headers): number | null {
+  const raw = headers.get("Retry-After")?.trim();
+  if (!raw) return null;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
+/**
  * The awaited "who is signed in?" check the router's guards run through
- * TanStack Query (`lib/session.ts`). Resolves to `null` when nobody is —
- * Limen answers 401 for an absent or expired session, which the SDK surfaces
- * as `data: null` rather than an error.
+ * TanStack Query (`lib/session.ts`). Resolves to the session, or to `null`
+ * when the server *states* that nobody is signed in — a 401, and only a 401.
+ * Every other outcome — the 429 Limen's 60/min limiter answers with, a 5xx, a
+ * connection that never lands — throws `SessionUnavailableError`.
+ *
+ * This calls `GET /api/auth/me` directly rather than through
+ * `authClient.getSession()`, for two reasons, both of which were bugs:
+ *
+ *  1. The SDK's `getSession` awaits a store refetch and then reads the result
+ *     with `$state.get()`. Reading a nanostore atom that has no listeners
+ *     *mounts* it, and the session store is created with `fetchOnMount: true`
+ *     — so the read fires a **second** `GET /me`. Every cold load therefore
+ *     spent two of the sixty requests a client gets each minute, on the very
+ *     route whose 429 this file now has to survive.
+ *  2. That second load synchronously clears `error` on the store before
+ *     `.get()` returns, so `if (state.error) throw` never fires on a cold
+ *     load: a 429 or a 5xx resolved as `null`, indistinguishable from "signed
+ *     out". Which is exactly how a rate-limited visitor got signed out.
+ *
+ * Nothing else in the app reads Limen's session store — the guards and the
+ * chrome both read the TanStack Query cache — so going straight to the route
+ * costs nothing. `defaultSessionParse` is the SDK's own normaliser (the
+ * snake_case → camelCase pass), and the client is configured with the default
+ * envelope `mode: "off"`, so the parsed body is the payload.
  */
 export async function getSession(): Promise<SessionData | null> {
-  const session = await authClient.getSession();
-  return (session as SessionData | null) ?? null;
+  let response: Response;
+  try {
+    // `globalThis.fetch` per call rather than a captured reference, for the
+    // same reason lib/api.ts dispatches through a closure: a later
+    // replacement (a test's stub, a polyfill) must still be honoured.
+    response = await globalThis.fetch(`${API_BASE}${AUTH_BASE_PATH}/me`, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+  } catch (cause) {
+    throw new SessionUnavailableError(
+      "The session check could not reach the server",
+      0,
+      null,
+      { cause },
+    );
+  }
+
+  // The one definitive answer: no session, or one the server will not honour.
+  if (response.status === 401) return null;
+
+  if (!response.ok) {
+    throw new SessionUnavailableError(
+      `The session check answered ${response.status}`,
+      response.status,
+      retryAfterMs(response.headers),
+    );
+  }
+
+  try {
+    return defaultSessionParse(await response.json()) as SessionData;
+  } catch (cause) {
+    // A 200 whose body is not a session is a failure of the check, not proof
+    // that nobody is signed in.
+    throw new SessionUnavailableError(
+      "The session check answered with something unreadable",
+      response.status,
+      null,
+      { cause },
+    );
+  }
 }
 
 export type SignInResult = {

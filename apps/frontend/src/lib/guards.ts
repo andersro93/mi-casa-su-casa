@@ -19,9 +19,11 @@ import type {
 import { type ParsedLocation, redirect } from "@tanstack/react-router";
 import type { HouseholdSummary, SessionData } from "../types";
 import {
+  ANONYMOUS_SESSION,
   householdsQueryOptions,
   isAuthenticated,
   PENDING_INVITE_KEY,
+  type SessionResult,
   type SetupStatusResult,
   sessionQueryOptions,
   setupStatusQueryOptions,
@@ -63,6 +65,41 @@ function read<T, TKey extends QueryKey>(
 /** `.then` that stays synchronous for values that are not promises. */
 function then<T, R>(value: Maybe<T>, next: (value: T) => Maybe<R>): Maybe<R> {
   return value instanceof Promise ? value.then(next) : next(value);
+}
+
+/**
+ * The session, read with the one rule that separates it from every other
+ * query here: **only a definitive 401 means signed out.**
+ *
+ * `sessionQueryOptions` rejects with `SessionUnavailableError` when the check
+ * could not be made at all — a 429 from Limen's 60/min limiter, a 5xx, a
+ * dropped connection — after retrying it (`lib/session.ts`). When that
+ * happens the query keeps whatever answer it last got, so:
+ *
+ *  - a previously cached session is used, and the navigation carries on. The
+ *    visitor is still signed in; the server just could not say so this
+ *    second, and bouncing them to `/login` over that is the bug this exists
+ *    to prevent.
+ *  - with nothing cached there is nothing honest to say. `whenUnavailable`
+ *    decides: the public routes settle for "anonymous" so sign-in stays
+ *    reachable during an outage, while the authed ones pass `null` and let
+ *    the error escape to the router's error screen, which offers a retry.
+ */
+function readSession(
+  queryClient: QueryClient,
+  whenUnavailable: SessionResult | null,
+): Maybe<SessionResult> {
+  const value = read(queryClient, sessionQueryOptions);
+  if (!(value instanceof Promise)) return value;
+
+  return value.catch((error: unknown) => {
+    const cached = queryClient.getQueryData<SessionResult>(
+      sessionQueryOptions.queryKey,
+    );
+    if (cached) return cached;
+    if (whenUnavailable) return whenUnavailable;
+    throw error;
+  });
 }
 
 function pendingInviteToken(): string | null {
@@ -153,7 +190,9 @@ export interface SessionGuardResult {
  */
 export function requireSession(args: GuardArgs): Maybe<SessionGuardResult> {
   return then(requireSetupDone(args), (setup) =>
-    then(read(args.context.queryClient, sessionQueryOptions), (session) => {
+    // No fallback: with nothing cached, a session check that could not be
+    // made must reach the error screen and its retry, never `/login`.
+    then(readSession(args.context.queryClient, null), (session) => {
       if (!isAuthenticated(session)) {
         throw redirect({
           to: "/login",
@@ -161,7 +200,7 @@ export function requireSession(args: GuardArgs): Maybe<SessionGuardResult> {
           replace: true,
         });
       }
-      return { setup, session: session as SessionData };
+      return { setup, session: { user: session.user } };
     }),
   );
 }
@@ -169,12 +208,19 @@ export function requireSession(args: GuardArgs): Maybe<SessionGuardResult> {
 /** `/login` and friends: a signed-in visitor has no business here. */
 export function requireAnonymous(args: GuardArgs): Maybe<SetupStatusResult> {
   return then(requireSetupDone(args), (setup) =>
-    then(read(args.context.queryClient, sessionQueryOptions), (session) => {
-      if (isAuthenticated(session)) {
-        throw redirect({ to: "/", replace: true });
-      }
-      return setup;
-    }),
+    // Falls back to "anonymous": if we cannot find out who this is, the way
+    // *in* has to stay open. Showing the sign-in page to someone who turns
+    // out to be signed in costs them a click; an error screen in front of
+    // sign-in during an outage costs them the app.
+    then(
+      readSession(args.context.queryClient, ANONYMOUS_SESSION),
+      (session) => {
+        if (isAuthenticated(session)) {
+          throw redirect({ to: "/", replace: true });
+        }
+        return setup;
+      },
+    ),
   );
 }
 

@@ -18,10 +18,12 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  type ErrorComponentProps,
   Outlet,
   type RouterHistory,
   useNavigate,
   useParams,
+  useRouter,
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppChrome } from "./components/AppChrome";
@@ -38,8 +40,10 @@ import { SetupPage } from "./components/SetupPage";
 import { ServicesPage } from "./components/services/ServicesPage";
 import { AccountSettingsPage } from "./components/settings/AccountSettingsPage";
 import { TwoFactorPage } from "./components/TwoFactorPage";
+import { ErrorState } from "./components/ui";
 import { InstallProvider, useInstallState } from "./hooks/useInstallPrompt";
 import { AppearanceProvider } from "./lib/appearance";
+import { SessionUnavailableError } from "./lib/auth-client";
 import {
   type RouterContext,
   redirectToStart,
@@ -106,6 +110,53 @@ function LoadingScreen() {
       <Typography color="text.secondary">
         Checking the current session and preparing the latest messages.
       </Typography>
+    </Box>
+  );
+}
+
+/**
+ * The app's one full-screen failure, and the reason it exists: a guard that
+ * could not find out whether anyone is signed in must land *here*, not on
+ * `/login`. A 429 from Limen's 60/min limiter, a 5xx, a dropped connection —
+ * none of those are a sign-out, so the screen keeps the visitor where they
+ * are and offers the only useful action, which is to ask again.
+ */
+function ErrorScreen({ error, reset }: ErrorComponentProps) {
+  const router = useRouter();
+
+  const unavailable = error instanceof SessionUnavailableError;
+  const message = unavailable
+    ? error.status === 429
+      ? "The server is busy and turned the check away. You have not been signed out."
+      : "We could not reach the server to confirm you are signed in."
+    : error.message || "This page could not be loaded.";
+
+  const retry = async () => {
+    reset();
+    await router.invalidate();
+  };
+
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        minHeight: "100vh",
+        alignItems: "center",
+        justifyContent: "center",
+        p: 3,
+      }}
+    >
+      <Box sx={{ width: "100%", maxWidth: 520 }}>
+        <ErrorState
+          title={
+            unavailable
+              ? "We couldn't check your session"
+              : "Something went wrong"
+          }
+          message={message}
+          onRetry={() => void retry()}
+        />
+      </Box>
     </Box>
   );
 }
@@ -530,6 +581,9 @@ export function createAppRouter({
     // only shows on a genuine wait — the old app's behaviour, where the
     // full-screen loader appeared the moment a session check started.
     defaultPendingComponent: LoadingScreen,
+    // A guard can now fail without deciding anything — the session check that
+    // never got an answer (lib/guards.ts). This is where that lands.
+    defaultErrorComponent: ErrorScreen,
     defaultPendingMs: 0,
     defaultPendingMinMs: 0,
     scrollRestoration: true,
