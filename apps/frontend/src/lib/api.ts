@@ -5,9 +5,15 @@
  * `npm run gen:client`) and committed; `test/api-schema.test.ts` fails if the
  * spec moves without it. That generated `paths` type is what makes
  * `client.GET("/api/inbox/{slug}/providers", …)` check its path parameters,
- * its query string and its response body at compile time — the whole point of
- * replacing the old hand-rolled `fetchJson`, which typed the response with a
- * bare `as T` and built URLs by string concatenation.
+ * its query string and its request body at compile time — the whole point of
+ * replacing the old hand-rolled `fetchJson`, which built URLs by string
+ * concatenation.
+ *
+ * Response types are the one half that is NOT compile-checked: `unwrap<T>`
+ * casts, so the `T` a call site names is an assertion about what the server
+ * sends, not a proof. Naming the generated response type is what keeps the
+ * assertion honest, and `test/api-schema.test.ts` keeps the generated types
+ * in step with the spec.
  */
 import createClient from "openapi-fetch";
 import type { paths } from "./api-schema";

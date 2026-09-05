@@ -20,12 +20,16 @@ import { readRequest } from "./fetch-mock";
 
 const authState = vi.hoisted(() => ({
   session: null as SessionData | null,
+  /** Set to make `signOut` reject, the way Limen's protected route does. */
+  signOutError: null as Error | null,
 }));
 
 vi.mock("@/lib/auth-client", () => ({
   getSession: async () => authState.session,
   signIn: async () => ({ twoFactorRequired: false }),
-  signOut: async () => {},
+  signOut: async () => {
+    if (authState.signOutError) throw authState.signOutError;
+  },
 }));
 
 const { createAppRouter } = await import("../src/router");
@@ -97,6 +101,7 @@ async function landsOn(path: string): Promise<string> {
 
 beforeEach(() => {
   authState.session = null;
+  authState.signOutError = null;
   sessionStorage.clear();
 });
 
@@ -306,5 +311,36 @@ describe("signing out", () => {
     expect(
       queryClient.getQueryData(householdsQueryOptions.queryKey),
     ).toBeUndefined();
+  });
+
+  it("still clears the cache and reaches /login when signout itself is refused", async () => {
+    // Limen's /signout is a PROTECTED route and throws on any non-2xx, where
+    // Better Auth resolved to `{error}`. A session that expired or was
+    // revoked from another device answers 401 — the very case where someone
+    // most wants the button to work — and the limiter answers 429. Neither
+    // may strand the visitor inside the app, and neither may escape as an
+    // unhandled rejection.
+    authState.session = signedIn;
+    mockApi({ households: [owner] });
+
+    const queryClient = testQueryClient();
+    const router = routerAt("/casa/inbox", queryClient);
+    await router.load();
+
+    const refused = Object.assign(new Error("Unauthorized"), { status: 401 });
+    authState.signOutError = refused;
+    authState.session = null;
+
+    await expect(signOutAndReset(queryClient)).resolves.toBeUndefined();
+
+    expect(queryClient.getQueryData(sessionQueryOptions.queryKey)).toBeNull();
+    expect(queryClient.getQueryData(householdsQueryOptions.queryKey)).toEqual({
+      households: [],
+      error: null,
+    });
+
+    await router.navigate({ to: "/login", replace: true });
+    await router.invalidate();
+    expect(router.state.location.pathname).toBe("/login");
   });
 });

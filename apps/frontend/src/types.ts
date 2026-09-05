@@ -204,6 +204,16 @@ export type ProviderMessagesResponse = {
   page: PageInfo;
 };
 
+/**
+ * The outcome of reviewing one quarantined message. `releasedMessage` is the
+ * stored copy when the message was filed under a service, and null for a
+ * dismissal — present and null, never missing.
+ */
+export type QuarantineReviewResult = {
+  reviewedAt: string;
+  releasedMessage: InboxMessage | null;
+};
+
 export type QuarantineMessagesResponse = {
   messages: QuarantineMessage[];
   page: PageInfo;

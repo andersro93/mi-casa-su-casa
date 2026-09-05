@@ -136,9 +136,23 @@ const SIGNED_OUT_HOUSEHOLDS: HouseholdsResult = { households: [], error: null };
  * learned to swallow a 401 — flash "Unauthorized" over the sign-in screen.
  * Seeding makes the next guard read "nobody is signed in" synchronously, with
  * no request at all.
+ *
+ * The seeding happens whether or not the request succeeded, and this never
+ * rejects. Limen's `/signout` is a *protected* route that throws on any
+ * non-2xx, unlike Better Auth's result object: a session that has already
+ * expired or been revoked elsewhere answers 401, and the auth limiter answers
+ * 429. Neither is a reason to strand someone on a screen they have just asked
+ * to leave — a 401 means they are signed out already, and a 429 leaves a
+ * server-side session this client cannot reach anyway (the cookie is
+ * HttpOnly). Either way the honest local answer is "signed out", and the next
+ * guard re-checks with the server once `clearAuthQueries` drops the seed.
  */
 export async function signOutAndReset(queryClient: QueryClient): Promise<void> {
-  await signOut();
+  try {
+    await signOut();
+  } catch {
+    // Deliberately swallowed; see above.
+  }
   queryClient.setQueryData(sessionQueryOptions.queryKey, null);
   queryClient.setQueryData(
     householdsQueryOptions.queryKey,

@@ -28,8 +28,10 @@ import { API_BASE } from "./api";
 const AUTH_BASE_PATH = "/api/auth";
 
 export const authClient = createAuthClient({
-  // Same origin, exactly as lib/api.ts: Limen's fetcher concatenates
-  // baseURL + path, so "" yields a relative URL the browser resolves itself.
+  // The page's own origin, shared with lib/api.ts so both clients agree on
+  // where the server is. Limen's fetcher concatenates baseURL + path, so an
+  // absolute origin yields an absolute URL — which is also what keeps the
+  // request constructible outside a browser (see API_BASE's own comment).
   baseURL: API_BASE,
   basePath: AUTH_BASE_PATH,
   plugins: [

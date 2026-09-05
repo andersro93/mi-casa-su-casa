@@ -5,7 +5,11 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { client, unwrap } from "../lib/api";
-import type { QuarantineMessage, QuarantineMessagesResponse } from "../types";
+import type {
+  QuarantineMessage,
+  QuarantineMessagesResponse,
+  QuarantineReviewResult,
+} from "../types";
 import { adminKeys } from "./admin";
 import { inboxKeys } from "./inbox";
 
@@ -68,7 +72,7 @@ export function useReviewMessage(slug: string) {
           }),
         );
       }
-      return unwrap<{ ok?: boolean }>(
+      return unwrap<QuarantineReviewResult>(
         client.POST("/api/inbox/{slug}/quarantine/{messageId}/review", {
           params: { path: { slug, messageId: input.messageId } },
           body:

@@ -66,7 +66,15 @@ function mockLookup(
 }
 
 describe("InvitePage", () => {
-  beforeEach(() => signOut.mockReset());
+  beforeEach(() => {
+    // `mockClear` + an explicit default, not `mockReset`: under Vitest 4 a
+    // mock that has been reset reports a *caught* rejection from a later call
+    // as a test failure, which makes the refused-sign-out case below
+    // untestable. Clearing the calls and re-stating the happy-path
+    // implementation gives the same isolation without that.
+    signOut.mockClear();
+    signOut.mockResolvedValue(undefined);
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -139,6 +147,35 @@ describe("InvitePage", () => {
       .setup()
       .click(screen.getByRole("button", { name: "Sign out and continue" }));
     await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
+  });
+
+  it("still reloads the invitation when signout is refused", async () => {
+    // Limen's /signout is a protected route and throws on any non-2xx — a
+    // session that expired while this page sat open answers 401. The reload
+    // is what actually settles who the viewer is, so it has to run either
+    // way, and the rejection must not surface on the page.
+    const calls = mockLookup({
+      viewer: { email: "jonas@example.com", emailMatches: false },
+    });
+    signOut.mockRejectedValue(
+      Object.assign(new Error("Unauthorized"), { status: 401 }),
+    );
+    renderClient(<InvitePage token="t" onAcceptSuccess={vi.fn()} />, {
+      initialEntries: ["/invite/t"],
+    });
+
+    await screen.findByRole("heading", { level: 1, name: /different account/ });
+    const before = calls.filter((c) => c.url.endsWith("/lookup")).length;
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Sign out and continue" }));
+
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => c.url.endsWith("/lookup")).length,
+      ).toBeGreaterThan(before),
+    );
+    expect(screen.queryByText(/Unauthorized/)).toBeNull();
   });
 
   it("lets the invited person accept directly when already signed in as them", async () => {

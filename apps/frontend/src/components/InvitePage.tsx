@@ -128,6 +128,12 @@ export function InvitePage({ token, onAcceptSuccess }: InvitePageProps) {
     setIsSigningOut(true);
     try {
       await signOut();
+    } catch {
+      // Limen's /signout is protected and throws on any non-2xx — a session
+      // that expired while this page was open answers 401, the limiter 429.
+      // Reloading the invitation is what actually settles who the viewer is,
+      // so it must happen either way; a bare `finally` here would let the
+      // rejection escape and skip it.
     } finally {
       setIsSigningOut(false);
     }
