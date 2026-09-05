@@ -91,6 +91,20 @@ function honourPendingInvite(location: ParsedLocation): void {
   throw redirect({ to: "/invite/$token", params: { token }, replace: true });
 }
 
+/**
+ * `?redirect=` is attacker-controllable — it is whatever was in the URL when
+ * the visitor hit `/login`. Only an absolute path within this app is followed;
+ * anything that a browser would resolve to another origin ("//evil.example",
+ * "/\\evil.example", "https://evil.example") is dropped and the caller falls
+ * back to `/`.
+ */
+export function safeRedirect(value: string | undefined | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/")) return null;
+  if (value.startsWith("//") || value.startsWith("/\\")) return null;
+  return value;
+}
+
 /** Where a signed-in visitor with no route of their own belongs. */
 export function householdStart(households: HouseholdSummary[]) {
   const first = households[0];
@@ -164,9 +178,28 @@ export function requireAnonymous(args: GuardArgs): Maybe<SetupStatusResult> {
   );
 }
 
-export interface HouseholdGuardResult extends SessionGuardResult {
+export interface ChromeGuardResult extends SessionGuardResult {
   households: HouseholdSummary[];
+}
+
+export interface HouseholdGuardResult extends ChromeGuardResult {
   household: HouseholdSummary;
+}
+
+/**
+ * The authed chrome: a session, plus the household list the sidebar and the
+ * switcher are drawn from. The list is ensured *here* rather than fetched by
+ * the chrome as it renders, because otherwise a cold load of `/settings` or
+ * `/new-household` — the two authed routes with no slug to guard — paints the
+ * page with no chrome around it for one round trip.
+ */
+export function requireChrome(args: GuardArgs): Maybe<ChromeGuardResult> {
+  return then(requireSession(args), (base) =>
+    then(
+      read(args.context.queryClient, householdsQueryOptions),
+      ({ households }) => ({ ...base, households }),
+    ),
+  );
 }
 
 /**
@@ -178,21 +211,16 @@ export function requireHousehold(
   args: GuardArgs,
   slug: string,
 ): Maybe<HouseholdGuardResult> {
-  return then(requireSession(args), (base) =>
-    then(
-      read(args.context.queryClient, householdsQueryOptions),
-      ({ households }) => {
-        honourPendingInvite(args.location);
+  return then(requireChrome(args), (base) => {
+    honourPendingInvite(args.location);
 
-        const household = households.find((entry) => entry.slug === slug);
-        if (!household) {
-          throw redirect({ ...householdStart(households), replace: true });
-        }
+    const household = base.households.find((entry) => entry.slug === slug);
+    if (!household) {
+      throw redirect({ ...householdStart(base.households), replace: true });
+    }
 
-        return { ...base, households, household };
-      },
-    ),
-  );
+    return { ...base, household };
+  });
 }
 
 /** Members see the inbox; the rest of a household's views are the owner's. */

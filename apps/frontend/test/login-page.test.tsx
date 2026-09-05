@@ -17,14 +17,14 @@ vi.mock("@tanstack/react-router", async () => {
 import { LoginPage } from "../src/components/LoginPage";
 import { renderClient, screen, userEvent, waitFor } from "./client-test-utils";
 
-function renderLogin(onLoginSuccess = vi.fn()) {
+function renderLogin(onLoginSuccess = vi.fn(), entry = "/login") {
   renderClient(
     <LoginPage
       setupStatus={null}
       setupError={null}
       onLoginSuccess={onLoginSuccess}
     />,
-    { initialEntries: ["/login"] },
+    { initialEntries: [entry] },
   );
   return { onLoginSuccess };
 }
@@ -94,10 +94,35 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith({ to: "/two-factor" }),
+      expect(navigate).toHaveBeenCalledWith({
+        to: "/two-factor",
+        search: {},
+      }),
     );
     // Not signed in yet: the server revoked the session it had just minted.
     expect(onLoginSuccess).not.toHaveBeenCalled();
+  });
+
+  it("carries ?redirect= through to the two-step challenge", async () => {
+    renderLogin(vi.fn(), "/login?redirect=%2Fcasa%2Fmembers");
+    signIn.mockResolvedValue({ twoFactorRequired: true });
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText(/Email address/), "kari@example.com");
+    await user.type(
+      screen.getByLabelText(/^Password/),
+      "correct-horse-battery",
+    );
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    // Without this the challenge page finishes the sign-in and drops the
+    // visitor on / instead of the page they asked for.
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({
+        to: "/two-factor",
+        search: { redirect: "/casa/members" },
+      }),
+    );
   });
 
   it("shows the server's error for a wrong password", async () => {

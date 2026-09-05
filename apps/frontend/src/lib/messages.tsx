@@ -19,11 +19,17 @@ interface AppMessages {
   notify: (message: string) => void;
   /** A failure; shown in the same place, in red. */
   notifyError: (message: string) => void;
+  /**
+   * Take down whatever is showing. Signing out uses it so a message raised
+   * while signed in cannot follow the visitor onto the sign-in screen.
+   */
+  dismiss: () => void;
 }
 
 const AppMessageContext = createContext<AppMessages>({
   notify: () => {},
   notifyError: () => {},
+  dismiss: () => {},
 });
 
 export function useAppMessages(): AppMessages {
@@ -43,6 +49,10 @@ export function AppMessageProvider({ children }: { children: ReactNode }) {
       notifyError: (message: string) => {
         setStatusMessage(null);
         setErrorMessage(message);
+      },
+      dismiss: () => {
+        setStatusMessage(null);
+        setErrorMessage(null);
       },
     }),
     [],

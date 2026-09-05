@@ -13,10 +13,10 @@ import { Box, CircularProgress } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { Suspense, useEffect } from "react";
-import { signOut } from "../lib/auth-client";
 import { useAppMessages } from "../lib/messages";
 import {
-  invalidateAuthQueries,
+  clearAuthQueries,
+  signOutAndReset,
   useHouseholds,
   useSessionData,
 } from "../lib/session";
@@ -58,7 +58,7 @@ export function AppChrome() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { notifyError } = useAppMessages();
+  const { dismiss, notifyError } = useAppMessages();
   const session = useSessionData();
   const { households, error } = useHouseholds();
 
@@ -90,9 +90,14 @@ export function AppChrome() {
   };
 
   const handleLogout = async () => {
-    await signOut();
-    await invalidateAuthQueries(queryClient);
+    // Nothing raised while signed in should follow the visitor to /login.
+    dismiss();
+    // Seeds the signed-out answer instead of invalidating, so the households
+    // query this component is still observing never refetches into a 401 on
+    // the way out (see lib/session.ts). The redirect is then synchronous.
+    await signOutAndReset(queryClient);
     await navigate({ to: "/login", replace: true });
+    clearAuthQueries(queryClient);
   };
 
   return (

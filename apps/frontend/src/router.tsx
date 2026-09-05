@@ -38,17 +38,18 @@ import { SetupPage } from "./components/SetupPage";
 import { ServicesPage } from "./components/services/ServicesPage";
 import { AccountSettingsPage } from "./components/settings/AccountSettingsPage";
 import { TwoFactorPage } from "./components/TwoFactorPage";
-import { useInstallPrompt } from "./hooks/useInstallPrompt";
+import { InstallProvider, useInstallState } from "./hooks/useInstallPrompt";
 import { AppearanceProvider } from "./lib/appearance";
 import {
   type RouterContext,
   redirectToStart,
   requireAnonymous,
+  requireChrome,
   requireHousehold,
   requireOwner,
-  requireSession,
   requireSetupDone,
   requireSetupPending,
+  safeRedirect,
 } from "./lib/guards";
 import { AppMessageProvider, useAppMessages } from "./lib/messages";
 import {
@@ -74,7 +75,12 @@ function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <AppearanceProvider>
         <AppMessageProvider>
-          <Outlet />
+          {/* `beforeinstallprompt` fires once just after load, so its
+              listener has to be mounted before any guard resolves — not in
+              the settings route, which mounts far too late to hear it. */}
+          <InstallProvider>
+            <Outlet />
+          </InstallProvider>
         </AppMessageProvider>
       </AppearanceProvider>
     </QueryClientProvider>
@@ -115,26 +121,39 @@ const loginRoute = createRoute({
   component: LoginRoute,
 });
 
-function LoginRoute() {
-  const { redirect } = loginRoute.useSearch();
-  const queryClient = useQueryClient();
+/**
+ * Where to land once the visitor is actually signed in: the route they were
+ * bounced off, when `?redirect=` names a safe one, and `/` otherwise.
+ */
+function useAuthedRedirect(redirect: string | undefined) {
   const navigate = useNavigate();
-  const { status, error } = useSetupStatus();
 
-  const handleLoginSuccess = async () => {
-    await invalidateAuthQueries(queryClient);
+  return async () => {
+    const target = safeRedirect(redirect);
 
-    if (redirect) {
+    if (target) {
       // `href` navigates to an already-built path. The typed `to` form cannot
       // express "whichever route this string names", which is exactly what a
       // preserved ?redirect= is; the runtime option handles it.
-      await navigate({ href: redirect, replace: true } as Parameters<
+      await navigate({ href: target, replace: true } as Parameters<
         typeof navigate
       >[0]);
       return;
     }
 
     await navigate({ to: "/", replace: true });
+  };
+}
+
+function LoginRoute() {
+  const { redirect } = loginRoute.useSearch();
+  const queryClient = useQueryClient();
+  const goToTarget = useAuthedRedirect(redirect);
+  const { status, error } = useSetupStatus();
+
+  const handleLoginSuccess = async () => {
+    await invalidateAuthQueries(queryClient);
+    await goToTarget();
   };
 
   return (
@@ -149,17 +168,23 @@ function LoginRoute() {
 const twoFactorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/two-factor",
+  // The challenge is the second half of signing in, so it carries the same
+  // ?redirect= the login page was given — otherwise an account with two-step
+  // verification on always lands on / and loses the page it asked for.
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } =>
+    typeof search.redirect === "string" ? { redirect: search.redirect } : {},
   beforeLoad: requireAnonymous,
   component: TwoFactorRoute,
 });
 
 function TwoFactorRoute() {
+  const { redirect } = twoFactorRoute.useSearch();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
+  const goToTarget = useAuthedRedirect(redirect);
 
   const handleVerified = async () => {
     await invalidateAuthQueries(queryClient);
-    await navigate({ to: "/", replace: true });
+    await goToTarget();
   };
 
   return <TwoFactorPage onVerified={() => void handleVerified()} />;
@@ -257,7 +282,9 @@ function SetupRoute() {
 const chromeRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "chrome",
-  beforeLoad: requireSession,
+  // Ensures the household list too, so the sidebar and switcher are never
+  // drawn a frame late on a cold load of /settings or /new-household.
+  beforeLoad: requireChrome,
   component: AppChrome,
 });
 
@@ -296,7 +323,7 @@ const accountSettingsRoute = createRoute({
 });
 
 function AccountSettingsRoute() {
-  const install = useInstallPrompt();
+  const install = useInstallState();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { notify } = useAppMessages();
@@ -325,6 +352,13 @@ const householdRoute = createRoute({
   getParentRoute: () => chromeRoute,
   path: "/$slug",
   beforeLoad: (args) => requireHousehold(args, args.params.slug),
+  // Switching household re-runs this guard; once the session and household
+  // queries pass their staleTime it has to revalidate, and at the router's
+  // `defaultPendingMs: 0` that brief round trip would replace the whole app
+  // with the loading screen. 300ms is under the threshold where a wait reads
+  // as a wait, and the first authed load — where the loader *should* appear
+  // at once — happens on the chrome route above, which keeps 0.
+  pendingMs: 300,
 });
 
 /** Shared by every household view: the slug plus its household record. */

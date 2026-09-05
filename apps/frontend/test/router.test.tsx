@@ -4,10 +4,17 @@
  * assert where the router *ends up* — the questions `App.tsx` used to answer
  * with effects and `<Navigate>`, and the ones most likely to regress.
  */
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { safeRedirect } from "../src/lib/guards";
+import {
+  clearAuthQueries,
+  householdsQueryOptions,
+  sessionQueryOptions,
+  signOutAndReset,
+} from "../src/lib/session";
 import type { HouseholdSummary, SessionData } from "../src/types";
 import { readRequest } from "./fetch-mock";
 
@@ -70,15 +77,20 @@ function mockApi({
   );
 }
 
-/** Load the real route tree at `path` and report where it settled. */
-async function landsOn(path: string): Promise<string> {
-  const router = createAppRouter({
-    queryClient: new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    }),
+function testQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+function routerAt(path: string, queryClient = testQueryClient()) {
+  return createAppRouter({
+    queryClient,
     history: createMemoryHistory({ initialEntries: [path] }),
   });
+}
 
+/** Load the real route tree at `path` and report where it settled. */
+async function landsOn(path: string): Promise<string> {
+  const router = routerAt(path);
   await router.load();
   return router.state.location.pathname;
 }
@@ -185,5 +197,114 @@ describe("route guards", () => {
     mockApi({ households: [owner] });
 
     expect(await landsOn("/settings")).toBe("/settings");
+  });
+
+  it("has the household list ready before the chrome renders", async () => {
+    // /settings and /new-household have no slug to guard, so nothing used to
+    // wait for the household list: a cold load painted the page with no
+    // sidebar around it until the query landed.
+    authState.session = signedIn;
+    mockApi({ households: [owner] });
+
+    const queryClient = testQueryClient();
+    const router = routerAt("/settings", queryClient);
+    await router.load();
+
+    expect(router.state.location.pathname).toBe("/settings");
+    expect(queryClient.getQueryData(householdsQueryOptions.queryKey)).toEqual({
+      households: [owner],
+      error: null,
+    });
+  });
+});
+
+describe("safeRedirect", () => {
+  it("keeps an in-app path", () => {
+    expect(safeRedirect("/casa/members")).toBe("/casa/members");
+    expect(safeRedirect("/casa/inbox?x=1")).toBe("/casa/inbox?x=1");
+  });
+
+  it("drops anything a browser would resolve off-origin", () => {
+    // ?redirect= is whatever was in the URL when the visitor hit /login, so
+    // it is attacker-controllable: these must never be navigated to.
+    expect(safeRedirect("//evil.example")).toBeNull();
+    expect(safeRedirect("/\\evil.example")).toBeNull();
+    expect(safeRedirect("https://evil.example")).toBeNull();
+    expect(safeRedirect("javascript:alert(1)")).toBeNull();
+    expect(safeRedirect("casa/inbox")).toBeNull();
+  });
+
+  it("treats a missing value as no redirect", () => {
+    expect(safeRedirect(undefined)).toBeNull();
+    expect(safeRedirect("")).toBeNull();
+  });
+});
+
+describe("the two-factor challenge", () => {
+  it("carries ?redirect= so the second half of sign-in lands correctly", async () => {
+    mockApi({ households: [owner] });
+
+    const router = routerAt("/two-factor?redirect=%2Fcasa%2Fmembers");
+    await router.load();
+
+    expect(router.state.location.pathname).toBe("/two-factor");
+    expect(router.state.location.search).toMatchObject({
+      redirect: "/casa/members",
+    });
+  });
+});
+
+describe("signing out", () => {
+  it("lands on /login without refetching households as a signed-out visitor", async () => {
+    authState.session = signedIn;
+    mockApi({ households: [owner] });
+
+    const queryClient = testQueryClient();
+    const router = routerAt("/casa/inbox", queryClient);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/casa/inbox");
+
+    // Stand in for the mounted chrome, which observes the households query
+    // for as long as it is on screen. Invalidating with this observer live —
+    // what the first cut did — refetches a list the visitor is no longer
+    // entitled to, draws a 401, and flashes "Unauthorized" over the sign-in
+    // screen. Seeding must not make a request at all.
+    const observer = new QueryObserver(queryClient, householdsQueryOptions);
+    const seen: unknown[] = [];
+    const unsubscribe = observer.subscribe((result) => seen.push(result.data));
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockClear();
+    authState.session = null;
+
+    await signOutAndReset(queryClient);
+
+    expect(queryClient.getQueryData(sessionQueryOptions.queryKey)).toBeNull();
+    expect(queryClient.getQueryData(householdsQueryOptions.queryKey)).toEqual({
+      households: [],
+      error: null,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Nothing the chrome could turn into an error snackbar.
+    expect(observer.getCurrentResult().data).toEqual({
+      households: [],
+      error: null,
+    });
+    expect(
+      seen.every((data) => !(data as { error?: string } | undefined)?.error),
+    ).toBe(true);
+    unsubscribe();
+
+    await router.navigate({ to: "/login", replace: true });
+    await router.invalidate();
+    expect(router.state.location.pathname).toBe("/login");
+
+    clearAuthQueries(queryClient);
+    expect(
+      queryClient.getQueryData(sessionQueryOptions.queryKey),
+    ).toBeUndefined();
+    expect(
+      queryClient.getQueryData(householdsQueryOptions.queryKey),
+    ).toBeUndefined();
   });
 });

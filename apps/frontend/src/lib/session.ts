@@ -15,7 +15,7 @@ import {
 } from "@tanstack/react-query";
 import type { HouseholdSummary, SessionData, SetupStatus } from "../types";
 import { ApiError, client, unwrap } from "./api";
-import { getSession } from "./auth-client";
+import { getSession, signOut } from "./auth-client";
 
 /** Set by the invite page before it sends a signed-out visitor to sign in. */
 export const PENDING_INVITE_KEY = "pendingInviteToken";
@@ -122,6 +122,38 @@ export function invalidateHouseholds(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({
     queryKey: householdsQueryOptions.queryKey,
   });
+}
+
+const SIGNED_OUT_HOUSEHOLDS: HouseholdsResult = { households: [], error: null };
+
+/**
+ * Sign out, then *seed* the cache with the signed-out answer rather than
+ * invalidating it.
+ *
+ * Invalidating is wrong on the way out: the chrome's households observer is
+ * still mounted at that moment, so it would refetch a list the visitor is no
+ * longer entitled to, race the redirect, and — before `householdsQueryOptions`
+ * learned to swallow a 401 — flash "Unauthorized" over the sign-in screen.
+ * Seeding makes the next guard read "nobody is signed in" synchronously, with
+ * no request at all.
+ */
+export async function signOutAndReset(queryClient: QueryClient): Promise<void> {
+  await signOut();
+  queryClient.setQueryData(sessionQueryOptions.queryKey, null);
+  queryClient.setQueryData(
+    householdsQueryOptions.queryKey,
+    SIGNED_OUT_HOUSEHOLDS,
+  );
+}
+
+/**
+ * Drop the seeded entries once the redirect has landed, so the next sign-in —
+ * possibly as a different account — starts from an empty cache.
+ */
+export function clearAuthQueries(queryClient: QueryClient): void {
+  queryClient.removeQueries({ queryKey: sessionQueryOptions.queryKey });
+  queryClient.removeQueries({ queryKey: householdsQueryOptions.queryKey });
+  queryClient.removeQueries({ queryKey: setupStatusQueryOptions.queryKey });
 }
 
 export function useSetupStatus(): SetupStatusResult {

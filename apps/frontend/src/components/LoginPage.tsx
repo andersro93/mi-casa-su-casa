@@ -1,5 +1,9 @@
 import { Alert, Box, Button, Link as MuiLink, TextField } from "@mui/material";
-import { Link as RouterLink, useNavigate } from "@tanstack/react-router";
+import {
+  Link as RouterLink,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { signIn } from "../lib/auth-client";
 import type { LoginState, SetupStatus } from "../types";
@@ -18,6 +22,15 @@ export function LoginPage({
   onLoginSuccess,
 }: LoginPageProps) {
   const navigate = useNavigate();
+  // The challenge page finishes the sign-in, so it needs the same ?redirect=
+  // this page was opened with. Read off the location rather than the matched
+  // route's validated search so the page renders anywhere the router is in
+  // context.
+  const search = useRouterState({
+    select: (state) => state.location.search,
+  }) as {
+    redirect?: string;
+  };
   const [loginState, setLoginState] = useState<LoginState>({
     email: "",
     password: "",
@@ -51,7 +64,10 @@ export function LoginPage({
       // server revoked the one it minted and set a challenge cookie instead.
       // Finish on the challenge page.
       if (twoFactorRequired) {
-        void navigate({ to: "/two-factor" });
+        void navigate({
+          to: "/two-factor",
+          search: search.redirect ? { redirect: search.redirect } : {},
+        });
         return;
       }
       onLoginSuccess();
