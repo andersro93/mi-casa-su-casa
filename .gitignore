@@ -7,3 +7,23 @@ coverage/
 npm-debug.log*
 .omc/
 .idea
+.superpowers/
+
+dist/server
+dist/goreleaser
+
+# apps/server embeds its SPA build from here; the placeholder index.html
+# committed alongside internal/web is real repo content, not a build
+# artifact — the blanket `dist/` rule above would otherwise swallow it.
+# Order matters: re-include the directory itself, re-ignore everything
+# inside it, then punch a hole for just the placeholder — a bare
+# `!apps/server/internal/web/dist/` alone would un-ignore the whole
+# directory, so a real SPA build dropped there would be staged by
+# `git add -A`.
+!apps/server/internal/web/dist/
+apps/server/internal/web/dist/*
+!apps/server/internal/web/dist/index.html
+
+# Playwright
+e2e/playwright-report/
+e2e/test-results/

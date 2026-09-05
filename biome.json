@@ -1,7 +1,13 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.9/schema.json",
   "files": {
-    "includes": ["**", "!dist", "!.wrangler"]
+    "includes": [
+      "**",
+      "!dist",
+      "!.wrangler",
+      "!apps/server",
+      "!e2e/playwright-report"
+    ]
   },
   "formatter": {
     "enabled": true,

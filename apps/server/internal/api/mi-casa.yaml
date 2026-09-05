@@ -1,0 +1,107 @@
+openapi: 3.0.3
+info:
+  title: Mi Casa Su Casa API
+  description: >-
+    Mi Casa Su Casa is a self-hosted household service log. This spec is the
+    single source of truth for the Go server's HTTP surface: it drives
+    runtime request validation (kin-openapi via nethttp-middleware), the
+    generated strict-server routes and types (oapi-codegen), and — being the
+    routing table the validator matches against — which paths exist at all.
+
+    Edit this file, then run `go generate ./...` from apps/server: that
+    resyncs the embedded copy (apps/server/internal/api/mi-casa.yaml) and
+    regenerates apps/server/internal/api/gen. Both are committed, and a test
+    fails if either drifts.
+  version: "1.0.0"
+servers:
+  - url: /
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness probe. Touches nothing — not even the database pool.
+      tags: [system]
+      responses:
+        "200":
+          description: The process is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+                    enum: [true]
+  /readyz:
+    get:
+      operationId: readyz
+      summary: >-
+        Readiness probe. Reads the installation singleton, which both proves
+        the database is reachable and carries the retention job's last run.
+      tags: [system]
+      responses:
+        "200":
+          description: The process is ready to serve traffic.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, status, setupConfigured, retention]
+                properties:
+                  ok:
+                    type: boolean
+                    enum: [true]
+                  status:
+                    type: string
+                  setupConfigured:
+                    type: boolean
+                  retention:
+                    type: object
+                    required: [lastRunAt, stale]
+                    properties:
+                      lastRunAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: >-
+                          When the retention job last completed, or null if it
+                          never has.
+                      stale:
+                        type: boolean
+                        description: >-
+                          Whether the last run is older than the tolerated
+                          window (48 hours), or has never happened.
+        "503":
+          description: The database is unreachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, error]
+                properties:
+                  ok:
+                    type: boolean
+                    enum: [false]
+                  error:
+                    type: string
+components:
+  schemas:
+    Error:
+      type: object
+      description: >-
+        The failure envelope every error response in this API uses. `fields`
+        carries one message per rejected input (keyed by the property or
+        parameter name, `_` for the request body as a whole); `code` is a
+        stable discriminator for the few failures a client must branch on
+        rather than merely display.
+      required: [error]
+      properties:
+        error:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+        code:
+          type: string

@@ -1,0 +1,237 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"net/url"
+	"os"
+	"testing"
+	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+// testDatabaseURL defaults to the Postgres docker-compose.test.yml publishes
+// on loopback, so `go test ./...` works with nothing but the compose file up.
+// TEST_DATABASE_URL overrides it for CI, whose service container lives
+// somewhere else.
+func testDatabaseURL(t *testing.T) string {
+	t.Helper()
+	if override := os.Getenv("TEST_DATABASE_URL"); override != "" {
+		return override
+	}
+	return "postgres://micasa:micasa@127.0.0.1:55433/micasa_test"
+}
+
+// resetSchema drops and recreates the public schema so each test starts from
+// a genuinely empty database rather than whatever the previous test left —
+// including goose's own bookkeeping table, without which "did the migration
+// run?" would be answered by a stale row.
+func resetSchema(t *testing.T, databaseURL string) {
+	t.Helper()
+	conn, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		t.Fatalf("open reset connection: %v", err)
+	}
+	defer conn.Close()
+	if _, err := conn.Exec(`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`); err != nil {
+		t.Fatalf("reset public schema: %v", err)
+	}
+}
+
+// assertTableExists uses to_regclass rather than an information_schema query
+// because it answers "is this a real relation in the search path" in one
+// scan and returns NULL (not an error) when it is not.
+func assertTableExists(ctx context.Context, t *testing.T, conn *sql.DB, table string) {
+	t.Helper()
+	var regclass sql.NullString
+	if err := conn.QueryRowContext(ctx, "select to_regclass($1)", "public."+table).Scan(&regclass); err != nil {
+		t.Fatalf("query to_regclass(%q): %v", table, err)
+	}
+	if !regclass.Valid {
+		t.Fatalf("expected table %q to exist after ApplyMigrations, got to_regclass=NULL", table)
+	}
+}
+
+func TestApplyMigrations_CreatesSchema(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := ApplyMigrations(ctx, databaseURL); err != nil {
+		t.Fatalf("ApplyMigrations: %v", err)
+	}
+
+	conn, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		t.Fatalf("open verify connection: %v", err)
+	}
+	defer conn.Close()
+
+	// One app table and one Limen-owned table: the migration is a single
+	// file, so if both halves landed the whole file did.
+	assertTableExists(ctx, t, conn, "households")
+	assertTableExists(ctx, t, conn, "users")
+}
+
+// TestApplyMigrations_SeedsInstallationRow guards the singleton row every
+// setup-state read assumes exists (REF §A5): without it the first
+// GetInstallation after a fresh boot returns no rows instead of "pending".
+func TestApplyMigrations_SeedsInstallationRow(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := ApplyMigrations(ctx, databaseURL); err != nil {
+		t.Fatalf("ApplyMigrations: %v", err)
+	}
+
+	conn, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		t.Fatalf("open verify connection: %v", err)
+	}
+	defer conn.Close()
+
+	var status string
+	if err := conn.QueryRowContext(ctx, `select "status" from "app_installation" where "id" = 1`).Scan(&status); err != nil {
+		t.Fatalf("read seeded app_installation row: %v", err)
+	}
+	if status != "pending" {
+		t.Fatalf("expected seeded installation status %q, got %q", "pending", status)
+	}
+}
+
+func TestApplyMigrations_IsIdempotent(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := ApplyMigrations(ctx, databaseURL); err != nil {
+		t.Fatalf("first ApplyMigrations: %v", err)
+	}
+	if err := ApplyMigrations(ctx, databaseURL); err != nil {
+		t.Fatalf("second ApplyMigrations should be a no-op, got error: %v", err)
+	}
+}
+
+// TestApplyMigrations_BlocksOnAdvisoryLock proves the lock genuinely
+// contends: a second, independent connection stands in for a sibling replica
+// that won the race to migrate. ApplyMigrations must sit blocked acquiring
+// the same advisory lock until that holder releases it — verified by polling
+// pg_stat_activity for the waiting backend (Postgres's own bookkeeping)
+// rather than guessing from a fixed sleep.
+func TestApplyMigrations_BlocksOnAdvisoryLock(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+
+	// A dedicated single-connection holder, exactly like ApplyMigrations
+	// itself uses, so pg_advisory_lock's per-session semantics apply here
+	// too: the lock stays held on this one physical connection until we
+	// explicitly unlock it below.
+	holder, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		t.Fatalf("open holder connection: %v", err)
+	}
+	defer holder.Close()
+	holder.SetMaxOpenConns(1)
+	holder.SetMaxIdleConns(1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var locked bool
+	if err := holder.QueryRowContext(ctx, "select pg_try_advisory_lock($1)", MigrationLockKey).Scan(&locked); err != nil {
+		t.Fatalf("pg_try_advisory_lock: %v", err)
+	}
+	if !locked {
+		t.Fatalf("expected holder to acquire the advisory lock")
+	}
+
+	migrationDone := make(chan error, 1)
+	go func() {
+		migrationDone <- ApplyMigrations(ctx, databaseURL)
+	}()
+
+	sawWaiter := false
+	for attempt := 0; attempt < 50; attempt++ {
+		var n int
+		err := holder.QueryRowContext(ctx, `
+			select count(*)::int
+			from pg_stat_activity
+			where wait_event_type = 'Lock'
+			  and query ilike '%pg_advisory_lock%'
+			  and pid <> pg_backend_pid()
+		`).Scan(&n)
+		if err != nil {
+			t.Fatalf("poll pg_stat_activity: %v", err)
+		}
+		if n > 0 {
+			sawWaiter = true
+			break
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+	if !sawWaiter {
+		t.Fatalf("expected to observe ApplyMigrations blocked waiting on the advisory lock")
+	}
+
+	if _, err := holder.ExecContext(ctx, "select pg_advisory_unlock($1)", MigrationLockKey); err != nil {
+		t.Fatalf("pg_advisory_unlock: %v", err)
+	}
+
+	select {
+	case err := <-migrationDone:
+		if err != nil {
+			t.Fatalf("ApplyMigrations (blocked): %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("ApplyMigrations did not complete after the lock was released")
+	}
+}
+
+// TestApplyMigrations_ReturnsErrorRatherThanExiting pins the contract the
+// callers depend on: the default dispatch mode wants to log and decide, the
+// one-off `migrate` mode owns its own exit code. A syntactically valid URL
+// pointing at a database that does not exist is the cheapest failure to
+// provoke — and if ApplyMigrations ever called os.Exit, this test binary
+// would die instead of failing the assertion.
+func TestApplyMigrations_ReturnsErrorRatherThanExiting(t *testing.T) {
+	// Derived from the real URL by swapping only the database name — parsed,
+	// not concatenated, so any query parameters (sslmode and friends) that
+	// CI's TEST_DATABASE_URL carries survive intact. The failure then stays
+	// "that database does not exist" wherever the suite runs; a hard-coded
+	// loopback address would fail with "connection refused" under CI, which
+	// is a different bug than the one this test means to provoke.
+	parsed, err := url.Parse(testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("parse test database URL: %v", err)
+	}
+	parsed.Path += "_does_not_exist"
+	badURL := parsed.String()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := ApplyMigrations(ctx, badURL); err == nil {
+		t.Fatalf("expected ApplyMigrations against a nonexistent database to return an error")
+	}
+}
+
+// TestLatestMigrationVersion checks the version is derived from the embedded
+// filenames — the readiness probe compares it against goose_db_version, so a
+// hand-maintained constant would silently go stale.
+func TestLatestMigrationVersion(t *testing.T) {
+	version, err := LatestMigrationVersion()
+	if err != nil {
+		t.Fatalf("LatestMigrationVersion: %v", err)
+	}
+	if version < 1 {
+		t.Fatalf("expected at least migration version 1, got %d", version)
+	}
+}
