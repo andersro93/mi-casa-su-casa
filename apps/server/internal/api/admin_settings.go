@@ -28,7 +28,7 @@ const auditLimit = 100
 
 // ListAuditEvents answers the audit screen.
 func (s server) ListAuditEvents(ctx context.Context, _ gen.ListAuditEventsRequestObject) (gen.ListAuditEventsResponseObject, error) {
-	_, household, ok := s.adminContext(ctx)
+	_, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.ListAuditEvents403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -56,7 +56,7 @@ func (s server) ListAuditEvents(ctx context.Context, _ gen.ListAuditEventsReques
 
 // GetHouseholdSettings answers the household settings screen.
 func (s server) GetHouseholdSettings(ctx context.Context, _ gen.GetHouseholdSettingsRequestObject) (gen.GetHouseholdSettingsResponseObject, error) {
-	_, household, ok := s.adminContext(ctx)
+	_, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.GetHouseholdSettings403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -80,7 +80,7 @@ func (s server) GetHouseholdSettings(ctx context.Context, _ gen.GetHouseholdSett
 // sender rule a provider has already been pointed at — and would free the old
 // address for somebody else to claim.
 func (s server) UpdateHouseholdSettings(ctx context.Context, request gen.UpdateHouseholdSettingsRequestObject) (gen.UpdateHouseholdSettingsResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.UpdateHouseholdSettings403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -140,22 +140,6 @@ func auditDetails(raw json.RawMessage) *map[string]any {
 		return nil
 	}
 	return &details
-}
-
-// adminContext is the pair every admin handler opens with: the caller and the
-// household the tenancy guard resolved.
-//
-// ok is false only if an admin route were ever mounted without tierOwner, in
-// which case refusing is the failure that leaks nothing. Each handler answers
-// its own 403 rather than sharing one, because the generated response types
-// are per-operation.
-func (s server) adminContext(ctx context.Context) (*auth.Session, *middleware.Household, bool) {
-	viewer := viewerFrom(ctx)
-	household := householdFrom(ctx)
-	if viewer == nil || household == nil {
-		return nil, nil, false
-	}
-	return viewer, household, true
 }
 
 // audit records one owner action against the current household — the Go

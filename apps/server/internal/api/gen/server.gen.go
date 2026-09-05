@@ -89,6 +89,26 @@ type ServerInterface interface {
 	// LeaveHousehold Give up your own membership of this household. Refused for the last owner, which is what keeps a household from being left with nobody who can administer it.
 	// (POST /api/households/{slug}/leave)
 	LeaveHousehold(w http.ResponseWriter, r *http.Request, slug HouseholdSlug)
+	// UpdateMessageStatus Mark one message new, used or expired — the "I have used this code" button.
+	// The message is looked up before the body is validated, deliberately: a status the server does not know, sent for a message that is not this household's, is answered 404 rather than 400, so the route never confirms the existence of a message the caller may not read.
+	// (PATCH /api/inbox/{slug}/messages/{messageId}/status)
+	UpdateMessageStatus(w http.ResponseWriter, r *http.Request, slug HouseholdSlug, messageId MessageId)
+	// ListInboxProviders The inbox landing page: one tile per provider the caller may read, with its message counts and a preview of the newest message.
+	// A member route rather than an owner one, with the per-provider check INSIDE it: an owner sees every provider in the household, a member only the ones they have been granted. That is the whole point of provider access — the household's mail is split per mailbox, not per role.
+	// (GET /api/inbox/{slug}/providers)
+	ListInboxProviders(w http.ResponseWriter, r *http.Request, slug HouseholdSlug)
+	// ListProviderMessages One provider's inbox, newest first, one keyset page at a time.
+	// The 403 for a member without access to this provider is answered BEFORE the provider is looked up, so a member cannot use the difference between 403 and 404 to enumerate which providers the household has.
+	// (GET /api/inbox/{slug}/providers/{providerKey})
+	ListProviderMessages(w http.ResponseWriter, r *http.Request, slug HouseholdSlug, providerKey string, params ListProviderMessagesParams)
+	// ListQuarantine The needs-review queue: mail that could not be attributed to a provider, unreviewed rows only, newest first.
+	// Owner-only. Quarantined mail is by definition mail nobody has decided who may read yet, so it cannot be shown behind per-provider access.
+	// (GET /api/inbox/{slug}/quarantine)
+	ListQuarantine(w http.ResponseWriter, r *http.Request, slug HouseholdSlug, params ListQuarantineParams)
+	// ReviewQuarantineMessage Work through one needs-review row: dismiss it, or release it into a provider's inbox.
+	// A release copies the row into that provider's messages — keeping the original received_at and delete_after, so releasing does not extend retention — and marks the quarantine row reviewed, in one transaction. Owner-only, and audited either way.
+	// (POST /api/inbox/{slug}/quarantine/{messageId}/review)
+	ReviewQuarantineMessage(w http.ResponseWriter, r *http.Request, slug HouseholdSlug, messageId MessageId)
 	// AcceptInvitation Accept an invitation, as the signed-in user or by creating the invited account. Rate limited with the lookup above.
 	// (POST /api/invitations/accept)
 	AcceptInvitation(w http.ResponseWriter, r *http.Request, params AcceptInvitationParams)
@@ -806,6 +826,221 @@ func (siw *ServerInterfaceWrapper) LeaveHousehold(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateMessageStatus operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMessageStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug HouseholdSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId MessageId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMessageStatus(w, r, slug, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInboxProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListInboxProviders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug HouseholdSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInboxProviders(w, r, slug)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProviderMessages operation middleware
+func (siw *ServerInterfaceWrapper) ListProviderMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug HouseholdSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "providerKey" -------------
+	var providerKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerKey", r.PathValue("providerKey"), &providerKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProviderMessagesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProviderMessages(w, r, slug, providerKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListQuarantine operation middleware
+func (siw *ServerInterfaceWrapper) ListQuarantine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug HouseholdSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListQuarantineParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListQuarantine(w, r, slug, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReviewQuarantineMessage operation middleware
+func (siw *ServerInterfaceWrapper) ReviewQuarantineMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug HouseholdSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId MessageId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReviewQuarantineMessage(w, r, slug, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AcceptInvitation operation middleware
 func (siw *ServerInterfaceWrapper) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 
@@ -1155,6 +1390,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/households/me", wrapper.ListMyHouseholds)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/households", wrapper.CreateHousehold)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/households/{slug}/leave", wrapper.LeaveHousehold)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/{slug}/providers", wrapper.ListInboxProviders)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/{slug}/providers/{providerKey}", wrapper.ListProviderMessages)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/inbox/{slug}/messages/{messageId}/status", wrapper.UpdateMessageStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/{slug}/quarantine", wrapper.ListQuarantine)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{slug}/quarantine/{messageId}/review", wrapper.ReviewQuarantineMessage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetAccountSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/households", wrapper.ListSettingsHouseholds)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/settings/profile", wrapper.UpdateProfile)
@@ -2801,6 +3041,361 @@ func (response LeaveHousehold409JSONResponse) VisitLeaveHouseholdResponse(w http
 	return err
 }
 
+type UpdateMessageStatusRequestObject struct {
+	Slug      HouseholdSlug `json:"slug"`
+	MessageId MessageId     `json:"messageId"`
+	Body      *UpdateMessageStatusJSONRequestBody
+}
+
+type UpdateMessageStatusResponseObject interface {
+	VisitUpdateMessageStatusResponse(w http.ResponseWriter) error
+}
+
+type UpdateMessageStatus200JSONResponse InboxMessageResult
+
+func (response UpdateMessageStatus200JSONResponse) VisitUpdateMessageStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMessageStatus400JSONResponse Error
+
+func (response UpdateMessageStatus400JSONResponse) VisitUpdateMessageStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMessageStatus401JSONResponse Error
+
+func (response UpdateMessageStatus401JSONResponse) VisitUpdateMessageStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMessageStatus403JSONResponse Error
+
+func (response UpdateMessageStatus403JSONResponse) VisitUpdateMessageStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMessageStatus404JSONResponse Error
+
+func (response UpdateMessageStatus404JSONResponse) VisitUpdateMessageStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInboxProvidersRequestObject struct {
+	Slug HouseholdSlug `json:"slug"`
+}
+
+type ListInboxProvidersResponseObject interface {
+	VisitListInboxProvidersResponse(w http.ResponseWriter) error
+}
+
+type ListInboxProviders200JSONResponse ProviderSummaryList
+
+func (response ListInboxProviders200JSONResponse) VisitListInboxProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInboxProviders401JSONResponse Error
+
+func (response ListInboxProviders401JSONResponse) VisitListInboxProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInboxProviders403JSONResponse Error
+
+func (response ListInboxProviders403JSONResponse) VisitListInboxProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProviderMessagesRequestObject struct {
+	Slug        HouseholdSlug `json:"slug"`
+	ProviderKey string        `json:"providerKey"`
+	Params      ListProviderMessagesParams
+}
+
+type ListProviderMessagesResponseObject interface {
+	VisitListProviderMessagesResponse(w http.ResponseWriter) error
+}
+
+type ListProviderMessages200JSONResponse InboxMessagePage
+
+func (response ListProviderMessages200JSONResponse) VisitListProviderMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProviderMessages400JSONResponse Error
+
+func (response ListProviderMessages400JSONResponse) VisitListProviderMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProviderMessages401JSONResponse Error
+
+func (response ListProviderMessages401JSONResponse) VisitListProviderMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProviderMessages403JSONResponse Error
+
+func (response ListProviderMessages403JSONResponse) VisitListProviderMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProviderMessages404JSONResponse Error
+
+func (response ListProviderMessages404JSONResponse) VisitListProviderMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListQuarantineRequestObject struct {
+	Slug   HouseholdSlug `json:"slug"`
+	Params ListQuarantineParams
+}
+
+type ListQuarantineResponseObject interface {
+	VisitListQuarantineResponse(w http.ResponseWriter) error
+}
+
+type ListQuarantine200JSONResponse QuarantineMessagePage
+
+func (response ListQuarantine200JSONResponse) VisitListQuarantineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListQuarantine400JSONResponse Error
+
+func (response ListQuarantine400JSONResponse) VisitListQuarantineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListQuarantine401JSONResponse Error
+
+func (response ListQuarantine401JSONResponse) VisitListQuarantineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListQuarantine403JSONResponse Error
+
+func (response ListQuarantine403JSONResponse) VisitListQuarantineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewQuarantineMessageRequestObject struct {
+	Slug      HouseholdSlug `json:"slug"`
+	MessageId MessageId     `json:"messageId"`
+	Body      *ReviewQuarantineMessageJSONRequestBody
+}
+
+type ReviewQuarantineMessageResponseObject interface {
+	VisitReviewQuarantineMessageResponse(w http.ResponseWriter) error
+}
+
+type ReviewQuarantineMessage200JSONResponse QuarantineReviewResult
+
+func (response ReviewQuarantineMessage200JSONResponse) VisitReviewQuarantineMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewQuarantineMessage400JSONResponse Error
+
+func (response ReviewQuarantineMessage400JSONResponse) VisitReviewQuarantineMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewQuarantineMessage401JSONResponse Error
+
+func (response ReviewQuarantineMessage401JSONResponse) VisitReviewQuarantineMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewQuarantineMessage403JSONResponse Error
+
+func (response ReviewQuarantineMessage403JSONResponse) VisitReviewQuarantineMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewQuarantineMessage404JSONResponse Error
+
+func (response ReviewQuarantineMessage404JSONResponse) VisitReviewQuarantineMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AcceptInvitationRequestObject struct {
 	Params AcceptInvitationParams
 	Body   *AcceptInvitationJSONRequestBody
@@ -3489,6 +4084,26 @@ type StrictServerInterface interface {
 	// LeaveHousehold Give up your own membership of this household. Refused for the last owner, which is what keeps a household from being left with nobody who can administer it.
 	// (POST /api/households/{slug}/leave)
 	LeaveHousehold(ctx context.Context, request LeaveHouseholdRequestObject) (LeaveHouseholdResponseObject, error)
+	// UpdateMessageStatus Mark one message new, used or expired — the "I have used this code" button.
+	// The message is looked up before the body is validated, deliberately: a status the server does not know, sent for a message that is not this household's, is answered 404 rather than 400, so the route never confirms the existence of a message the caller may not read.
+	// (PATCH /api/inbox/{slug}/messages/{messageId}/status)
+	UpdateMessageStatus(ctx context.Context, request UpdateMessageStatusRequestObject) (UpdateMessageStatusResponseObject, error)
+	// ListInboxProviders The inbox landing page: one tile per provider the caller may read, with its message counts and a preview of the newest message.
+	// A member route rather than an owner one, with the per-provider check INSIDE it: an owner sees every provider in the household, a member only the ones they have been granted. That is the whole point of provider access — the household's mail is split per mailbox, not per role.
+	// (GET /api/inbox/{slug}/providers)
+	ListInboxProviders(ctx context.Context, request ListInboxProvidersRequestObject) (ListInboxProvidersResponseObject, error)
+	// ListProviderMessages One provider's inbox, newest first, one keyset page at a time.
+	// The 403 for a member without access to this provider is answered BEFORE the provider is looked up, so a member cannot use the difference between 403 and 404 to enumerate which providers the household has.
+	// (GET /api/inbox/{slug}/providers/{providerKey})
+	ListProviderMessages(ctx context.Context, request ListProviderMessagesRequestObject) (ListProviderMessagesResponseObject, error)
+	// ListQuarantine The needs-review queue: mail that could not be attributed to a provider, unreviewed rows only, newest first.
+	// Owner-only. Quarantined mail is by definition mail nobody has decided who may read yet, so it cannot be shown behind per-provider access.
+	// (GET /api/inbox/{slug}/quarantine)
+	ListQuarantine(ctx context.Context, request ListQuarantineRequestObject) (ListQuarantineResponseObject, error)
+	// ReviewQuarantineMessage Work through one needs-review row: dismiss it, or release it into a provider's inbox.
+	// A release copies the row into that provider's messages — keeping the original received_at and delete_after, so releasing does not extend retention — and marks the quarantine row reviewed, in one transaction. Owner-only, and audited either way.
+	// (POST /api/inbox/{slug}/quarantine/{messageId}/review)
+	ReviewQuarantineMessage(ctx context.Context, request ReviewQuarantineMessageRequestObject) (ReviewQuarantineMessageResponseObject, error)
 	// AcceptInvitation Accept an invitation, as the signed-in user or by creating the invited account. Rate limited with the lookup above.
 	// (POST /api/invitations/accept)
 	AcceptInvitation(ctx context.Context, request AcceptInvitationRequestObject) (AcceptInvitationResponseObject, error)
@@ -4231,6 +4846,155 @@ func (sh *strictHandler) LeaveHousehold(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LeaveHouseholdResponseObject); ok {
 		if err := validResponse.VisitLeaveHouseholdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateMessageStatus operation middleware
+func (sh *strictHandler) UpdateMessageStatus(w http.ResponseWriter, r *http.Request, slug HouseholdSlug, messageId MessageId) {
+	var request UpdateMessageStatusRequestObject
+
+	request.Slug = slug
+	request.MessageId = messageId
+
+	var body UpdateMessageStatusJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMessageStatus(ctx, request.(UpdateMessageStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMessageStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMessageStatusResponseObject); ok {
+		if err := validResponse.VisitUpdateMessageStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInboxProviders operation middleware
+func (sh *strictHandler) ListInboxProviders(w http.ResponseWriter, r *http.Request, slug HouseholdSlug) {
+	var request ListInboxProvidersRequestObject
+
+	request.Slug = slug
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInboxProviders(ctx, request.(ListInboxProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInboxProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInboxProvidersResponseObject); ok {
+		if err := validResponse.VisitListInboxProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListProviderMessages operation middleware
+func (sh *strictHandler) ListProviderMessages(w http.ResponseWriter, r *http.Request, slug HouseholdSlug, providerKey string, params ListProviderMessagesParams) {
+	var request ListProviderMessagesRequestObject
+
+	request.Slug = slug
+	request.ProviderKey = providerKey
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProviderMessages(ctx, request.(ListProviderMessagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProviderMessages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProviderMessagesResponseObject); ok {
+		if err := validResponse.VisitListProviderMessagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListQuarantine operation middleware
+func (sh *strictHandler) ListQuarantine(w http.ResponseWriter, r *http.Request, slug HouseholdSlug, params ListQuarantineParams) {
+	var request ListQuarantineRequestObject
+
+	request.Slug = slug
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListQuarantine(ctx, request.(ListQuarantineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListQuarantine")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListQuarantineResponseObject); ok {
+		if err := validResponse.VisitListQuarantineResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReviewQuarantineMessage operation middleware
+func (sh *strictHandler) ReviewQuarantineMessage(w http.ResponseWriter, r *http.Request, slug HouseholdSlug, messageId MessageId) {
+	var request ReviewQuarantineMessageRequestObject
+
+	request.Slug = slug
+	request.MessageId = messageId
+
+	var body ReviewQuarantineMessageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReviewQuarantineMessage(ctx, request.(ReviewQuarantineMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReviewQuarantineMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReviewQuarantineMessageResponseObject); ok {
+		if err := validResponse.VisitReviewQuarantineMessageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

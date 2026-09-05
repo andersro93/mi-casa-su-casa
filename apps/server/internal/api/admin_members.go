@@ -28,7 +28,7 @@ import (
 // providers each may read, and the household's providers so the screen can
 // offer the rest.
 func (s server) ListMembers(ctx context.Context, _ gen.ListMembersRequestObject) (gen.ListMembersResponseObject, error) {
-	_, household, ok := s.adminContext(ctx)
+	_, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.ListMembers403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -89,7 +89,7 @@ func (s server) ListMembers(ctx context.Context, _ gen.ListMembersRequestObject)
 
 // RemoveMember takes somebody else out of the household.
 func (s server) RemoveMember(ctx context.Context, request gen.RemoveMemberRequestObject) (gen.RemoveMemberResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.RemoveMember403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -138,7 +138,7 @@ func (s server) RemoveMember(ctx context.Context, request gen.RemoveMemberReques
 // owner asking to change their own role gets the same answer whether or not
 // they also sent a valid role, because the refusal is about who, not what.
 func (s server) UpdateMemberRole(ctx context.Context, request gen.UpdateMemberRoleRequestObject) (gen.UpdateMemberRoleResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.UpdateMemberRole403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -176,7 +176,7 @@ func (s server) UpdateMemberRole(ctx context.Context, request gen.UpdateMemberRo
 // point of the product: a housemate who needs the streaming codes does not
 // thereby get to read the bank's.
 func (s server) GrantProviderAccess(ctx context.Context, request gen.GrantProviderAccessRequestObject) (gen.GrantProviderAccessResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.GrantProviderAccess403JSONResponse(errorBody("Forbidden")), nil
 	}
@@ -214,7 +214,7 @@ func (s server) GrantProviderAccess(ctx context.Context, request gen.GrantProvid
 // and one that intermediaries are entitled to discard — so the Go route drops
 // that half and lets the spec validate the parameter instead.
 func (s server) RevokeProviderAccess(ctx context.Context, request gen.RevokeProviderAccessRequestObject) (gen.RevokeProviderAccessResponseObject, error) {
-	viewer, household, ok := s.adminContext(ctx)
+	viewer, household, ok := s.householdContext(ctx)
 	if !ok {
 		return gen.RevokeProviderAccess403JSONResponse(errorBody("Forbidden")), nil
 	}
