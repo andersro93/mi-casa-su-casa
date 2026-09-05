@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -82,6 +83,8 @@ const (
 // outside the spec.
 func newInboundHandler(d Deps) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer recoverInbound(w, r)
+
 		if r.Method != http.MethodPost {
 			// The spec validator would answer this for a route it knows; this
 			// one is mounted past it, so it answers for itself rather than
@@ -91,6 +94,52 @@ func newInboundHandler(d Deps) http.Handler {
 		}
 		serveInbound(d, w, r)
 	})
+}
+
+// newInboundNotFoundHandler answers everything else under InboundBasePath.
+//
+// The prefix is excluded from spec validation, and that exclusion is what
+// otherwise leaks: a request for /api/inbound/anything-else falls past the
+// validator (which is where every other unknown /api/ path gets its JSON 404)
+// and lands on the mux, whose own 404 is plain text. Mounting the subtree
+// keeps one answer shape for the whole surface — a mail provider posting to a
+// mistyped route gets the same envelope as any other caller.
+func newInboundNotFoundHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		respond.Error(w, http.StatusNotFound, "Not found")
+	})
+}
+
+// recoverInbound turns a panic below this handler into the same answer an
+// unexpected error gets: `email_ingest_failed` and a 500, which Mailgun
+// retries.
+//
+// The generated routes get this from the strict server's error handling; this
+// one is mounted past all of that, so without it a nil collaborator or a
+// hostile message that trips a parser bug would kill the connection with no
+// log line and no status — and Mailgun would treat the dropped connection as
+// a failure it should retry anyway, but nobody would know why.
+//
+// The panic VALUE is logged, never a body: it is the failure's own text
+// (a nil dereference, an index out of range), and the message it happened to
+// be processing is described by the same envelope fields every other line
+// carries. http.ErrAbortHandler is re-panicked, because that is net/http's
+// own signal for "drop this connection deliberately" and swallowing it would
+// answer 500 to something that asked for silence.
+func recoverInbound(w http.ResponseWriter, r *http.Request) {
+	recovered := recover()
+	if recovered == nil {
+		return
+	}
+	if err, ok := recovered.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+		panic(recovered)
+	}
+
+	applog.Event(applog.LevelError, "email_ingest_failed", map[string]any{
+		"path":  r.URL.Path,
+		"error": fmt.Sprintf("panic: %v", recovered),
+	})
+	respond.Error(w, http.StatusInternalServerError, "Internal error")
 }
 
 // serveInbound is the handler body: authenticate the request, then run the

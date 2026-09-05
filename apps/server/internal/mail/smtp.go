@@ -102,6 +102,9 @@ func NewSMTPSender(smtpURL, from string, opts ...SMTPOption) (Sender, error) {
 	if strings.TrimSpace(from) == "" {
 		return nil, errors.New("mail: outbound from address is required")
 	}
+	if containsCRLF(from) {
+		return nil, errors.New("mail: outbound from address must not contain CR or LF")
+	}
 
 	parsed, err := url.Parse(smtpURL)
 	if err != nil {
@@ -151,6 +154,19 @@ func NewSMTPSender(smtpURL, from string, opts ...SMTPOption) (Sender, error) {
 func (s *smtpSender) Send(ctx context.Context, msg Message) error {
 	if strings.TrimSpace(msg.To) == "" {
 		return errors.New("mail: message has no recipient")
+	}
+	// Header injection, refused before anything is composed or dialled. The
+	// recipient is the one field here that can carry a value from outside —
+	// an invitation is addressed to whatever an owner typed — and a CR or LF
+	// in it would end the To header and let the rest of the string become
+	// headers of its own (a Bcc, a second body). The check is on the raw
+	// value rather than on the composed message because by then the damage
+	// would already be in the buffer.
+	if containsCRLF(msg.To) {
+		return errors.New("mail: recipient address must not contain CR or LF")
+	}
+	if containsCRLF(s.from) {
+		return errors.New("mail: sender address must not contain CR or LF")
 	}
 
 	body, err := s.compose(msg, time.Now())
@@ -377,6 +393,14 @@ func newMessageID(from string) (string, error) {
 		domain = from[at+1:]
 	}
 	return "<" + hex.EncodeToString(random) + "@" + domain + ">", nil
+}
+
+// containsCRLF reports whether s carries a line break in any spelling. Both
+// characters are checked on their own, not only the CRLF pair: a bare LF ends
+// a header line for most MTAs, and every relay that normalises it turns a
+// lone CR into one too.
+func containsCRLF(s string) bool {
+	return strings.ContainsAny(s, "\r\n")
 }
 
 // isLoopbackHost reports whether host names this machine — the sidecar-relay

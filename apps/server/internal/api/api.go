@@ -186,7 +186,12 @@ func NewHandler(d Deps) http.Handler {
 	// itself with the signature instead (inbound.go).
 	//
 	// Registered without a method so a GET is answered by the handler's own
-	// JSON 405 rather than by the mux's plain-text one.
+	// JSON 405 rather than by the mux's plain-text one. The subtree around it
+	// is mounted too, so a mistyped path under the excluded prefix gets this
+	// project's JSON 404 instead of the mux's plain-text one; Go 1.22 patterns
+	// prefer the more specific registration, so the webhook still wins for its
+	// own path.
+	mux.Handle(InboundBasePath, newInboundNotFoundHandler())
 	mux.Handle(MailgunInboundPath, newInboundHandler(d))
 
 	// Every operation in the spec, wrapped at the two generated-code layers

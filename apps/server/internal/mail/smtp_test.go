@@ -456,6 +456,39 @@ func TestSMTPSender_AuthenticatesWithTheURLUserinfo(t *testing.T) {
 	backend.received(t)
 }
 
+// Header injection: a recipient carrying a line break would end the To header
+// and let whatever follows become headers of its own.
+func TestSMTPSender_RefusesARecipientWithALineBreak(t *testing.T) {
+	backend := &recorder{}
+	addr := startServer(t, backend, nil)
+
+	sender, err := NewSMTPSender("smtp://"+addr+"?starttls=off", outboundFrom)
+	if err != nil {
+		t.Fatalf("NewSMTPSender: %v", err)
+	}
+
+	for _, to := range []string{
+		"member@example.org\r\nBcc: attacker@example.net",
+		"member@example.org\nBcc: attacker@example.net",
+		"member@example.org\rBcc: attacker@example.net",
+	} {
+		msg := testMessage()
+		msg.To = to
+		if err := sender.Send(t.Context(), msg); err == nil {
+			t.Errorf("expected recipient %q to be refused", to)
+		}
+	}
+	if len(backend.deliveries) != 0 {
+		t.Errorf("server received %d messages, want 0 — the guard must run before anything is dialled", len(backend.deliveries))
+	}
+}
+
+func TestSMTPSender_RefusesASenderAddressWithALineBreak(t *testing.T) {
+	if _, err := NewSMTPSender("smtp://127.0.0.1:1025", "mi-casa@example.com\r\nBcc: attacker@example.net"); err == nil {
+		t.Error("expected a from address with a line break to be rejected")
+	}
+}
+
 func TestSMTPSender_RejectsAnUnusableURL(t *testing.T) {
 	for _, bad := range []string{"", "not-a-url", "https://smtp.example.com:587", "smtp://"} {
 		if _, err := NewSMTPSender(bad, outboundFrom); err == nil {

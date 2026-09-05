@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andersro93/mi-casa-su-casa/server/internal/api"
+	applog "github.com/andersro93/mi-casa-su-casa/server/internal/log"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/mail"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/repo"
 	"github.com/andersro93/mi-casa-su-casa/server/internal/testrig"
@@ -451,5 +453,175 @@ func TestInbound_RefusesEveryMethodButPost(t *testing.T) {
 	}
 	if got := app.JSON(t, rec)["error"]; got != "Method not allowed" {
 		t.Errorf("error = %v, want %q", got, "Method not allowed")
+	}
+}
+
+// --- the guards in front of the pipeline -------------------------------
+
+// captureLog redirects the structured log into a buffer for the duration of
+// one test, so a rejection's reason — which the response deliberately never
+// carries — can be asserted on.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buffer := &bytes.Buffer{}
+	applog.SetOutput(buffer)
+	t.Cleanup(func() { applog.SetOutput(nil) })
+	return buffer
+}
+
+// assertLogged fails unless the buffer holds an event line with every one of
+// the given field fragments.
+func assertLogged(t *testing.T, buffer *bytes.Buffer, event string, fragments ...string) {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(buffer.String()), "\n") {
+		if !strings.Contains(line, `"event":"`+event+`"`) {
+			continue
+		}
+		missing := false
+		for _, fragment := range fragments {
+			if !strings.Contains(line, fragment) {
+				missing = true
+			}
+		}
+		if !missing {
+			return
+		}
+	}
+	t.Errorf("no %q line with %v in:\n%s", event, fragments, buffer.String())
+}
+
+// A body that is not a multipart form cannot be authenticated — the signature
+// fields are inside it — so it joins the unauthenticated rejections rather
+// than being given a message-level answer.
+func TestInbound_RefusesABodyThatIsNotAMultipartForm(t *testing.T) {
+	app, _ := inboundRig(t)
+	buffer := captureLog(t)
+
+	rec := post(app, strings.NewReader(`{"body-mime":"nope"}`), "application/json")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401: %s", rec.Code, rec.Body.String())
+	}
+	if got := app.JSON(t, rec)["error"]; got != "Unauthorized" {
+		t.Errorf("error = %v, want %q", got, "Unauthorized")
+	}
+	assertLogged(t, buffer, "inbound_rejected", `"reason":"malformed"`)
+}
+
+// A request that announces more than any acceptable message could need is
+// refused on its Content-Length, before the body is read and therefore before
+// anything is verified: buffering 25 MB from a stranger to discover it was
+// unsigned would be the wrong order.
+func TestInbound_RefusesAnOversizedRequestBeforeVerifyingAnything(t *testing.T) {
+	app, _ := inboundRig(t)
+	buffer := captureLog(t)
+
+	// The declared length is what the branch turns on, so the request declares
+	// one rather than actually carrying four megabytes. Nothing reads the body:
+	// that IS the behaviour under test.
+	req := httptest.NewRequest(http.MethodPost, testrig.MailgunInboundPath, strings.NewReader("unsigned"))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=whatever")
+	req.ContentLength = 4 * 1024 * 1024
+
+	assertRejected(t, app, app.DoRequest(req), "Message too large")
+	// contentLength, not rawSize: the line proves the body was never read.
+	assertLogged(t, buffer, "email_rejected", `"reason":"too_large"`, `"contentLength":4194304`)
+}
+
+// The same limit, enforced on a request that declares no length at all — a
+// chunked POST, where only reading the body can reveal how big it is. This is
+// the http.MaxBytesError branch.
+func TestInbound_RefusesAnOversizedChunkedRequest(t *testing.T) {
+	app, _ := inboundRig(t)
+	buffer := captureLog(t)
+
+	raw := rawEmail(rawEmailInput{
+		from:    "info@netflix.com",
+		to:      "casa@" + testrig.EmailDomain,
+		subject: "Code",
+		body:    strings.Repeat("x", 4*1024*1024),
+	})
+	form, contentType := testrig.MailgunForm(testrig.MailgunSigningKey, raw,
+		"info@netflix.com", "casa@"+testrig.EmailDomain, deliveredAt)
+
+	// A plain reader, so httptest cannot work the length out from the buffer.
+	req := httptest.NewRequest(http.MethodPost, testrig.MailgunInboundPath, struct{ io.Reader }{form})
+	req.Header.Set("Content-Type", contentType)
+	req.ContentLength = -1
+	if req.ContentLength != -1 {
+		t.Fatalf("the request declares a length of %d; this test needs none", req.ContentLength)
+	}
+
+	assertRejected(t, app, app.DoRequest(req), "Message too large")
+	// `limit` is the field only the http.MaxBytesError branch writes, which is
+	// what pins this test to that branch rather than to either size check
+	// around it.
+	assertLogged(t, buffer, "email_rejected", `"reason":"too_large"`, `"limit":3145728`)
+}
+
+// A panic below the handler must answer like any other unexpected failure —
+// 500, which Mailgun retries — rather than killing the connection silently.
+//
+// It is provoked with a Deps whose Repo is nil (a composition root that was
+// mis-assembled) rather than through a seam added to production code for one
+// test: classification dereferences the repository, so the panic happens
+// exactly where a real one would, past every guard and inside the pipeline.
+func TestInbound_RecoversAPanicAsAnIngestFailure(t *testing.T) {
+	app, hid := inboundRig(t)
+	seedNetflix(t, app, hid)
+	buffer := captureLog(t)
+
+	broken := app.Deps
+	broken.Repo = nil
+	handler := api.NewHandler(broken)
+
+	raw := rawEmail(rawEmailInput{
+		from:      "info@netflix.com",
+		to:        "casa@" + testrig.EmailDomain,
+		subject:   "Code",
+		body:      "Your verification code is 482913",
+		messageID: "<panic@netflix.com>",
+	})
+	form, contentType := testrig.MailgunForm(testrig.MailgunSigningKey, raw,
+		"info@netflix.com", "casa@"+testrig.EmailDomain, deliveredAt)
+
+	req := httptest.NewRequest(http.MethodPost, testrig.MailgunInboundPath, form)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body.String())
+	}
+	if got := app.JSON(t, rec)["error"]; got != "Internal error" {
+		t.Errorf("error = %v, want %q", got, "Internal error")
+	}
+	assertLogged(t, buffer, "email_ingest_failed", `"error":"panic:`)
+	// The panic line says what broke, never what the message said.
+	if strings.Contains(buffer.String(), "482913") {
+		t.Errorf("the log carries the verification code:\n%s", buffer.String())
+	}
+}
+
+// The prefix is excluded from spec validation, which is where every other
+// unknown /api/ path gets its 404 — so the subtree has to answer for itself,
+// in the same envelope.
+func TestInbound_AnswersJSONForAnUnknownPathUnderItsPrefix(t *testing.T) {
+	app, _ := inboundRig(t)
+
+	for _, path := range []string{
+		"/api/inbound/",
+		"/api/inbound/mailgun",
+		"/api/inbound/mailgun/mime/extra",
+		"/api/inbound/postmark/mime",
+	} {
+		t.Run(path, func(t *testing.T) {
+			rec := app.DoRequest(httptest.NewRequest(http.MethodPost, path, nil))
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body.String())
+			}
+			if got := app.JSON(t, rec)["error"]; got != "Not found" {
+				t.Errorf("error = %v, want %q", got, "Not found")
+			}
+		})
 	}
 }
