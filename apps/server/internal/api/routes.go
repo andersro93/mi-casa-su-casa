@@ -93,6 +93,33 @@ var operationAuthTiers = map[string]authTier{
 	"UpdateProfile":          tierSession,
 	"RevokeOtherSessions":    tierSession,
 	"RevokeSession":          tierSession,
+
+	// Admin (REF §A2, "Admin — owner of :slug"). Every one of them, without
+	// exception: the TypeScript mounted requireHouseholdContext and
+	// requireOwner on `/:slug/*` for the whole admin router, so "owner" was a
+	// property of that ROUTER, and it is a property of this block here. A
+	// future admin route wanting a lesser tier is a decision to argue for in
+	// review, not a line to slip in.
+	"ListAuditEvents":            tierOwner,
+	"GetHouseholdSettings":       tierOwner,
+	"UpdateHouseholdSettings":    tierOwner,
+	"ListProviderConfigurations": tierOwner,
+	"CreateProvider":             tierOwner,
+	"UpdateProvider":             tierOwner,
+	"DeleteProvider":             tierOwner,
+	"CreateSenderRule":           tierOwner,
+	"UpdateSenderRule":           tierOwner,
+	"DeleteSenderRule":           tierOwner,
+	"ListMembers":                tierOwner,
+	"CreateMember":               tierOwner,
+	"RemoveMember":               tierOwner,
+	"UpdateMemberRole":           tierOwner,
+	"GrantProviderAccess":        tierOwner,
+	"RevokeProviderAccess":       tierOwner,
+	"ListInvitations":            tierOwner,
+	"CreateInvitation":           tierOwner,
+	"ResendInvitation":           tierOwner,
+	"CancelInvitation":           tierOwner,
 }
 
 // operationRateLimits maps an operationID to the rule its route is limited by.
