@@ -23,8 +23,8 @@
     "limen-auth": "^0.1.1",
     "openapi-fetch": "^0.17.0",
     "qrcode": "1.5.4",
-    "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
@@ -32,9 +32,9 @@
     "@testing-library/user-event": "^14.6.5",
     "@types/node": "^26.2.0",
     "@types/qrcode": "^1.5.6",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4",
-    "@vitejs/plugin-react": "6.1.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
     "jsdom": "^30.0.1",
     "typescript": "7.0.2",
     "vite": "8.2.2",
