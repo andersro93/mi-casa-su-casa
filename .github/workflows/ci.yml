@@ -42,7 +42,7 @@ jobs:
       # Full history and tags: svu computes the upcoming version from
       # Conventional Commits since the last v* tag, and a shallow clone has
       # neither.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -83,7 +83,7 @@ jobs:
       - name: Build artifacts (SPA + both server binaries)
         run: bash scripts/build-artifacts.sh
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Two kinds of pull request get a read-only GITHUB_TOKEN, and pushing
       # from either would fail with a 403 that has nothing to do with the
