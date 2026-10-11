@@ -72,11 +72,11 @@ jobs:
       dry: ${{ steps.mode.outputs.dry }}
     steps:
       # Tags and full history are the inputs to the calculation.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
           install_args: "aqua:caarlos0/svu"
 
@@ -157,11 +157,11 @@ jobs:
       packages: write   # ghcr.io
       id-token: write   # keyless cosign signing (GitHub OIDC)
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
           install_args: "go bun node aqua:goreleaser/goreleaser aqua:sigstore/cosign aqua:anchore/syft"
 
@@ -181,7 +181,7 @@ jobs:
       # buildx run — that needs the docker-container driver, which this
       # action creates and selects (the runner's default "docker" driver
       # supports neither attestations nor multi-platform pushes).
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to the container registry
         if: needs.version.outputs.publish == 'true'
